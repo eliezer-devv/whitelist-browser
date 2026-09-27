@@ -181,7 +181,7 @@ function openSite(data, domain, hidden) {
   return `**${domain}** is now allowed${hidden ? ' (no home page tile)' : ' and on the home page'}.`;
 }
 
-function openPage(data, domain, page, hidden) {
+function openPage(data, domain, page, hidden, passThrough) {
   const before = data.block.length;
   data.block = data.block.filter(e => !(isPageEntry(e) && (pageMatches(page, e) || pageMatches(e, page))));
   const unblocked = data.block.length < before;
@@ -196,7 +196,7 @@ function openPage(data, domain, page, hidden) {
     }
     return unblocked ? `The page **${page}** is unblocked.` : `**${page}** was already allowed (the whole site is).`;
   }
-  data.sites.push({ domain, name: domain.replace(/^www\./, ''), home: !hidden, pages: [page] });
+  data.sites.push({ domain, name: domain.replace(/^www\./, ''), home: !hidden, pages: [page], ...(passThrough ? { passThrough: true } : {}) });
   return `Only the page **${page}** is now allowed${hidden ? '' : ', with a home page tile'}.`;
 }
 
@@ -630,7 +630,7 @@ module.exports = async ({ github, context, core, exec }) => {
       if (hops.length && !/\bwithout pass/.test(text)) {
         const lists = [...new Set([...phoneLists, target])].map(n => n === target ? data : load(n));
         const added = missingHops(lists);
-        added.forEach(k => openPage(data, k.split('/')[0], k, true));
+        added.forEach(k => openPage(data, k.split('/')[0], k, true, true)); // pass-throughs: marked as such
         if (added.length) result += `\n\nPass-throughs allowed so the link works: ${added.map(k => `\`${k}\``).join(', ')}.`;
       }
       saveJson(listPath(target), data);
@@ -663,7 +663,7 @@ module.exports = async ({ github, context, core, exec }) => {
     if (action === 'allow' && hops.length && !/\bwithout pass/.test(text)) {
       const lists = [...new Set([...phoneLists, target])].map(n => n === target ? data : load(n));
       const added = missingHops(lists);
-      added.forEach(k => openPage(data, k.split('/')[0], k, true));
+      added.forEach(k => openPage(data, k.split('/')[0], k, true, true)); // pass-throughs: marked as such
       if (added.length) result += `\n\nPass-throughs allowed so the link works: ${added.map(k => `\`${k}\``).join(', ')}.`;
     }
     saveJson(listPath(target), data);
