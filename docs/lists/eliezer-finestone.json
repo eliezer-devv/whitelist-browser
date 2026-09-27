@@ -5,6 +5,15 @@
       "domain": "jepqueens.com",
       "home": true,
       "name": "JEP Queens"
+    },
+    {
+      "domain": "forums.jtechforums.org",
+      "name": "forums.jtechforums.org",
+      "home": false,
+      "pages": [
+        "forums.jtechforums.org/"
+      ],
+      "passThrough": true
     }
   ],
   "block": [],
@@ -16,6 +25,14 @@
       "mode": "clock",
       "minutes": 30,
       "from": "2026-09-27T19:02:54.818Z"
+    },
+    {
+      "id": "tmuk6tu2hfkk",
+      "what": "site",
+      "entry": "jtechforums.org",
+      "mode": "clock",
+      "minutes": 30,
+      "from": "2026-09-27T19:04:33.401Z"
     }
   ]
 }
