@@ -96,7 +96,7 @@ Turn on notifications so you hear about requests: in the **GitHub** app's settin
 You'll also want to **watch** the private repo (**Watch** → **All activity**) so its requests reach you.
 
 ### Step 7: Put your username in the app
-1. In the public repo, open `app/src/main/java/com/example/whitelistbrowser/Config.kt` and tap the pencil icon.
+1. In the public repo, open `app/src/main/java/com/appcustom/whitelistbrowser/Config.kt` and tap the pencil icon.
 2. Change `YOUR_USERNAME` to your GitHub username, keeping the quotes:
    ```kotlin
    const val GITHUB_USERNAME = "your-name-here"
@@ -852,7 +852,7 @@ updated by a version with the same seal. This stops anyone else from pushing a f
 | `homepage` | A web address to start on instead of the home page with tiles. | the home page |
 | `refreshMinutes` | How often open apps check for changes (minimum 1). | `5` |
 
-### `app/src/main/java/com/example/whitelistbrowser/Config.kt` (changing it builds a new app version)
+### `app/src/main/java/com/appcustom/whitelistbrowser/Config.kt` (changing it builds a new app version)
 | Setting | Meaning | Default |
 |---|---|---|
 | `GITHUB_USERNAME` | Your GitHub username. **Must be set.** | `"YOUR_USERNAME"` |

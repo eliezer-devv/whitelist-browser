@@ -7,7 +7,7 @@ plugins {
 val buildNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
 
 android {
-    namespace = "com.example.whitelistbrowser"
+    namespace = "com.appcustom.whitelistbrowser"
     compileSdk = 34
 
     defaultConfig {
