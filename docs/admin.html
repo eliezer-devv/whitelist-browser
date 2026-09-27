@@ -62,6 +62,9 @@
   .temp { display: flex; justify-content: space-between; align-items: center; gap: .6rem; background: var(--field);
     border: 1px solid var(--line); border-radius: 8px; padding: .55rem .7rem; margin: .4rem 0; font-size: .92rem; }
   .temp.ended { opacity: .55; }
+  .tempnote { background: #fff6e0; border: 1px solid #e8c77a; color: #5a4300; border-radius: 8px; padding: .55rem .7rem; margin: .5rem 0; font-size: .9rem; }
+  .tempnote a { color: inherit; }
+  .site .auto { grid-column: 1 / -1; font-size: .8rem; color: var(--muted); }
   /* Request cards */
   .req { background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: .8rem; margin: .7rem 0; }
   .req.focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
@@ -143,6 +146,7 @@
       <code>mail.google.com</code> or <code>maps.google.com</code>. Its <code>www.</code> version always works.
       Fill in <b>Only these pages</b> to allow just those pages (and the pages below them) instead of the whole site.
       Tick <b>No photos or videos</b> to open the site without pictures and videos.</p>
+    <div id="tempSummary"></div>
     <div id="sites"></div>
     <div class="toolbar"><button class="secondary" id="add">Add a site</button></div>
 
@@ -378,6 +382,11 @@
     node.querySelector('.home').checked = site.home !== false;
     node.querySelector('.subs').checked = site.subdomains !== false;
     node.querySelector('.nomedia').checked = !!site.noMedia;
+    if (site.passThrough) {
+      node.dataset.pass = '1';
+      const note = el('div', 'auto', 'Added automatically: a link passes through this address on its way to an approved site.');
+      node.insertBefore(note, node.querySelector('.bottom'));
+    }
     const pagesBox = node.querySelector('.pages');
     pagesBox.value = (site.pages || []).join('\n');
     const grow = () => { pagesBox.rows = Math.max(1, pagesBox.value.split('\n').length); };
@@ -502,7 +511,8 @@
       }
     };
     const asked = Number(req.minutes) || 0;
-    actions.append(button(asked ? `Approve (${fmtMin(asked)}, as asked)` : 'Approve', '', () => send('approve', 'Approved')));
+    actions.append(button(asked ? `Approve (${fmtMin(asked)}, as asked)` : 'Approve', '',
+      () => send('approve', asked ? `Approved for ${fmtMin(asked)} only` : 'Approved')));
 
     // For a while: the same hour and minute wheels, and how to count the time.
     let whilePanel = null;
@@ -579,6 +589,18 @@
   const fmtMin = m => [Math.floor(m / 60) && `${Math.floor(m / 60)} h`, m % 60 && `${m % 60} min`].filter(Boolean).join(' ') || '0 min';
   function tempEnd(t) { return (Date.parse(t.from) || 0) + (t.mode === 'use' ? 7 * 1440 : t.minutes) * 60000; }
   function renderTemps() {
+    // At the top of Sites: what's only open for a while, so it isn't mistaken for the list itself.
+    const live = temps.filter(t => tempEnd(t) > Date.now());
+    const sum = $('tempSummary');
+    sum.innerHTML = '';
+    live.forEach(t => {
+      const left = t.mode === 'use' ? `${fmtMin(t.minutes)} of use` : `until ${new Date(tempEnd(t)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      const n = el('div', 'tempnote');
+      n.textContent = `⏱ ${t.entry}: ${t.what === 'media' ? 'photos and videos on' : 'open'} for a while only (${left}). `;
+      const a = el('a', null, 'See Temporary access'); a.href = '#temps';
+      n.append(a);
+      sum.append(n);
+    });
     const box = $('temps');
     box.innerHTML = '';
     if (!temps.length) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'None.'; box.append(p); return; }
@@ -1000,6 +1022,7 @@
       seen.add(domain);
       const site = { domain, home: node.querySelector('.home').checked };
       if (node.querySelector('.nomedia').checked) mediaOffSites.push(domain);
+      if (node.dataset.pass) site.passThrough = true;
       if (!node.querySelector('.subs').checked) site.subdomains = false;
       const pageLines = node.querySelector('.pages').value.split('\n').map(l => l.trim()).filter(Boolean);
       const pages = [];
