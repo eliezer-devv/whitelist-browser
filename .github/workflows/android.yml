@@ -67,6 +67,10 @@ jobs:
 
       # Pack the lists new phones start with (admin page: "When a new phone is set up") into the app,
       # so a phone that has never been online can already use them. None ticked: no starter lists.
+      # The admin page, for the hidden admin screen inside the app.
+      - name: Add the admin page
+        run: cp docs/admin.html app/src/main/assets/admin.html
+
       - name: Add starter lists
         run: |
           node -e '
