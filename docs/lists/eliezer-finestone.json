@@ -8,12 +8,12 @@
     },
     {
       "domain": "forums.jtechforums.org",
-      "name": "forums.jtechforums.org",
-      "home": false,
+      "home": true,
+      "passThrough": true,
       "pages": [
         "forums.jtechforums.org/"
       ],
-      "passThrough": true
+      "name": "forums.jtechforums.org"
     }
   ],
   "block": [],
