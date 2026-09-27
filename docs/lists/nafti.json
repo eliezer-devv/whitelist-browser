@@ -1,5 +1,11 @@
 {
   "refreshMinutes": 5,
-  "sites": [],
+  "sites": [
+    {
+      "domain": "charidyextra.com",
+      "name": "charidyextra.com",
+      "home": true
+    }
+  ],
   "block": []
 }
