@@ -19,7 +19,8 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Pinned so GitHub's move of ubuntu-latest to Ubuntu 26 can't change the Android build unexpectedly.
+    runs-on: ubuntu-24.04
     env:
       KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
     steps:
@@ -30,9 +31,9 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
@@ -51,9 +52,12 @@ jobs:
           git commit -m "Add app signing key (password protected)"
           git push
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '8.9'
+          # Builds are occasional, so no caching: this also keeps clear of the separate licence
+          # terms that setup-gradle v6 applies to its caching component.
+          cache-disabled: true
 
       # Pack a copy of the AdGuard ad list into the app, so ad blocking works from the first launch.
       - name: Download ad list
