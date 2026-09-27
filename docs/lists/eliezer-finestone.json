@@ -3,29 +3,19 @@
   "sites": [
     {
       "domain": "youtube.com",
-      "name": "youtube.com",
       "home": false,
       "pages": [
         "youtube.com/user/khanacademy"
-      ]
+      ],
+      "name": "youtube.com"
     },
     {
       "domain": "jepqueens.com",
-      "name": "jepqueens.com",
-      "home": true
+      "home": true,
+      "name": "JEP Queens"
     }
   ],
   "block": [],
-  "temporary": [
-    {
-      "id": "tmuk5d8d2ufw",
-      "what": "page",
-      "entry": "youtube.com/user/khanacademy",
-      "mode": "clock",
-      "minutes": 5,
-      "from": "2026-09-27T18:23:39.158Z"
-    }
-  ],
   "noMedia": [
     "youtube.com/user/khanacademy"
   ]
