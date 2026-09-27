@@ -42,6 +42,13 @@
             </intent-filter>
         </activity>
 
+        <!-- The admin page inside the app: opened by tapping the name at the top 7 times. -->
+        <activity
+            android:name=".AdminActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize" />
+
         <receiver
             android:name=".InstallReceiver"
             android:exported="false" />
