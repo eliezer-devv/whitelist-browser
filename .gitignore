@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.gradle/
+build/
+app/build/
+local.properties
+*.keystore
+
+# Downloaded during the build (see android.yml)
+app/src/main/assets/adblock-*.txt
+app/src/main/assets/initial-bundle.json
