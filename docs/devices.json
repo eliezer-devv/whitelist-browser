@@ -5,5 +5,16 @@
   "requestsTo": "own",
   "adblock": true,
   "adblockExceptions": [],
-  "devices": {}
+  "devices": {
+    "TXYB-V9AE": {
+      "name": "Eliezer Finestone",
+      "model": "samsung SM-A546E",
+      "lists": [
+        "public",
+        "eliezer-finestone"
+      ],
+      "registered": "2026-09-27"
+    }
+  },
+  "archived": {}
 }
