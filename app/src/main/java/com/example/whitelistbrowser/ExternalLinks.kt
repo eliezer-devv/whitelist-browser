@@ -64,6 +64,11 @@ object ExternalLinks {
         val all = pm.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
         val apps = all.filter { it.activityInfo.packageName !in browsers }
 
+        // This app can only see some other apps (see <queries> in the manifest), but every browser is
+        // among them: anything that opens web pages is visible. So if no visible app handles this link,
+        // no browser does either, and it's safe to hand it to Android as it is (its app just can't be named).
+        if (all.isEmpty() && fallback == null) return Result.Launch(intent, null)
+
         if (apps.isEmpty()) {
             if (fallback != null && (fallback.startsWith("https://") || fallback.startsWith("http://"))) {
                 return Result.OpenHere(fallback)

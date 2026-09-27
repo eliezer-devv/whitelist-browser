@@ -11,7 +11,9 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.whitelistbrowser"
+        // The app's unique name on Android (not shown to users). Changing it makes it a different app:
+        // phones can't update across it.
+        applicationId = "com.appcustom.whitelistbrowser"
         minSdk = 24
         targetSdk = 34
         versionCode = buildNumber

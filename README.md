@@ -109,6 +109,8 @@ You'll also want to **watch** the private repo (**Watch** → **All activity**) 
 2. On the phone, open
    `https://github.com/YOUR_USERNAME/whitelist-browser/releases/latest/download/whitelist-browser.apk`,
    allow installing from the browser when Android asks, and tap **Install**.
+3. **If Google Play Protect warns about it,** tap **More details** → **Install anyway**. If it offers to send the
+   app for scanning, accept. See [Play Protect warnings](#play-protect-warnings) for why this happens.
 
 Setup is done.
 
@@ -891,6 +893,28 @@ so if even first names shouldn't be public, rename those lists on the admin page
 
 ---
 
+### Play Protect warnings
+Google Play Protect warns about apps that don't come from the Play Store, especially new ones it hasn't seen
+before, from a developer it doesn't know. This app also needs permissions that installer-type apps have (it
+installs its own updates, and can use the camera, microphone and location when a site asks). Each is legitimate
+here, but together they make Play Protect cautious.
+- **For now:** tap **More details** → **Install anyway**, and accept if it offers to scan the app.
+- **Coming in 2027:** Google is requiring every developer of apps installed outside the Play Store to register with
+  it (the Android Developer Console). It starts in Brazil, Indonesia, Singapore and Thailand from 30 September 2026,
+  and expands worldwide in 2027. Without registering, installing will need a much longer process, including a
+  24-hour wait. Registering doesn't change the app. When it applies where you live, register, and add the
+  app's package name, `com.appcustom.whitelistbrowser`.
+
+### The app's package name
+Android identifies the app by its package name, `com.appcustom.whitelistbrowser` (in `app/build.gradle.kts`).
+People never see it.
+- **Don't change it.** A different package name is a different app: phones can't update across it, and every
+  phone would need uninstalling and installing again.
+- **Moving from the old `com.example.whitelistbrowser`** (versions before this one): on each phone, uninstall
+  the old app (**Settings** → **Apps** → **Whitelist Browser** → **Uninstall**), then install the new one from the
+  link in setup step 8. The phone keeps its ID, so it keeps its lists and name on the admin page. It asks for the
+  person's name again, and the in-app admin needs your token again.
+
 ## 11. Limits and tips
 
 - **The app only restricts itself.** Anyone can still open Chrome or another browser. On a child's phone, use
@@ -912,6 +936,8 @@ so if even first names shouldn't be public, rename those lists on the admin page
 |---|---|
 | Build fails: *"Add a repository secret named KEYSTORE_PASSWORD"* | Do setup step 3 (20+ characters), then Actions → Build APK → Run workflow. |
 | Build fails at *Build signed APK* with a keystore or password error | The password secret doesn't match the key. Set `KEYSTORE_PASSWORD` back to the original. |
+| Play Protect warns or blocks the install | Tap **More details** → **Install anyway** (see [Play Protect warnings](#play-protect-warnings)). |
+| The update banner says the update failed, after the package name change | Expected once: old versions (`com.example.whitelistbrowser`) can't update to the new name. Uninstall and install the new one (see [The app's package name](#the-apps-package-name)). |
 | **Publish list** fails (public repo) | Settings → Pages → Source must be **GitHub Actions** (setup step 2). |
 | **Publish lists** fails (private repo) | Check the `PUBLIC_REPO_TOKEN` secret there: it needs Contents: Read and write on the public repo, and not to have expired (setup step 5). |
 | Any other build failure | Open the failed run, copy the red error text and ask for help with it. |
