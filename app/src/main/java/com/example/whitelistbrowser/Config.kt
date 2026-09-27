@@ -2,7 +2,7 @@ package com.example.whitelistbrowser
 
 object Config {
     // Your GitHub username. This is the only line you must change.
-    const val GITHUB_USERNAME = "YOUR_USERNAME"
+    const val GITHUB_USERNAME = "eliezer-devv"
 
     // The repository name. Only change it if you named the repo something else.
     const val REPO_NAME = "whitelist-browser"
