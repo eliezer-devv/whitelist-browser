@@ -3,13 +3,13 @@
   "sites": [
     {
       "domain": "wikipedia.org",
-      "name": "Wikipedia",
-      "home": true
+      "home": true,
+      "name": "Wikipedia"
     },
     {
       "domain": "khanacademy.org",
-      "name": "Khan Academy",
-      "home": true
+      "home": true,
+      "name": "Khan Academy"
     },
     {
       "domain": "wikimedia.org",
@@ -17,12 +17,22 @@
     },
     {
       "domain": "theyeshivaworld.com",
-      "name": "theyeshivaworld.com",
-      "home": false
+      "home": false,
+      "name": "theyeshivaworld.com"
     }
   ],
   "block": [],
   "noMedia": [
     "theyeshivaworld.com"
+  ],
+  "temporary": [
+    {
+      "id": "tmuk7uwa6",
+      "what": "site",
+      "entry": "theyeshivaworld.com",
+      "mode": "clock",
+      "minutes": 30,
+      "from": "2026-09-27T19:33:22.542Z"
+    }
   ]
 }
