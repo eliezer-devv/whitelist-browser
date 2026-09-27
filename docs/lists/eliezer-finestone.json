@@ -8,6 +8,11 @@
       "pages": [
         "youtube.com/user/khanacademy"
       ]
+    },
+    {
+      "domain": "jepqueens.com",
+      "name": "jepqueens.com",
+      "home": true
     }
   ],
   "block": [],
