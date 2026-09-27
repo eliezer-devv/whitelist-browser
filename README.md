@@ -38,62 +38,103 @@ work in a phone's web browser.
 
 ## 1. One-time setup
 
+There are **two repositories**:
+- **`whitelist-browser` (public):** the app, its updates, and what the phones read (the lists, and which lists
+  each phone ID uses, with no names).
+- **`whitelist-browser-private` (private, only you can see it):** the requests and your replies, every phone's
+  name and details, and the automation that handles it all. Section 10 explains what's visible where.
+
 Do these steps in order. On a phone, switching the browser to **desktop site** makes GitHub's settings pages
 easier to use.
 
-### Step 1: Create the repository
-1. On github.com, tap **+** → **New repository**.
-2. Name it **`whitelist-browser`** and set it to **Public**. Section 10 explains why.
-3. Upload all the files from the zip, keeping the folder structure. Include the hidden `.github` folder.
+**Already using the one-repository version?** Follow [Moving to the private repository](#moving-to-the-private-repository-existing-setups) below instead.
 
-### Step 2: Turn on GitHub Pages (this publishes the list)
-1. In the repo: **Settings** → **Pages**.
+### Step 1: Create the public repository
+1. On github.com, tap **+** → **New repository**.
+2. Name it **`whitelist-browser`** and set it to **Public**.
+3. Upload all the files from `whitelist-browser.zip`, keeping the folder structure. GitHub's upload page skips the
+   hidden `.github` folder, so create its files by hand (**Add file** → **Create new file**, type the path, paste).
+
+### Step 2: Turn on GitHub Pages (this publishes the lists)
+1. In the public repo: **Settings** → **Pages**.
 2. Under **Build and deployment** → **Source**, choose **GitHub Actions**.
-3. Go to the **Actions** tab → **Publish list** → **Run workflow**.
-4. When it's green, check that this link opens and shows the list:
-   `https://YOUR_USERNAME.github.io/whitelist-browser/whitelist.json`
 
 ### Step 3: Set the signing password
 The app needs a digital signature so that only your updates can be installed on it (see section 8).
 
-1. In the repo: **Settings** → **Secrets and variables** → **Actions** → **New repository secret**.
+1. In the public repo: **Settings** → **Secrets and variables** → **Actions** → **New repository secret**.
 2. **Name:** `KEYSTORE_PASSWORD`
-3. **Secret:** a long random password of **at least 20 characters**. A password manager can generate one.
+3. **Secret:** a long random password of **at least 20 characters**, letters and numbers. A password manager can generate one.
 4. **Also save it in your password manager.** GitHub won't show it again.
 
-### Step 4: Set up requests
-This lets the app send you "please allow / please block" requests (see section 3). You can skip it and
-do it later, but then the request buttons stay hidden until the next app version.
+### Step 4: Create the private repository
+1. **+** → **New repository**. Name it **`whitelist-browser-private`**, exactly the public one's name with
+   `-private` on the end, and set it to **Private**.
+2. Upload all the files from `whitelist-browser-private.zip`. Its files are all in the hidden `.github` folder, so
+   create them by hand as in step 1: `.github/scripts/handle-request.js` and the four files in `.github/workflows/`.
 
-1. Make a **requests token** as described in [section 6](#6-tokens-what-they-are-and-how-to-make-one), with:
-   - **Repository access:** only `whitelist-browser`
-   - **Permission:** **Issues: Read and write**
-   - **Expiration:** as long as GitHub allows. When it expires, requests stop working until you renew it (section 6).
-2. Add it as a repository secret like in step 3. **Name:** `REQUESTS_TOKEN`, **Secret:** the token.
-3. Turn on notifications so you hear about requests:
-   - Install the **GitHub** app on your phone and sign in. In its settings, turn on push notifications for **Participating**.
-   - Email is on by default. Check under github.com → **Settings** → **Notifications** → **Participating** that **Email** is ticked.
+### Step 5: Make the tokens
+Make each as described in [section 6](#6-tokens-what-they-are-and-how-to-make-one). Expiration: as long as GitHub
+allows. When one expires, see section 6.
 
-### Step 5: Put your username in the app
-1. Open `app/src/main/java/com/example/whitelistbrowser/Config.kt` and tap the pencil icon.
-2. Change `YOUR_USERNAME` to your GitHub username:
+| Token | Repository access | Permissions | Where it goes |
+|---|---|---|---|
+| **Publishing token** | only `whitelist-browser` (public) | **Contents: Read and write** | Private repo → secret `PUBLIC_REPO_TOKEN` |
+| **Requests token** | only `whitelist-browser-private` | **Issues: Read and write** | Public repo → secret `REQUESTS_TOKEN` |
+| **Admin token** | only `whitelist-browser-private` | **Contents** and **Issues: Read and write** | Pasted into the admin page |
+
+The publishing token lets the private repository copy the lists to the public one. The requests token is built
+into the app, and can only create and read requests. The admin token is for you.
+
+### Step 6: Set up the lists
+In the private repo: **Actions** → **Move my data (run once)** → **Run workflow**. For a new setup this creates the
+starting list and publishes it. When it's green, check that this link opens:
+`https://YOUR_USERNAME.github.io/whitelist-browser/whitelist.json`
+
+Turn on notifications so you hear about requests: in the **GitHub** app's settings, turn on push notifications for
+**Participating**, and check under github.com → **Settings** → **Notifications** that **Email** is ticked.
+You'll also want to **watch** the private repo (**Watch** → **All activity**) so its requests reach you.
+
+### Step 7: Put your username in the app
+1. In the public repo, open `app/src/main/java/com/example/whitelistbrowser/Config.kt` and tap the pencil icon.
+2. Change `YOUR_USERNAME` to your GitHub username, keeping the quotes:
    ```kotlin
    const val GITHUB_USERNAME = "your-name-here"
    ```
-3. **Commit changes**. This starts the first app build automatically.
+3. **Commit changes**. This starts the first app build.
 
-### Step 6: Wait for the build
-1. Open the **Actions** tab. A **Build APK** run appears. It takes about 3 to 5 minutes.
-2. A green tick means it worked. A new release appears under **Releases**, and the file
-   `signing/release.p12` appears in the repo. That's your password-protected signing key.
-
-### Step 7: Install the app on the phone
-1. On the phone, open:
-   `https://github.com/YOUR_USERNAME/whitelist-browser/releases/latest/download/whitelist-browser.apk`
-   (This link is also on your status page, `https://YOUR_USERNAME.github.io/whitelist-browser/`.)
-2. Open the downloaded file. Allow installing apps from the browser when Android asks, then tap **Install**.
+### Step 8: Wait for the build, then install
+1. **Actions** tab (public repo): a **Build APK** run takes about 5 to 10 minutes. A green tick means it worked,
+   a release appears under **Releases**, and `signing/release.p12` (your locked signing key) appears in the repo.
+2. On the phone, open
+   `https://github.com/YOUR_USERNAME/whitelist-browser/releases/latest/download/whitelist-browser.apk`,
+   allow installing from the browser when Android asks, and tap **Install**.
 
 Setup is done.
+
+### Moving to the private repository (existing setups)
+If you set things up before the private repository existed, your lists, phone names and requests are in the public
+repository. To move them:
+1. **Create the private repository** (step 4 above).
+2. **Make the publishing token** and add it to the private repo as `PUBLIC_REPO_TOKEN` (step 5).
+3. **Replace the requests token:** make a new one for `whitelist-browser-private` (Issues: Read and write) and
+   paste it into the public repo's `REQUESTS_TOKEN` secret, replacing the old value.
+4. **Give your admin token access to the private repo:** Developer settings → Fine-grained tokens → your admin
+   token → **Edit** → **Repository access** → add `whitelist-browser-private`, with **Contents** and **Issues** set
+   to **Read and write** → **Update**.
+5. **Move the data:** in the private repo, **Actions** → **Move my data (run once)** → **Run workflow**. It copies
+   your lists and phones (with their names and archive) to the private repo, publishes the public parts, and
+   removes `devices.json` from the public repo. It never overwrites data already in the private repo.
+6. **Update the public repo** with the new files, and **delete** the files that moved: `.github/workflows/requests.yml`,
+   `.github/workflows/phones.yml` and `.github/scripts/handle-request.js` (open each → **⋯** → **Delete file**).
+7. **Let Build APK finish,** then update each phone from its green banner. Until a phone updates, its requests go to
+   the old place and won't be answered.
+8. **Old requests** are still visible in the public repo's Issues. You can delete them: open each → **Delete issue**
+   (at the bottom of the right-hand column).
+
+**Good to know:** GitHub keeps the history of every file. Old versions of `devices.json` stay visible in the public
+repo's history (**Commits**). To remove that completely, you'd have to delete the public repository and create it
+again, which means reinstalling the app on every phone. Most people don't need to.
 
 ---
 
@@ -403,8 +444,9 @@ and fetches the latest lists. It notices the connection coming back by itself, s
 ### How phones get an ID
 1. The app gives the phone an ID like `K7M4-Q2XP`. It's worked out from Android's own ID for this app on this phone,
    so **it stays the same even if the app is uninstalled and reinstalled**. It's a scrambled form, so Android's ID itself isn't shared.
-2. **If requests are set up** (setup step 4), the phone registers itself, straight away if it's online, otherwise as soon as it is. It appears in `docs/devices.json` with the lists for
-   new phones, and you get a notification: *"📱 New phone registered: samsung SM-A155F, ID K7M4-Q2XP. Give it a name…"*.
+2. **If requests are set up** (setup step 5), the phone registers itself, straight away if it's online, otherwise as
+   soon as it is. It's added to the private repo's `devices.json` with its name and the lists for new phones, and
+   (without the name) to the public `phones.json`. You get a notification: *"📱 New phone registered: Emma (samsung SM-A155F), ID K7M4-Q2XP."*
 3. **Without requests,** add the phone by hand. On the phone, open **⋮ → About this phone** (it shows the ID and has a
    **Copy ID** button), then use **Add a phone by ID** on the admin page.
 4. **When the ID does change:** after a **factory reset**, in a **different user profile** on the same phone, and of course on a
@@ -518,9 +560,9 @@ These combine with the other words, e.g. `approve public whole site` or `approve
 | `docs/whitelist.json` | The public list |
 | `docs/lists/<name>.json` | The other lists |
 | `docs/lists/archive/<name>.json` | Private lists of archived phones, kept until you restore or delete them |
-| `docs/devices.json` | The phones (ID, name, model, date registered, their lists, where their approvals go, their ad setting), archived phones, the lists for new phones, where approvals go by default (`"requestsTo": "own"` or `"public"`), the days before archiving (`"inactiveDays"`), and ad blocking (`"adblock"`, `"adblockExceptions"`) |
+| `devices.json` (private repo) | The phones (ID, name, model, date registered, their lists, where their approvals go, their ad setting), archived phones, the lists for new phones, where approvals go by default (`"requestsTo": "own"` or `"public"`), the days before archiving (`"inactiveDays"`), and ad blocking (`"adblock"`, `"adblockExceptions"`) |
 
-`docs/devices.json` looks like this:
+The private repo's `devices.json` looks like this:
 ```json
 {
   "default": ["public"],
@@ -537,10 +579,14 @@ These combine with the other words, e.g. `approve public whole site` or `approve
 
 ## 4. Changing the list yourself
 
-The list is the file **`docs/whitelist.json`**. There are three ways to change it:
+The list is the file **`docs/whitelist.json`** in the **private** repository (other lists are in `docs/lists/`).
+There are three ways to change it:
 - **The admin page** (section 5): easiest, with no special format to get right.
-- **Edit the file on github.com:** open the repo → `docs` → `whitelist.json` → pencil icon, then **Commit changes**.
+- **Edit the file on github.com:** open the **private** repo → `docs` → `whitelist.json` → pencil icon, then
+  **Commit changes**. Its **Publish lists** workflow then copies it to the public repo for the phones.
 - **Git on a computer:** only worth it if you already use git.
+
+**Don't edit the lists in the public repository:** they're copies, replaced every time something is published.
 
 ### The file format
 ```json
@@ -627,7 +673,7 @@ To check the file, open the `whitelist.json` link from setup step 2. If it shows
   If a site keeps getting blocked, the blocked page shows which domain it tried to open.
 
 ### How fast changes arrive
-1. GitHub publishes the change in about **1 to 2 minutes**. You can watch **Publish list** in the Actions tab.
+1. GitHub publishes the change in about **1 to 2 minutes**: **Publish lists** runs in the private repo's Actions tab, then **Publish list** in the public repo's.
 2. The app checks when it's opened, every `refreshMinutes` while it's open, or right away when the status line is tapped.
 3. **Removing** a site blocks it even if it's open at the time. **Adding** a site opens it automatically if someone is on its blocked page.
 
@@ -721,8 +767,9 @@ This setup uses up to two:
 
 | Token | Where it goes | Permission | Needed for |
 |---|---|---|---|
-| **Requests token** | Repo secret `REQUESTS_TOKEN`, built into the app | **Issues: Read and write** | Sending requests from the app |
-| **Admin token** (optional) | Pasted into the admin page | **Contents: Read and write** and **Issues: Read and write** | Editing the lists, and answering requests, on the admin page |
+| **Publishing token** | Private repo secret `PUBLIC_REPO_TOKEN` | **Contents: Read and write**, public repo only | Copying the lists to the public repo |
+| **Requests token** | Public repo secret `REQUESTS_TOKEN`, built into the app | **Issues: Read and write**, private repo only | Sending requests from the app |
+| **Admin token** (optional) | Pasted into the admin page | **Contents** and **Issues: Read and write**, private repo only | Editing the lists, and answering requests, on the admin page |
 
 ### How to make a token
 1. On github.com, tap your profile picture → **Settings** → at the bottom of the menu, **Developer settings**.
@@ -790,7 +837,7 @@ updated by a version with the same seal. This stops anyone else from pushing a f
 
 ## 9. Settings reference
 
-### `docs/whitelist.json` (change anytime, reaches all phones in minutes)
+### `docs/whitelist.json` in the private repo (change anytime, reaches all phones in minutes)
 | Field | Meaning | Default |
 |---|---|---|
 | `sites` | The allowed sites (see section 4 for the fields of each). | none (everything blocked) |
@@ -812,33 +859,32 @@ updated by a version with the same seal. This stops anyone else from pushing a f
 | Secret | Meaning |
 |---|---|
 | `KEYSTORE_PASSWORD` | Unlocks the signing key. Set once, never change. |
-| `REQUESTS_TOKEN` | Lets the app send requests. Optional. After changing it, rebuild the app. |
+| `REQUESTS_TOKEN` (public repo) | Lets the app send requests to the private repo. After changing it, rebuild the app. |
+| `PUBLIC_REPO_TOKEN` (private repo) | Lets the private repo publish the lists to the public repo. |
 
 ---
 
 ## 10. Who can see what
 
-| Thing | Who can see it | Who can change it |
+| Thing | Where | Who can see it |
 |---|---|---|
-| All lists and the status page | **Anyone** with the link | You, or anyone with your admin token |
-| **Phones (`devices.json`): IDs, names, models and their lists** | **Anyone** with the link | You, or anyone with your admin token |
-| **Requests (issues), including notes and phone model** | **Anyone** who visits the repo | Only your replies approve anything |
-| The admin page | Anyone can open it | It does nothing without a token |
-| App code and releases | Anyone | You |
-| Signing key file | Anyone, but it's locked by your password | Nobody but you |
-| Secrets (`KEYSTORE_PASSWORD`, `REQUESTS_TOKEN`) | Nobody, not even you | You |
+| **Requests, notes and your replies** | Private repo (issues) | **Only you** |
+| **Phone names, models, dates, archive** | Private repo (`devices.json`) | **Only you** |
+| The lists (which sites each list allows or blocks) | Both. The private copy is the real one, the public copy is what phones read | Anyone with the link |
+| Which lists each phone ID uses (`phones.json`, **no names**) | Public repo | Anyone with the link |
+| The status page and the admin page | Public repo | Anyone can open them, but the admin page does nothing without your token |
+| App code and releases | Public repo | Anyone |
+| Signing key file | Public repo | Anyone, but it's locked by your password |
+| Secrets and tokens | Repo settings | Nobody, not even you |
 
-**Why the repository must be public:**
-- **GitHub Pages is only free on public repositories.** On paid plans, the published site is still public anyway.
-- **The app downloads the list and updates without logging in.** Doing that from a private repo would need a password built into the app, and anyone could dig it out.
+**Why part of it has to stay public:** GitHub Pages (where phones read their lists) is only free on public
+repositories, and on paid plans the published site is public anyway. And the app downloads its lists and updates
+without logging in: doing that from a private repository would need a password built into the app, and anyone
+could dig it out.
 
-A public list of allowed site names usually isn't sensitive. But **everything in the repository is public**,
-including personal lists, phone names and requests, so keep it impersonal:
-- **Name phones and lists with first names or names,** not full names.
-- **Tell users not to put personal information in request notes.**
-- **Requests also include the addresses a stopped link passes through,** which can contain parts of the original link.
-
-"Private list" here means a list for one phone, not a secret one.
+**What's still public, then:** the site lists themselves, and phone IDs. The IDs are random codes that don't say
+whose phone it is. List names are visible too, and a phone's own list is named after the person (e.g. `emma`),
+so if even first names shouldn't be public, rename those lists on the admin page (e.g. to `phone-1`).
 
 ---
 
@@ -863,7 +909,8 @@ including personal lists, phone names and requests, so keep it impersonal:
 |---|---|
 | Build fails: *"Add a repository secret named KEYSTORE_PASSWORD"* | Do setup step 3 (20+ characters), then Actions → Build APK → Run workflow. |
 | Build fails at *Build signed APK* with a keystore or password error | The password secret doesn't match the key. Set `KEYSTORE_PASSWORD` back to the original. |
-| **Publish list** fails | Settings → Pages → Source must be **GitHub Actions** (setup step 2). |
+| **Publish list** fails (public repo) | Settings → Pages → Source must be **GitHub Actions** (setup step 2). |
+| **Publish lists** fails (private repo) | Check the `PUBLIC_REPO_TOKEN` secret there: it needs Contents: Read and write on the public repo, and not to have expired (setup step 5). |
 | Any other build failure | Open the failed run, copy the red error text and ask for help with it. |
 | A phone isn't in the **Phones** section | Requests must be set up for phones to register themselves, so check `REQUESTS_TOKEN`. Otherwise add it by ID (⋮ → About this phone). |
 | A phone doesn't get a list's sites | Check its lists under **Phones** (tap the phone) and that you tapped **Save**. On the phone, **⋮ → About this phone** shows the lists it's using. |
@@ -878,15 +925,15 @@ including personal lists, phone names and requests, so keep it impersonal:
 | A phone in use was archived | It wasn't opened within the set number of days (or can't check in). It returns by itself when opened. Raise **Archive phones not seen for** if that's common. |
 | The same phone appears twice | It was factory reset (or used in another user profile), which gives it a new ID. Reply `same as <name>` on its "New phone" notification, or use **Give to phone…**, then remove the old entry. A normal reinstall keeps the same ID. |
 | App says *"No list loaded"* | Check the `whitelist.json` link from setup step 2, and that `GITHUB_USERNAME` is right. |
-| List changes don't show up | Check that **Publish list** ran green, then tap the status line. Check the file for JSON mistakes. |
+| List changes don't show up | Check that **Publish lists** (private repo) and **Publish list** (public repo) ran green, then tap the status line. If you edited a file by hand, check it for JSON mistakes, and make sure you edited it in the private repo. |
 | A subdomain is blocked, like `mail.google.com` | The site has **Include subdomains** turned off, or the subdomain is on the **Always blocked** list. Add the subdomain as its own site, or turn the option back on. |
 | A page on an allowed site is blocked | The site has **Only these pages** filled in. Add the page there, or empty the box to allow the whole site. |
 | A YouTube video won't open although its channel is allowed | Videos have their own address (`youtube.com/watch?v=…`). Add each video, or allow all of YouTube. |
 | A link from an allowed page is stopped, though its destination is allowed | It passes through another address first (a shortener or redirect). Tap **Ask to open**. The request lists the pass-throughs, and `approve` allows them. |
 | A listed site is still blocked | It probably sends you to another domain, like a sign-in page. The blocked page names it. Add it with `"home": false`. |
-| No request buttons in the app | `REQUESTS_TOKEN` was missing when the app was built. Add it (setup step 4), then run Build APK and update. |
+| No request buttons in the app | `REQUESTS_TOKEN` was missing when the app was built. Add it (setup step 5), then run Build APK and update. |
 | *"The request key has expired"* | Renew the requests token (section 6). |
-| Requests arrive but you get no notification | Check GitHub notification settings for **Participating** (setup step 4). They still show in the **Issues** tab. |
+| Requests arrive but you get no notification | Check GitHub notification settings for **Participating**, and that you're watching the private repo (setup step 6). They still show in the private repo's **Issues** tab. |
 | Someone didn't hear back about a request | Answers arrive while the app is open and online, within a few minutes of your reply. **⋮ → My requests** shows the status. Make sure you replied `approve` or `deny` (a plain comment isn't an answer). |
 | A request made offline hasn't arrived | It's sent when the phone is next online with the app open. **⋮ → About this phone** shows whether anything is still waiting and why. |
 | A new phone only has the sites from when the app was built | Those are the starter lists, used until it first goes online. It then fetches its real lists. |
@@ -903,23 +950,28 @@ including personal lists, phone names and requests, so keep it impersonal:
 
 ---
 
-## 13. What's in this repository
+## 13. What's in the two repositories
 
+**`whitelist-browser` (public)**
 ```
 docs/                          Published by GitHub Pages
-  whitelist.json               The public list of allowed sites
-  lists/                       The other lists (one file each, e.g. emma.json)
-  devices.json                 The phones, and which lists each one uses
-  admin.html                   The admin page for editing the list
+  whitelist.json               Copy of the public list (published from the private repo: don't edit here)
+  lists/                       Copies of the other lists (e.g. emma.json)
+  phones.json                  Which lists each phone ID uses, and ad settings. No names.
+  .source                      Which private version the copies came from
+  admin.html                   The admin page
   index.html                   Status page: current list and app download link
   sites-template.csv           Spreadsheet template for bulk import
 app/                           The Android app
   src/main/java/.../Config.kt          Your settings
+  src/main/java/.../PrivateRepo.kt     The private repository's name (the public one's + "-private")
   src/main/java/.../MainActivity.kt    Browser screen, blocking, menu, requests, permissions
+  src/main/java/.../AdminActivity.kt   The admin page inside the app (7 taps on the name at the top)
   src/main/java/.../Whitelist.kt       Downloading and combining the phone's lists, checking addresses
-  src/main/java/.../Device.kt          The phone's ID
+  src/main/java/.../Device.kt          The phone's ID and the name typed on it
   src/main/java/.../HomePage.kt        Serves the home page with tiles
-  src/main/java/.../Requests.kt        Sends allow and block requests
+  src/main/java/.../Requests.kt        Sends requests, registration and check-ins to the private repo
+  src/main/java/.../SiteCheck.kt       Checks a typed site exists before asking for it
   src/main/java/.../ExternalLinks.kt   Sends tel:, mailto:, app links etc. to their own app
   src/main/java/.../AdBlock.kt         Ad and tracker blocking
   src/main/java/.../MediaBlock.kt      "No photos or videos" mode
@@ -934,8 +986,17 @@ app/                           The Android app
 signing/release.p12            Signing key, locked by your password (created on the first build)
 .github/workflows/android.yml  Builds, signs and publishes the app
 .github/workflows/pages.yml    Publishes docs/ to GitHub Pages
+```
+
+**`whitelist-browser-private` (private)**
+```
+docs/whitelist.json            The public list: the real one (edit here, or on the admin page)
+docs/lists/                    The other lists; lists/archive/ keeps archived phones' lists
+devices.json                   Every phone: name, model, dates, lists, settings; archived phones
 .github/workflows/requests.yml Handles requests, new phones and your replies
 .github/workflows/phones.yml   Daily phone check: archives unused phones, restores returning ones
+.github/workflows/sync.yml     "Publish lists": copies the public parts to the public repo
+.github/workflows/migrate.yml  "Move my data (run once)"
 .github/last-check             Touched monthly by the daily check so GitHub keeps it running
-.github/scripts/handle-request.js    The logic behind requests.yml (requests and phone registrations)
+.github/scripts/handle-request.js    The logic behind all four
 ```

@@ -201,8 +201,8 @@
 'use strict';
 // ============================================================================================
 // Whitelist admin page. Four tabs (Requests, Sites, Phones, Settings) plus sub-screens.
-// It reads and writes the same files as always: docs/whitelist.json, docs/lists/*.json and
-// docs/devices.json, and answers requests by posting the same replies you could type on GitHub.
+// It reads and writes the private repository: docs/whitelist.json, docs/lists/*.json and
+// devices.json, and answers requests (issues there) by posting the same replies you could type on GitHub.
 // ============================================================================================
 const $ = id => document.getElementById(id);
 
@@ -293,6 +293,9 @@ const hasPath = l => /[/?]./.test(String(l).replace(/^[a-z][a-z0-9+.-]*:\/\//i, 
 const blockEntry = l => hasPath(l) ? pageKey(l) : normalize(l);   // a site, or a single page
 
 // ---------- GitHub connection ----------
+// C.repo is the PRIVATE repository: lists (docs/), devices.json and the requests. Saving there
+// publishes the public parts to the public repository by itself (its "Publish lists" workflow).
+const publicRepoName = () => C.repo.replace(/-private$/, '');
 const C = { owner: '', repo: '', branch: 'main', token: '', remember: false };
 // Inside the phone app (opened from the hidden button) the app passes ?inapp=1&owner=…&repo=….
 // There the token is never stored as it is: only encrypted with a PIN (see below).
@@ -300,9 +303,11 @@ const Q = new URLSearchParams(location.search);
 const INAPP = Q.get('inapp') === '1';
 (() => {
   const saved = JSON.parse(localStorage.getItem('wl-admin') || '{}');
+  // On GitHub Pages (OWNER.github.io/REPO/admin.html): everything is kept in the private repository,
+  // REPO-private. The public one only has what phones read, copied there automatically.
   if (location.hostname.endsWith('.github.io')) {
     C.owner = location.hostname.split('.')[0];
-    C.repo = location.pathname.split('/')[1] || '';
+    C.repo = (location.pathname.split('/')[1] || 'whitelist-browser') + '-private';
   }
   for (const f of ['owner', 'repo', 'branch']) if (saved[f]) C[f] = saved[f];
   if (Q.get('owner')) C.owner = Q.get('owner');
@@ -493,7 +498,7 @@ async function loadAll() {
   loadInbox();   // in the background; the Requests tab fills in when it arrives
 }
 async function loadDevices() {
-  const d = await getJson('docs/devices.json');
+  const d = await getJson('devices.json');
   S.D = d ? d.data : { default: ['public'], devices: {} };
   if (!Array.isArray(S.D.default)) S.D.default = ['public'];
   if (!S.D.devices) S.D.devices = {};
@@ -521,10 +526,10 @@ async function saveAll() {
       S.listDirty = false;
     }
     if (S.devDirty) {
-      S.devicesSha = await putJson('docs/devices.json', S.D, S.devicesSha, 'Update phones and settings');
+      S.devicesSha = await putJson('devices.json', S.D, S.devicesSha, 'Update phones and settings');
       S.devDirty = false;
     }
-    say('Saved. Phones pick up the change within a few minutes.');
+    say('Saved. It\'s published for the phones within a minute or two, and they pick it up within a few minutes.');
     render();
   } catch (e) { say(e.message, true); }
   finally { $('saveBtn').disabled = false; renderSaveBar(); }
@@ -578,7 +583,7 @@ async function deleteList() {
     if (S.listSha) await deleteFile(listPathOf(name), S.listSha, `Delete list ${name}`);
     Object.values(S.D.devices).forEach(d => { d.lists = (d.lists || []).filter(l => l !== name); if (d.requestsTo === name) delete d.requestsTo; });
     S.D.default = S.D.default.filter(l => l !== name);
-    S.devicesSha = await putJson('docs/devices.json', S.D, S.devicesSha, `Remove list ${name} from phones`);
+    S.devicesSha = await putJson('devices.json', S.D, S.devicesSha, `Remove list ${name} from phones`);
     S.devDirty = false;
     S.lists = S.lists.filter(l => l !== name);
     await openList('public');
@@ -793,13 +798,13 @@ function connectScreen() {
     S.connected ? backLink('Settings', () => { S.sub = null; S.tab = 'settings'; render(); }) : null,
     screenTitle('Connect to GitHub', 'Your admin page uses a token to read and change your lists.'),
     h('div', { class: 'field' }, h('label', { for: 'cToken' }, 'Admin token'), token,
-      h('p', { class: 'hint', style: 'margin:0' }, 'A fine-grained token for this repository with Contents and Issues set to Read and write.')),
+      h('p', { class: 'hint', style: 'margin:0' }, `A fine-grained token for your private repository (${C.repo || 'whitelist-browser-private'}) with Contents and Issues set to Read and write.`)),
     h('label', { class: 'check', for: 'cRemember' }, remember, INAPP ? 'Remember with a PIN' : 'Remember on this device'),
     pinBox,
     h('details', { class: 'more', open: !C.owner || !C.repo }, h('summary', null, `Repository: ${C.owner || '?'}/${C.repo || '?'}`),
       h('div', { class: 'stack', style: 'margin-top:8px' },
         h('div', { class: 'field' }, h('label', { for: 'cOwner' }, 'Owner (your GitHub username)'), owner),
-        h('div', { class: 'field' }, h('label', { for: 'cRepo' }, 'Repository'), repo),
+        h('div', { class: 'field' }, h('label', { for: 'cRepo' }, 'Private repository'), repo),
         h('div', { class: 'field' }, h('label', { for: 'cBranch' }, 'Branch'), br))),
     go1);
 }
@@ -1340,7 +1345,7 @@ async function bringBack(fromId, toId) {
       ...(fromId !== toId ? { previousIds: [...(a.previousIds || []), fromId] } : {}) };
     if (!target.requestsTo && a.requestsTo) S.D.devices[toId].requestsTo = a.requestsTo;
     delete S.D.archived[fromId];
-    S.devicesSha = await putJson('docs/devices.json', S.D, S.devicesSha, `Restore phone ${who}`);
+    S.devicesSha = await putJson('devices.json', S.D, S.devicesSha, `Restore phone ${who}`);
     render();
     say(`${who} restored. Lists: ${S.D.devices[toId].lists.map(listLabel).join(', ') || 'none'}.`);
   } catch (e) { say(e.message, true); }
@@ -1356,7 +1361,7 @@ async function deleteArchived(id) {
       if (f) await deleteFile(`docs/lists/archive/${l}.json`, f.sha, `Delete archived list ${l}`);
     }
     delete S.D.archived[id];
-    S.devicesSha = await putJson('docs/devices.json', S.D, S.devicesSha, `Delete archived phone ${a.name || id}`);
+    S.devicesSha = await putJson('devices.json', S.D, S.devicesSha, `Delete archived phone ${a.name || id}`);
     render(); say(`${a.name || id} deleted.`);
   } catch (e) { say(e.message, true); }
 }
@@ -1371,7 +1376,7 @@ function settingsScreen() {
     h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, label)), count != null ? h('span', { class: 'count' }, count) : null, h('span', { class: 'chev' }, icon('chev', 18)));
   const days = h('span', null, `${D.inactiveDays || 14} days`);
   const step = d => { D.inactiveDays = Math.max(1, Math.min(365, (D.inactiveDays || 14) + d)); days.textContent = `${D.inactiveDays} days`; markDevices(); };
-  const status = `https://${C.owner.toLowerCase()}.github.io/${C.repo}/`;
+  const status = `https://${C.owner.toLowerCase()}.github.io/${publicRepoName()}/`;
   return h('main', { class: 'stack' },
     screenTitle('Settings', 'For every phone'),
     section('Ad blocking', h('div', { class: 'group' },

@@ -71,7 +71,7 @@ class AdminActivity : Activity() {
             }
         }
         web.loadUrl("https://${HomePage.HOST}${PATH}admin.html?inapp=1" +
-            "&owner=${Uri.encode(Config.GITHUB_USERNAME)}&repo=${Uri.encode(Config.REPO_NAME)}")
+            "&owner=${Uri.encode(Config.GITHUB_USERNAME)}&repo=${Uri.encode(PrivateRepo.NAME)}")
     }
 
     private fun serve(path: String): WebResourceResponse {

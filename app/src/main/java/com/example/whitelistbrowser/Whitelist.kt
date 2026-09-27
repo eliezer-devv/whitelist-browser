@@ -57,8 +57,8 @@ object Whitelist {
         val refreshMinutes: Int = 5,
         val updatedAt: Long = 0L,
         val listNames: List<String> = emptyList(),  // lists this phone uses, e.g. [public, emma]
-        val deviceName: String? = null,             // name given in the admin page
-        val registered: Boolean = false,            // this phone is in devices.json
+        val deviceName: String? = null,             // (names are private now: the phone uses the one typed on it)
+        val registered: Boolean = false,            // this phone is in phones.json
         val adblock: Boolean = true,                // block ads and trackers (set in the admin page)
         val adblockExceptions: List<String> = emptyList() // domains never blocked as ads
     ) {
@@ -237,12 +237,13 @@ object Whitelist {
 
     /**
      * Blocking network call. Run off the main thread. Throws on failure and keeps the old lists.
-     * 1. devices.json says which lists this phone uses (or the default lists for unknown phones).
+     * 1. phones.json says which lists this phone uses (or the default lists for unknown phones).
+     *    It's the public part of the private repository's devices.json: IDs and lists, no names.
      * 2. Each list is downloaded and they're combined.
      */
     fun refresh(ctx: Context) {
         val id = Device.id(ctx)
-        val devices = fetch("${Config.PAGES_BASE}devices.json")?.let { JSONObject(it) }
+        val devices = fetch("${Config.PAGES_BASE}phones.json")?.let { JSONObject(it) }
         val device = devices?.optJSONObject("devices")?.optJSONObject(id)
         val listArr = device?.optJSONArray("lists") ?: devices?.optJSONArray("default")
         val names = (0 until (listArr?.length() ?: 0)).map { listArr!!.optString(it) }

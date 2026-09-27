@@ -124,7 +124,7 @@ object Requests {
 
     /** GET from the repo's API. Null if it doesn't exist (404/410). Throws on other problems. */
     private fun get(path: String): String? {
-        val conn = URL("https://api.github.com/repos/${Config.GITHUB_REPO}/$path").openConnection() as HttpURLConnection
+        val conn = URL("https://api.github.com/repos/${PrivateRepo.FULL}/$path").openConnection() as HttpURLConnection
         try {
             conn.connectTimeout = 15_000
             conn.readTimeout = 15_000
@@ -170,7 +170,7 @@ object Requests {
     /**
      * Prepares this phone's registration the first time it runs (and after it was archived), even
      * with no internet: it waits in the outbox and is sent as soon as there's a connection.
-     * Not repeated for a day after one was prepared, until the phone shows up in devices.json.
+     * Not repeated for a day after one was prepared, until the phone shows up in phones.json.
      */
     fun registerIfNeeded(ctx: Context) {
         if (!isSetUp() || Whitelist.state.registered || Outbox.has(ctx, "register")) return
@@ -251,7 +251,7 @@ object Requests {
     }
 
     private fun open(method: String, path: String): HttpURLConnection {
-        val conn = URL("https://api.github.com/repos/${Config.GITHUB_REPO}/$path").openConnection() as HttpURLConnection
+        val conn = URL("https://api.github.com/repos/${PrivateRepo.FULL}/$path").openConnection() as HttpURLConnection
         try {
             conn.requestMethod = method
         } catch (e: java.net.ProtocolException) {
