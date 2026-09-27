@@ -186,7 +186,10 @@
 <div id="app">
   <header class="top">
     <div class="brand"><span class="mark" id="markIcon"></span>Whitelist</div>
-    <button type="button" class="conn" id="connBtn" hidden><span class="dot" id="connDot"></span><span id="connText">Connected</span></button>
+    <span style="display:flex;align-items:center;gap:4px">
+      <button type="button" class="conn" id="connBtn" hidden><span class="dot" id="connDot"></span><span id="connText">Connected</span></button>
+      <button type="button" class="btn s sm" id="closeBtn" hidden>Close</button>
+    </span>
   </header>
   <div id="view"></div>
 </div>
@@ -291,6 +294,10 @@ const blockEntry = l => hasPath(l) ? pageKey(l) : normalize(l);   // a site, or 
 
 // ---------- GitHub connection ----------
 const C = { owner: '', repo: '', branch: 'main', token: '', remember: false };
+// Inside the phone app (opened from the hidden button) the app passes ?inapp=1&owner=…&repo=….
+// There the token is never stored as it is: only encrypted with a PIN (see below).
+const Q = new URLSearchParams(location.search);
+const INAPP = Q.get('inapp') === '1';
 (() => {
   const saved = JSON.parse(localStorage.getItem('wl-admin') || '{}');
   if (location.hostname.endsWith('.github.io')) {
@@ -298,13 +305,48 @@ const C = { owner: '', repo: '', branch: 'main', token: '', remember: false };
     C.repo = location.pathname.split('/')[1] || '';
   }
   for (const f of ['owner', 'repo', 'branch']) if (saved[f]) C[f] = saved[f];
-  if (saved.token) { C.token = saved.token; C.remember = true; }
+  if (Q.get('owner')) C.owner = Q.get('owner');
+  if (Q.get('repo')) C.repo = Q.get('repo');
+  if (saved.token && !INAPP) { C.token = saved.token; C.remember = true; }
 })();
 function persist() {
   const s = { owner: C.owner, repo: C.repo, branch: C.branch };
-  if (C.remember) s.token = C.token;
+  if (C.remember && !INAPP) s.token = C.token;
   localStorage.setItem('wl-admin', JSON.stringify(s));
 }
+
+// ---------- PIN-protected token (in the app) ----------
+// The token is encrypted with a key made from the PIN (PBKDF2, 200,000 rounds, AES-GCM).
+// 5 wrong PINs and it's wiped.
+const LOCK_KEY = 'wl-admin-locked';
+const u8b64 = u => btoa(String.fromCharCode(...u));
+const b64u8 = t => Uint8Array.from(atob(t), c => c.charCodeAt(0));
+const getLock = () => { try { return JSON.parse(localStorage.getItem(LOCK_KEY) || 'null'); } catch { return null; } };
+async function pinKey(pin, salt) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 200000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function lockToken(pin, token) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await pinKey(pin, salt), new TextEncoder().encode(token)));
+  localStorage.setItem(LOCK_KEY, JSON.stringify({ salt: u8b64(salt), iv: u8b64(iv), data: u8b64(data), tries: 0 }));
+}
+async function unlockToken(pin) {       // the token, or null (wrong PIN; wiped after 5)
+  const L = getLock();
+  if (!L) return null;
+  try {
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64u8(L.iv) }, await pinKey(pin, b64u8(L.salt)), b64u8(L.data));
+    L.tries = 0; localStorage.setItem(LOCK_KEY, JSON.stringify(L));
+    return new TextDecoder().decode(plain);
+  } catch {
+    L.tries = (L.tries || 0) + 1;
+    if (L.tries >= 5) localStorage.removeItem(LOCK_KEY); else localStorage.setItem(LOCK_KEY, JSON.stringify(L));
+    return null;
+  }
+}
+// The phone's back button (the app asks this first): go back a screen if there is one.
+window.wlBack = () => { if (S.connected && S.sub) { back(); return true; } return false; };
+const closeAdmin = () => { location.href = 'wladmin://close'; };
 const branch = () => C.branch || 'main';
 const repoBase = () => `https://api.github.com/repos/${encodeURIComponent(C.owner)}/${encodeURIComponent(C.repo)}`;
 const contentsUrl = path => `${repoBase()}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
@@ -377,11 +419,15 @@ function toModel(data) {
   const sites = (data.sites || []).map(s => ({ domain: s.domain || '', name: s.name || '', url: s.url || '',
     home: s.home !== false, subdomains: s.subdomains !== false, pages: Array.isArray(s.pages) ? [...s.pages] : [],
     passThrough: !!s.passThrough, noMedia: false }));
-  const domains = new Set(sites.map(s => normalize(s.domain)).filter(Boolean));
+  // "No photos" entries for a whole site show as that site's switch. www./m. don't matter
+  // (a request may have been approved as www.example.com for the site example.com).
+  const bareOf = d => (normalize(d) || '').replace(/^(www|m|mobile)\./, '');
+  const domains = new Set(sites.map(s => bareOf(s.domain)).filter(Boolean));
   const nm = (data.noMedia || []).map(String);
-  sites.forEach(s => { s.noMedia = nm.includes(normalize(s.domain) || ''); });
+  const isSiteEntry = e => !hasPath(e) && domains.has(bareOf(e));
+  sites.forEach(s => { s.noMedia = nm.some(e => !hasPath(e) && bareOf(e) === bareOf(s.domain)); });
   const extra = {}; Object.keys(data).forEach(k => { if (!KNOWN.includes(k)) extra[k] = data[k]; });
-  return { sites, block: [...(data.block || [])], noMediaPages: nm.filter(e => !domains.has(e)),
+  return { sites, block: [...(data.block || [])], noMediaPages: nm.filter(e => !isSiteEntry(e)),
     temporary: Array.isArray(data.temporary) ? data.temporary.map(t => ({ ...t })) : [],
     homepage: data.homepage || '', refreshMinutes: Number(data.refreshMinutes) || 5, extra };
 }
@@ -389,7 +435,8 @@ function toModel(data) {
 function fromModel(L) {
   const sites = [], seen = new Set(), bad = [], mediaOff = [];
   for (const s of L.sites) {
-    const domain = normalize(s.domain);
+    // The site itself: www.example.com and m.example.com are saved as example.com (which covers them).
+    const domain = (normalize(s.domain) || '').replace(/^(www|m|mobile)\.(?=[^.]+\.[^.]+)/, '') || undefined;
     if (!domain) { bad.push(s.domain || '(empty)'); continue; }
     if (seen.has(domain)) continue;
     seen.add(domain);
@@ -688,7 +735,8 @@ const backLink = (label, onclick = back) => h('button', { type: 'button', class:
 function render() {
   const view = $('view');
   let node;
-  if (!S.connected || (S.sub && S.sub.name === 'connect')) node = connectScreen();
+  if (!S.connected && INAPP && getLock() && !S.usePaste) node = unlockScreen();
+  else if (!S.connected || (S.sub && S.sub.name === 'connect')) node = connectScreen();
   else if (S.sub) node = ({ site: siteScreen, temp: tempScreen, block: blockScreen, nomedia: noMediaScreen, import: importScreen,
     listsettings: listSettingsScreen, phone: phoneScreen, archived: archivedScreen, neverblock: neverBlockScreen })[S.sub.name]();
   else node = ({ requests: requestsScreen, sites: sitesScreen, phones: phonesScreen, settings: settingsScreen })[S.tab]();
@@ -711,6 +759,8 @@ function renderTabs() {
 }
 $('markIcon').append(icon('check', 16, 2.4));
 $('connBtn').onclick = () => go('settings');
+$('closeBtn').hidden = !INAPP;
+$('closeBtn').onclick = () => { if ((S.listDirty || S.devDirty) && !confirm('Close without saving your changes?')) return; closeAdmin(); };
 
 // ============================================================================================
 // Connect
@@ -720,14 +770,23 @@ function connectScreen() {
   const owner = h('input', { class: 'inp', id: 'cOwner', value: C.owner, autocapitalize: 'off', spellcheck: 'false' });
   const repo = h('input', { class: 'inp', id: 'cRepo', value: C.repo, autocapitalize: 'off', spellcheck: 'false' });
   const br = h('input', { class: 'inp', id: 'cBranch', value: C.branch || 'main', autocapitalize: 'off', spellcheck: 'false' });
-  const remember = h('input', { type: 'checkbox', id: 'cRemember', checked: C.remember || !C.token });
+  const remember = h('input', { type: 'checkbox', id: 'cRemember', checked: INAPP ? true : (C.remember || !C.token) });
+  const pin = h('input', { class: 'inp', id: 'cPin', type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '8', placeholder: '4 to 8 digits', style: 'max-width:12rem' });
+  const pinBox = h('div', { class: 'field', hidden: !INAPP }, h('label', { for: 'cPin' }, 'Choose a PIN'), pin,
+    h('p', { class: 'hint', style: 'margin:0' }, 'Next time, just type the PIN. After 5 wrong PINs the token is wiped from this phone.'));
+  remember.onchange = () => { pinBox.hidden = !(INAPP && remember.checked); };
   const go1 = h('button', { type: 'button', class: 'btn p wide', id: 'cConnect' }, 'Connect');
   go1.onclick = async () => {
     C.token = token.value.trim(); C.owner = owner.value.trim(); C.repo = repo.value.trim(); C.branch = br.value.trim() || 'main'; C.remember = remember.checked;
     if (!C.token) return say('Paste your admin token first.', true);
+    if (INAPP && C.remember && !/^\d{4,8}$/.test(pin.value)) return say('Choose a PIN of 4 to 8 digits, or untick Remember.', true);
     if (!C.owner || !C.repo) return say('Fill in the owner and repository under Repository.', true);
     go1.disabled = true; go1.textContent = 'Connecting…';
-    try { await loadAll(); S.sub = null; render(); say(`Connected to ${C.owner}/${C.repo}.`); }
+    try {
+      await loadAll();
+      if (INAPP) { if (C.remember) await lockToken(pin.value, C.token); else localStorage.removeItem(LOCK_KEY); }
+      S.sub = null; render(); say(`Connected to ${C.owner}/${C.repo}.`);
+    }
     catch (e) { S.connected = false; say(e.message, true); go1.disabled = false; go1.textContent = 'Connect'; }
   };
   return h('main', { class: 'stack' },
@@ -735,13 +794,40 @@ function connectScreen() {
     screenTitle('Connect to GitHub', 'Your admin page uses a token to read and change your lists.'),
     h('div', { class: 'field' }, h('label', { for: 'cToken' }, 'Admin token'), token,
       h('p', { class: 'hint', style: 'margin:0' }, 'A fine-grained token for this repository with Contents and Issues set to Read and write.')),
-    h('label', { class: 'check', for: 'cRemember' }, remember, 'Remember on this device'),
+    h('label', { class: 'check', for: 'cRemember' }, remember, INAPP ? 'Remember with a PIN' : 'Remember on this device'),
+    pinBox,
     h('details', { class: 'more', open: !C.owner || !C.repo }, h('summary', null, `Repository: ${C.owner || '?'}/${C.repo || '?'}`),
       h('div', { class: 'stack', style: 'margin-top:8px' },
         h('div', { class: 'field' }, h('label', { for: 'cOwner' }, 'Owner (your GitHub username)'), owner),
         h('div', { class: 'field' }, h('label', { for: 'cRepo' }, 'Repository'), repo),
         h('div', { class: 'field' }, h('label', { for: 'cBranch' }, 'Branch'), br))),
     go1);
+}
+
+function unlockScreen() {
+  const pin = h('input', { class: 'inp', id: 'uPin', type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '8', placeholder: 'PIN', style: 'max-width:12rem;font-size:22px;letter-spacing:.2em' });
+  const go1 = h('button', { type: 'button', class: 'btn p wide', id: 'uGo' }, 'Unlock');
+  const tryIt = async () => {
+    go1.disabled = true;
+    const token = await unlockToken(pin.value);
+    if (!token) {
+      go1.disabled = false; pin.value = '';
+      const L = getLock();
+      if (!L) { say('Too many wrong PINs, so the token was wiped from this phone. Paste it again.', true); render(); }
+      else { const n = 5 - L.tries; say(`Wrong PIN. ${n} ${n === 1 ? 'try' : 'tries'} left.`, true); }
+      return;
+    }
+    C.token = token; C.remember = true;
+    go1.textContent = 'Connecting…';
+    try { await loadAll(); render(); }
+    catch (e) { S.connected = false; go1.disabled = false; go1.textContent = 'Unlock'; say(e.message, true); }
+  };
+  go1.onclick = tryIt;
+  pin.addEventListener('keydown', e => { if (e.key === 'Enter') tryIt(); });
+  setTimeout(() => pin.focus(), 50);
+  return h('main', { class: 'stack' }, screenTitle('Admin', `${C.owner}/${C.repo}`),
+    h('div', { class: 'field' }, h('label', { for: 'uPin' }, 'Your PIN'), pin), go1,
+    h('button', { type: 'button', class: 'btn d', onclick: () => { S.usePaste = true; render(); } }, 'Paste the token instead'));
 }
 
 // ============================================================================================
@@ -818,9 +904,10 @@ function requestCard(issue) {
   const send = async (text, label) => {
     actions.querySelectorAll('button').forEach(b => b.disabled = true);
     try {
-      await reply(issue.number, text + (everyone.checked ? ' public' : ''));
+      const forEveryone = everyone.checked && text.startsWith('approve');   // not added to a deny reason
+      await reply(issue.number, text + (forEveryone ? ' public' : ''));
       S.requests = S.requests.filter(i => i.number !== issue.number);
-      S.answered.unshift({ title, label: `${label}${everyone.checked ? ', for every phone' : ''}` });
+      S.answered.unshift({ title, label: `${label}${forEveryone ? ', for every phone' : ''}` });
       render();
       say(`${label}. ${phone} will be told in a few minutes.`);
     } catch (e) {
@@ -985,9 +1072,9 @@ function siteScreen() {
     : null;
   pageInput.addEventListener('keydown', e => { if (e.key === 'Enter') addPage(); });
   const done = () => {
-    const dom = normalize(d.domain);
+    const dom = (normalize(d.domain) || '').replace(/^(www|m|mobile)\.(?=[^.]+\.[^.]+)/, '') || undefined;
     if (!dom) { addr.classList.add('bad'); addr.focus(); return say(d.domain.trim() ? `"${d.domain}" doesn't look like a website address.` : 'Type the site\'s address.', true); }
-    if (S.L.sites.some((s, i) => i !== sub.index && normalize(s.domain) === dom)) return say(`${dom} is already on this list.`, true);
+    if (S.L.sites.some((s, i) => i !== sub.index && (normalize(s.domain) || '').replace(/^(www|m|mobile)\.(?=[^.]+\.[^.]+)/, '') === dom)) return say(`${dom} is already on this list.`, true);
     for (const p of d.pages) if (!pageOnSite(p, dom, d.subdomains)) return say(`The page ${p} isn't on ${dom}.`, true);
     const site = { domain: dom, name: d.name.trim(), url: d.url.trim(), home: d.home, subdomains: d.subdomains,
       pages: d.only ? [...d.pages] : [], noMedia: d.noMedia, passThrough: d.passThrough };
@@ -1123,6 +1210,7 @@ function importScreen() {
     ta, h('div', { class: 'field' }, h('label', { for: 'bulkFile' }, 'Or choose a file (.csv, .xlsx)'), file),
     h('div', { class: 'group' }, mode('merge'), mode('replace')),
     h('button', { type: 'button', class: 'btn p wide', id: 'bulkImport', onclick: run }, 'Import'),
+    INAPP ? h('p', { class: 'hint' }, 'To download the list or a template, use the admin page on a computer.') :
     h('div', { class: 'acts', style: 'justify-content:center' },
       h('button', { type: 'button', class: 'btn s sm', onclick: exportCsv }, 'Download this list as a spreadsheet'),
       h('a', { class: 'btn s sm', href: 'sites-template.csv', download: '' }, 'Download a template')));
@@ -1308,18 +1396,21 @@ function settingsScreen() {
       h('div', { class: 'stepper' }, h('button', { type: 'button', 'aria-label': 'Fewer days', onclick: () => step(-1) }, '−'), days, h('button', { type: 'button', 'aria-label': 'More days', onclick: () => step(1) }, '+'))))),
     section('GitHub', h('div', { class: 'group' },
       h('div', { class: 'row' }, h('span', { class: 'ic', style: 'color:#2E8B57' }, icon('check', 20, 2.2)),
-        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, `Connected to ${C.owner}/${C.repo}`), h('span', { class: 'dom' }, C.remember ? 'Token remembered on this device' : 'Token not remembered')),
+        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, `Connected to ${C.owner}/${C.repo}`),
+          h('span', { class: 'dom' }, INAPP ? (getLock() ? 'Token protected by a PIN on this phone' : 'Token not remembered') : C.remember ? 'Token remembered on this device' : 'Token not remembered')),
         h('button', { type: 'button', class: 'btn s sm', onclick: () => open({ name: 'connect' }) }, 'Change')),
-      C.remember ? h('button', { type: 'button', class: 'row', onclick: () => { C.remember = false; persist(); render(); say('This device won\'t remember the token any more.'); } },
+      (INAPP ? getLock() : C.remember) ? h('button', { type: 'button', class: 'row', onclick: () => { C.remember = false; localStorage.removeItem(LOCK_KEY); persist(); render(); say('This device won\'t remember the token any more.'); } },
         h('span', { class: 'ic' }, icon('x', 20)), h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Forget the token on this device'))) : null,
-      h('a', { class: 'row', href: status, target: '_blank', rel: 'noopener' }, h('span', { class: 'ic' }, icon('ext', 20)),
-        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Open the status page'))))));
+      INAPP ? null : h('a', { class: 'row', href: status, target: '_blank', rel: 'noopener' }, h('span', { class: 'ic' }, icon('ext', 20)),
+        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Open the status page')))),
+    INAPP ? h('button', { type: 'button', class: 'btn s wide', onclick: () => $('closeBtn').click() }, 'Close admin and go back to the browser') : null));
 }
 
 // ============================================================================================
 // Start
 // ============================================================================================
 (async () => {
+  if (INAPP) document.title = 'Admin';
   if (C.token && C.owner && C.repo) {
     $('view').replaceChildren(h('main', null, screenTitle('Connecting…', `${C.owner}/${C.repo}`)));
     try { await loadAll(); }
