@@ -18,9 +18,10 @@ object Whitelist {
                     val subdomains: Boolean = true,
                     val pages: List<String> = emptyList()) {  // empty = the whole site; else only these pages
         fun matches(host: String): Boolean {
-            if (host == domain) return true
-            if (subdomains) return host.endsWith(".$domain")
-            return host == "www.$domain" || (domain.startsWith("www.") && host == domain.removePrefix("www."))
+            // "www.example.com" means the site itself, example.com, as does "example.com".
+            val base = domain.removePrefix("www.")
+            if (host == domain || host == base || host == "www.$base") return true
+            return subdomains && host.endsWith(".$base")
         }
     }
 
@@ -271,7 +272,11 @@ object Whitelist {
             .putString("bundle", bundle).putLong("fetchedAt", now).apply()
     }
 
-    private fun covers(list: List<String>, host: String) = list.any { host == it || host.endsWith(".$it") }
+    /** Is [host] one of these sites, or under one? A "www." entry counts as the site itself. */
+    private fun covers(list: List<String>, host: String) = list.any {
+        val e = it.removePrefix("www.")
+        host == it || host == e || host.endsWith(".$e")
+    }
 
     /**
      * [mainFrame] = the page itself. Frames inside an allowed page (embedded videos, maps) only
