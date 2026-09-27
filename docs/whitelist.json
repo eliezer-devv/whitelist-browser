@@ -21,18 +21,5 @@
       "name": "theyeshivaworld.com"
     }
   ],
-  "block": [],
-  "noMedia": [
-    "theyeshivaworld.com"
-  ],
-  "temporary": [
-    {
-      "id": "tmuk7uwa6",
-      "what": "site",
-      "entry": "theyeshivaworld.com",
-      "mode": "clock",
-      "minutes": 30,
-      "from": "2026-09-27T19:33:22.542Z"
-    }
-  ]
+  "block": []
 }
