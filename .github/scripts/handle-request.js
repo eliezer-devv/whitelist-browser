@@ -171,11 +171,15 @@ function openSite(data, domain, hidden) {
   const unblocked = data.block.length < before;
   const listed = siteFor(data.sites, domain);
   if (listed) {
+    // Asked for on purpose now: it gets a tile (unless "hidden") and is no longer just a pass-through.
+    let tile = '';
+    if (!hidden && listed.home === false) { listed.home = true; tile = ' It now has a home page tile.'; }
+    if (!hidden) delete listed.passThrough;
     if (Array.isArray(listed.pages) && listed.pages.length) {
       delete listed.pages;
-      return `All of **${listed.domain}** is now allowed.`;
+      return `All of **${listed.domain}** is now allowed.${tile}`;
     }
-    return unblocked ? `**${domain}** is unblocked.` : `**${domain}** was already allowed.`;
+    return (unblocked ? `**${domain}** is unblocked.` : `**${domain}** was already allowed.`) + tile;
   }
   data.sites.push({ domain, name: domain.replace(/^www\./, ''), home: !hidden });
   return `**${domain}** is now allowed${hidden ? ' (no home page tile)' : ' and on the home page'}.`;
@@ -186,6 +190,10 @@ function openPage(data, domain, page, hidden, passThrough) {
   data.block = data.block.filter(e => !(isPageEntry(e) && (pageMatches(page, e) || pageMatches(e, page))));
   const unblocked = data.block.length < before;
   const listed = siteFor(data.sites, domain);
+  if (listed && !passThrough && !hidden) {       // asked for on purpose: give it a tile
+    if (listed.home === false) listed.home = true;
+    delete listed.passThrough;
+  }
   if (listed) {
     if (Array.isArray(listed.pages) && listed.pages.length) {
       if (listed.pages.map(pageKey).some(p => pageMatches(page, p))) {
@@ -222,6 +230,25 @@ function passKey(url) {
   if (!k) return null;
   const base = k.split('?')[0];
   return base.endsWith('/') && base.indexOf('/') === base.length - 1 ? k : base;
+}
+
+// ---- What the owner actually wrote ----
+// A reply sent by email carries the quoted notification underneath (which itself lists
+// "approve hidden", "approve public", ...). Keep only the new text, above the quote.
+function replyText(body) {
+  const out = [];
+  for (const line of String(body || '').replace(/\r/g, '').split('\n')) {
+    const t = line.trim();
+    if (t.startsWith('>')) break;                                                   // quoted lines
+    if (/^On\s/i.test(t) && (/wrote:?\s*$/i.test(t) || /@|\d{1,2}[:.]\d{2}/.test(t))) break; // "On Sat, … wrote:"
+    if (/^(wrote|schreef|schrieb|a écrit):?$/i.test(t)) break;                     // the same, wrapped
+    if (/^-{2,}\s*(original message|forwarded message)/i.test(t) || /^_{5,}$/.test(t)) break; // Outlook
+    if (/^(from|sent|to|subject|van|von):\s/i.test(t) && out.length) break;          // Outlook header block
+    if (/^sent from my\b/i.test(t) || /^get outlook for\b/i.test(t)) break;          // phone signatures
+    if (/^reply to this email directly/i.test(t) || /^you are receiving this because/i.test(t)) break; // GitHub footer
+    out.push(line);
+  }
+  return out.join('\n').trim();
 }
 
 // ---- Temporary access ("temporary" in a list) ----
@@ -377,7 +404,7 @@ module.exports = async ({ github, context, core, exec }) => {
       // Replies on a "New phone" issue: a name, or "same as <archived phone>".
       const c = context.payload.comment;
       if (issue.state !== 'open' || c.author_association !== 'OWNER') return;
-      const same = String(c.body || '').trim().match(/^(?:same as|restore|reinstall of)\s+(.{1,40})$/i);
+      const same = replyText(c.body).match(/^(?:same as|restore|reinstall of)\s+(.{1,40})$/i);
       if (same) {
         const wanted = same[1].replace(/[`*]/g, '');
         const out = await save(o => `Phone ${id} is a reinstall of ${o && o.from}: restore its lists`, () => {
@@ -393,7 +420,7 @@ module.exports = async ({ github, context, core, exec }) => {
         await close('completed');
         return;
       }
-      await handleNickname(c.body, id, true);
+      await handleNickname(replyText(c.body), id, true);
       return;
     }
     await github.rest.issues.addLabels({ owner, repo, issue_number: number, labels: ['new phone'] }).catch(() => {});
@@ -448,7 +475,9 @@ module.exports = async ({ github, context, core, exec }) => {
   }
 
   // ---- A site request ----
-  const domain = normalize(req.domain);
+  // The site itself, not its www./m./mobile. address: approving m.youtube.com means youtube.com
+  // (which covers m. and www. too), the same way pages are matched.
+  const domain = (normalize(req.domain) || '').replace(/^(www|m|mobile)\.(?=[^.]+\.[^.]+)/, '') || null;
   const action = req.action === 'block' ? 'block' : 'allow';
   if (!domain) return;
   const page = pageKey(req.url);
@@ -553,26 +582,54 @@ module.exports = async ({ github, context, core, exec }) => {
   }
 
   // ---- A reply ----
-  if (issue.state !== 'open') return;
   const c = context.payload.comment;
   if (c.author_association !== 'OWNER') return;
-  if (await handleNickname(c.body, deviceId, false)) return;
-  const text = c.body.trim().toLowerCase();
-  const words = text.split(/[\s,.!]+/).filter(Boolean);
+  const written = replyText(c.body);   // only what the owner wrote (not a quoted email)
+  // A reply is read as a command: its first line only, e.g. "approve for 30m" or "deny too distracting".
+  const firstLine = (written.split('\n').map(l => l.trim()).find(Boolean) || '');
+  const text = firstLine.toLowerCase();
+  const words = text.split(/[\s,;.!?]+/).map(t => t.replace(/^[^a-z0-9]+|[^a-z0-9-]+$/g, '')).filter(Boolean);
   const word = (words[0] || '').replace(/[^a-z]/g, '');
+  const DENY = ['deny', 'denied', 'reject', 'rejected', 'refuse', 'nope'];
+  const APPROVE = ['approve', 'approved', 'yes', 'ok', 'okay', 'allow', 'allowed', 'sure'];
+  const isDeny = DENY.includes(word) || (word === 'no' && words.length === 1);   // "No problem, …" isn't a no
+  const isApprove = APPROVE.includes(word) || (word === 'block' && action === 'block');
+  if (issue.state !== 'open') {
+    if (isDeny || isApprove) await comment('This request was already answered, so nothing changed. If they still need it, they can ask again from the phone.');
+    return;
+  }
+  if (await handleNickname(written, deviceId, false)) return;
+  if (word === 'block' && action !== 'block') {
+    await comment('🤔 Nothing changed: this is a request to **open** something. Reply `deny` to keep it blocked, or `approve` to open it.');
+    return;
+  }
   // The answer the phone shows the person who asked, in a hidden note at the end of the reply.
   const answer = (outcome, message) =>
     `\n\n<!-- whitelist-response\n${JSON.stringify({ outcome, message })}\n-->`;
-  if (['deny', 'denied', 'no', 'reject'].includes(word)) {
+  if (isDeny) {
     // Anything after "deny" is the reason, e.g. "deny too distracting in class".
-    const reason = c.body.trim().replace(/^\S+\s*/, '').replace(/^(because|as|:|-|,)\s*/i, '').replace(/[`<>]/g, '').slice(0, 200);
+    const reason = written.replace(/^\S+\s*/, '').replace(/^(because|as|:|-|,)\s*/i, '').replace(/[`<>]/g, '').slice(0, 200);
     const shown = reason && !/[.!?]$/.test(reason) ? reason + '.' : reason;
     await comment(`❌ Denied. Nothing changed.${reason ? ` Reason given to the phone: *${reason}*` : ''}` +
       answer('denied', 'Not approved' + (shown ? `: ${shown}` : '.')));
     await close('not_planned');
     return;
   }
-  if (!['approve', 'approved', 'yes', 'ok', 'allow', 'block'].includes(word)) return; // an ordinary comment
+  if (!isApprove) return; // an ordinary comment
+
+  // Only act on words we know, so an ordinary sentence ("yes, she needs it for the public library")
+  // can't change something by accident. Anything else: ask, and change nothing.
+  const KNOWN = new Set(('hidden hide public everyone personal own private page site whole all everything no without with ' +
+    'media photos photo pictures videos only text fully completely for always permanent permanently forever use using used ' +
+    'screen time clock now from pass-throughs passthroughs pass-through pass throughs just the it its a an of on to and ' +
+    'please thanks thank you fine go ahead h hr hrs hour hours m min mins minute minutes block allow open').split(' '));
+  const unknown = words.slice(1).filter(t => !KNOWN.has(t) && !/^\d+(\.\d+)?([hm]|hrs?|mins?)?(\d+m(ins?)?)?$/.test(t));
+  if (unknown.length) {
+    await comment(`🤔 Nothing changed, because I wasn't sure what you meant by *${unknown.slice(0, 3).join(', ')}*. ` +
+      'Reply with just a command, for example `approve`, `approve for 30m`, `approve page` or `deny too distracting`, ' +
+      `or [answer it on the admin page](https://${owner.toLowerCase()}.github.io/${repo}/admin.html?request=${number}).`);
+    return;
+  }
 
   const hidden = /\b(hidden|hide)\b/.test(text);
   // Temporary: "approve for 30m", "approve 1h use", or what they asked for; "approve always" = permanent.
