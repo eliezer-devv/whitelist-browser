@@ -1,0 +1,29 @@
+name: Site requests
+
+# When the app sends a request, this comments on it (which notifies you).
+# When you reply "approve" or "deny", this updates the list and closes the request.
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write   # edit docs/whitelist.json
+  issues: write     # comment, label, close
+  actions: write    # start "Publish list"
+
+# No concurrency group: GitHub would cancel waiting runs when several arrive together.
+# Instead, every save retries on top of the latest version (see saveWithRetry).
+
+jobs:
+  handle:
+    if: contains(github.event.issue.body, 'whitelist-request')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const run = require('./.github/scripts/handle-request.js');
+            await run({ github, context, core, exec });
