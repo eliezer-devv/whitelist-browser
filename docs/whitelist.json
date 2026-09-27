@@ -1,9 +1,28 @@
 {
   "refreshMinutes": 5,
   "sites": [
-    { "domain": "wikipedia.org", "name": "Wikipedia", "home": true },
-    { "domain": "khanacademy.org", "name": "Khan Academy", "home": true },
-    { "domain": "wikimedia.org", "home": false }
+    {
+      "domain": "wikipedia.org",
+      "name": "Wikipedia",
+      "home": true
+    },
+    {
+      "domain": "khanacademy.org",
+      "name": "Khan Academy",
+      "home": true
+    },
+    {
+      "domain": "wikimedia.org",
+      "home": false
+    },
+    {
+      "domain": "theyeshivaworld.com",
+      "name": "theyeshivaworld.com",
+      "home": false
+    }
   ],
-  "block": []
+  "block": [],
+  "noMedia": [
+    "theyeshivaworld.com"
+  ]
 }
