@@ -404,7 +404,7 @@ whose phone this is."* This works without internet: the name is kept on the phon
 That name is then the phone's name everywhere: in request notifications, on the admin page, and in the name of its private list.
 
 **You can change a name at any time,** and your version wins over what they typed:
-- **On the admin page, under Phones:** every card has a **Name** box. Tap **Save phones** afterwards.
+- **On the admin page, under Phones:** tap the phone and change its **Name**, then tap **Save** in the bar at the bottom.
 - **By replying** `name Emma` to the phone's "New phone" notification or to any of its requests (then `approve` or `deny` as usual).
 
 A phone registered without a name (for example if requests weren't set up when it was first opened) shows as its model and ID,
@@ -471,7 +471,7 @@ Android doesn't tell an app it's being uninstalled, so this works by **check-ins
     built, so after changing the ticks, run **Actions → Build APK** if new installs should start with the new choice.
   - **Every new phone also gets its own private list** as soon as it registers, named after the person (e.g. `emma`,
     or `emma-2` if there's already one). It starts empty, so you can add sites to it before they ask for anything.
-- **Saving:** tap **Save phones** after changing anything in these sections. Phones pick up changes within a few minutes.
+- **Saving:** tap **Save** in the bar at the bottom after changing anything. Phones pick up changes within a few minutes.
 
 ### Requests from phones with their own lists
 The request tells you which phone asked, which lists it uses and **which list approving will change**:
@@ -622,40 +622,65 @@ To check the file, open the `whitelist.json` link from setup step 2. If it shows
 
 ## 5. The admin page
 
-`https://YOUR_USERNAME.github.io/whitelist-browser/admin.html` is a web page for answering requests and editing the lists, made for phones.
+`https://YOUR_USERNAME.github.io/whitelist-browser/admin.html` is a web page for answering requests and editing the
+lists. It's made for phones (it also works on a computer) and has four tabs at the bottom.
 
-- **Requests** (at the top): open requests with **Approve**, **For a while** and **Deny** buttons, and new phones to name (section 3).
+**First use:** paste your **admin token** (section 6) and tap **Connect**. Your username and the repository fill in by
+themselves. Tick **Remember on this device** only on a device nobody else uses. Anyone can open the page, but it does
+nothing without your token.
 
-- **What it shows:** each site as a card with its **domain**, **name**, **Tile opens** (optional) and three tick boxes.
-  **Home page** gives it a tile. **Include subdomains** allows all its subdomains. Untick it to allow only the exact site.
-  **No photos or videos** opens the site without pictures and videos. For single pages of a site, use the
-  **No photos or videos on specific pages** box further down instead.
-  **Only these pages** is optional. Paste page addresses, one per line, to allow just those pages instead of the whole site.
-  The box grows as you add lines, and saving rejects pages that aren't on that site.
-  Below the cards are the **Always blocked** list, **Temporary access** (with hour and minute scroll wheels),
-  **No photos or videos on specific pages**, the start page and the check interval.
-- **Editing:** **Add a site** adds a card, and **Remove** deletes one. When you tap **Save list**, it checks every
-  address and cleans them up, so a full address like `https://www.bbc.co.uk/news` becomes `www.bbc.co.uk`.
-- **Bulk import from a spreadsheet:** open **Bulk import from a spreadsheet** below the site cards.
-  - **Columns, in this order:** domain, name, home page (yes or no), tile opens, subdomains (yes or no),
-    only these pages (several separated by spaces), no photos or videos (yes or no). Only the domain is required.
-    A header row is optional. If you include one, the columns can be in any order, as long as the headers
-    say which is which (e.g. *Website*, *Name*, *Home page*, *Tile opens*).
-  - **Paste:** select the cells in Excel, Google Sheets or Numbers, copy them and paste into the box.
-  - **Or choose a file:** `.csv`, `.tsv` or Excel `.xlsx`. From Google Sheets, use File → Download → CSV.
-  - **What the yes/no columns accept:** blank or anything else means yes. `no`, `n`, `false`, `0`, `off` or `hidden` means no.
-  - **Full addresses are fine:** `https://www.bbc.co.uk/bitesize` becomes the domain `www.bbc.co.uk`,
-    and its tile opens that exact page.
-  - **Add or replace:** choose **Add to the list** to add new sites and update ones already on it,
-    or **Replace the whole list**. Then tap **Import**.
-  - **Nothing is saved yet:** imported sites appear as cards. Rows that aren't website addresses are skipped and listed.
-    Check the cards, then tap **Save list**.
-  - **Template and export:** **Download a template** gives a ready-made spreadsheet to fill in.
-    **Download current list** saves the list as a spreadsheet, so you can edit it in Excel or Sheets and import it back with **Replace the whole list**.
-- **First use:** open **GitHub connection** and paste an **admin token** (section 6). Owner and repository fill in by themselves.
-- **Who can use it:** anyone can open the page, but it does nothing without your token.
-  Only tick **Remember on this device** on a device nobody else uses.
-- **Not needed?** You can manage the list entirely through requests (section 3) and editing the file on github.com.
+**Requests.** Open requests from phones, newest first, with a red count on the tab.
+- **Each request** is a card showing who asked, when, what for, their note, and any warnings (like a link that passes
+  through other addresses, or a typed site the phone couldn't find).
+- **Answering:**
+  - **Approve**, which says e.g. **Approve for 30 min** when they asked for a time.
+  - **For a while** (or **Other time**): the hour and minute wheels, with *Only count time while it's open on the phone*.
+  - **Deny**, with an optional reason shown on their phone.
+  - **Change it for every phone** (a tick box on each card) changes the Everyone list instead of theirs.
+- **Phones with no name yet** are listed below the requests, with a box to type one.
+- **After answering,** the request moves to **Answered just now**, and the phone is told within a few minutes.
+
+**Sites.** The lists are chips at the top: **Everyone** is the public list, then one per person or group, and **+** makes a new one.
+- **Temporary access** shows first, in amber, with the time left and **End now**.
+- **Each site is one row,** with small tags: *On home page* / *No tile*, *1 page only*, *Exact address*, *No photos*, *Added automatically*.
+- **Tapping a site** opens it with:
+  - its **Address** and **Name on the home page**
+  - switches for **Show on the home page**, **Include subdomains**, **No photos or videos** and **Only some pages**
+    (which then lists its pages, with a box to add more)
+  - **More options** → where the tile opens
+  - **Open it just for a while instead**
+  - **Remove this site**
+- **Add site** adds one the same way.
+- **The rows at the bottom:**
+  - **Open something for a while:** temporary access with the scroll wheels.
+  - **Always blocked:** parts of allowed sites to keep blocked, one per line.
+  - **No photos on some pages:** single pages, one per line. For a whole site, use its switch instead.
+  - **Import from a spreadsheet:** paste cells or choose a `.csv`/`.xlsx` file. The columns are domain, name, home page,
+    tile opens, subdomains, only these pages, no photos or videos, and only the domain is needed. A header row is
+    optional. **Add to the list** updates sites already on it, and **Replace the list** removes the rest. You can also
+    download the list as a spreadsheet, or a template.
+  - **List settings:** the start page, how often phones check for changes, and **Delete** (not for Everyone).
+
+**Phones.** One card per phone: its name, model, lists and ad setting. Phones without a name are listed first.
+- **Tapping a phone** lets you change its **Name**, the **Lists it uses** (tap to switch each on or off), where its
+  approved requests go, **Ads** (Usual / Blocked / Allowed), or **Remove** it.
+- **Archived phones:** **Restore**, **Give to another phone** (after a factory reset), or **Delete for good**.
+- **Add a phone by its ID:** found on the phone under ⋮ → About this phone.
+
+**Settings.**
+- **Ad blocking:** the on/off switch, and **Never block these**.
+- **New phones:** the lists they start with.
+- **When you approve a request:** change the list of **Just that phone** or **Every phone**.
+- **Archive after** a number of days.
+- **GitHub:** the connection (**Change** the token, or **Forget** it on this device) and a link to the status page.
+
+**Saving:** changes aren't sent straight away. A bar at the bottom says *"Changes to Emma not saved yet"*, with **Undo**
+and **Save**. Saving checks every address and tidies it, so `https://www.bbc.co.uk/news` becomes `www.bbc.co.uk`.
+Phones pick changes up within a few minutes. If something changed on GitHub in the meantime (say, a request was
+approved), saving says so: tap **Undo** to reload, then redo the edit. Answering requests is sent straight away,
+without the Save bar.
+
+**Not needed?** You can manage everything through request replies (section 3) and by editing the files on github.com.
 
 ---
 
@@ -814,7 +839,7 @@ including personal lists, phone names and requests, so keep it impersonal:
 | **Publish list** fails | Settings → Pages → Source must be **GitHub Actions** (setup step 2). |
 | Any other build failure | Open the failed run, copy the red error text and ask for help with it. |
 | A phone isn't in the **Phones** section | Requests must be set up for phones to register themselves, so check `REQUESTS_TOKEN`. Otherwise add it by ID (⋮ → About this phone). |
-| A phone doesn't get a list's sites | Check its tick boxes under **Phones** and that you tapped **Save phones**. On the phone, **⋮ → About this phone** shows the lists it's using. |
+| A phone doesn't get a list's sites | Check its lists under **Phones** (tap the phone) and that you tapped **Save**. On the phone, **⋮ → About this phone** shows the lists it's using. |
 | An allowed site loads but looks broken, like missing videos, maps or buttons | Ad blocking may be stopping something the site needs. Try turning **Ads** off for that phone to confirm, then add the domain to **Never block these** and turn it back on. |
 | A temporary site closed early, or stayed open too long | **From now** runs on the clock. **Only while it's open on the phone** counts on-screen time, in steps of 15 seconds, within 7 days. Check which you chose under **Temporary access**. |
 | Pictures or videos are missing on a page | It's on a **No photos or videos** list (the status line says so). Take it off in the admin page, or ask from the phone with **⋮ → Ask for photos and videos**. |
