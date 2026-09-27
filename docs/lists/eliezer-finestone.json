@@ -7,5 +7,33 @@
       "name": "JEP Queens"
     }
   ],
-  "block": []
+  "block": [
+    "theyeshivaworld.com"
+  ],
+  "temporary": [
+    {
+      "id": "tmuk6rq02jab",
+      "what": "site",
+      "entry": "forums.jtechforums.org",
+      "mode": "clock",
+      "minutes": 30,
+      "from": "2026-09-27T19:02:54.818Z"
+    },
+    {
+      "id": "tmuk6tu2hfkk",
+      "what": "site",
+      "entry": "jtechforums.org",
+      "mode": "clock",
+      "minutes": 30,
+      "from": "2026-09-27T19:04:33.401Z"
+    },
+    {
+      "id": "tmuk82ewgqk0",
+      "what": "media",
+      "entry": "theyeshivaworld.com",
+      "mode": "clock",
+      "minutes": 30,
+      "from": "2026-09-27T19:39:13.264Z"
+    }
+  ]
 }
