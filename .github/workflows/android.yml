@@ -1,0 +1,100 @@
+name: Build APK
+
+# Runs when the app code changes, or manually: Actions tab > Build APK > Run workflow.
+# Each run publishes a new release (v1.0.<run number>) that the app's updater finds.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['app/**', '*.gradle.kts', 'gradle.properties', '.github/workflows/android.yml']
+    # (List changes don't start a build: phones download lists themselves. The starter list is
+    #  whatever the public list is when the app is next built.)
+
+permissions:
+  contents: write   # to save the signing key on the first run and publish releases
+
+concurrency:
+  group: build-apk
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+    steps:
+      - name: Check signing password
+        run: |
+          if [ ${#KEYSTORE_PASSWORD} -lt 20 ]; then
+            echo "::error::Add a repository secret named KEYSTORE_PASSWORD, at least 20 characters long. See README, step 3."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # First build only: create the app's signing key, locked with your password, and save it in the repo.
+      - name: Create signing key (first build only)
+        if: hashFiles('signing/release.p12') == ''
+        run: |
+          mkdir -p signing
+          keytool -genkeypair -keystore signing/release.p12 -storetype PKCS12 -alias whitelist \
+            -keyalg RSA -keysize 4096 -validity 36500 \
+            -storepass "$KEYSTORE_PASSWORD" -keypass "$KEYSTORE_PASSWORD" -dname "CN=Whitelist Browser"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add signing/release.p12
+          git commit -m "Add app signing key (password protected)"
+          git push
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      # Pack a copy of the AdGuard ad list into the app, so ad blocking works from the first launch.
+      - name: Download ad list
+        run: |
+          curl -fsSL --retry 3 https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt \
+            -o app/src/main/assets/adblock-adguard.txt || echo "::warning::Ad list download failed; phones will fetch it themselves."
+
+      # Pack the lists new phones start with (admin page: "When a new phone is set up") into the app,
+      # so a phone that has never been online can already use them. None ticked: no starter lists.
+      - name: Add starter lists
+        run: |
+          node -e '
+            const fs = require("fs");
+            const devices = fs.existsSync("docs/devices.json") ? JSON.parse(fs.readFileSync("docs/devices.json", "utf8")) : {};
+            const names = Array.isArray(devices.default) ? devices.default : ["public"];
+            const lists = names.map(n => ({ name: n, path: n === "public" ? "docs/whitelist.json" : `docs/lists/${n}.json` }))
+              .filter(l => /^[a-z0-9_-]+$/.test(l.name) && fs.existsSync(l.path))
+              .map(l => ({ name: l.name, json: fs.readFileSync(l.path, "utf8") }));
+            fs.writeFileSync("app/src/main/assets/initial-bundle.json", JSON.stringify({ device: null, lists }));
+            console.log("Starter lists:", lists.map(l => l.name).join(", ") || "none");
+          '
+
+      - name: Build signed APK
+        env:
+          KEYSTORE_FILE: ${{ github.workspace }}/signing/release.p12
+          KEY_ALIAS: whitelist
+          KEY_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          REQUESTS_TOKEN: ${{ secrets.REQUESTS_TOKEN }}
+        run: |
+          gradle assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk whitelist-browser.apk
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: v1.0.${{ github.run_number }}
+        run: |
+          # "Re-run" of a build reuses its number: replace that release's APK instead of failing.
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" whitelist-browser.apk --clobber
+          else
+            gh release create "$VERSION" whitelist-browser.apk \
+              --title "Version ${VERSION#v}" --notes "Built from ${GITHUB_SHA::7}." --latest
+          fi
