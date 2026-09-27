@@ -12,24 +12,10 @@
       "name": "Khan Academy"
     },
     {
-      "domain": "wikimedia.org",
-      "home": false
-    },
-    {
       "domain": "theyeshivaworld.com",
       "home": true,
       "name": "theyeshivaworld.com"
     }
   ],
-  "block": [],
-  "temporary": [
-    {
-      "id": "tmuk96oqb",
-      "what": "site",
-      "entry": "theyeshivaworld.com",
-      "mode": "clock",
-      "minutes": 5,
-      "from": "2026-09-27T20:10:32.243Z"
-    }
-  ]
+  "block": []
 }

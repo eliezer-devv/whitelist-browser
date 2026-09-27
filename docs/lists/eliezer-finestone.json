@@ -1,10 +1,5 @@
 {
   "refreshMinutes": 5,
-  "sites": [
-    {
-      "domain": "pornhub.com",
-      "home": true
-    }
-  ],
+  "sites": [],
   "block": []
 }
