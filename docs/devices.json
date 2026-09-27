@@ -1,0 +1,9 @@
+{
+  "default": [
+    "public"
+  ],
+  "requestsTo": "own",
+  "adblock": true,
+  "adblockExceptions": [],
+  "devices": {}
+}

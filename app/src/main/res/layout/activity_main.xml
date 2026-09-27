@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bar"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="2dp"
+        android:paddingEnd="2dp">
+
+        <ImageButton android:id="@+id/back" style="@style/ToolButton"
+            android:contentDescription="Back" android:src="@drawable/ic_back" />
+        <ImageButton android:id="@+id/forward" style="@style/ToolButton"
+            android:contentDescription="Forward" android:src="@drawable/ic_forward" />
+        <ImageButton android:id="@+id/reload" style="@style/ToolButton"
+            android:contentDescription="Reload" android:src="@drawable/ic_reload" />
+        <ImageButton android:id="@+id/home" style="@style/ToolButton"
+            android:contentDescription="Home" android:src="@drawable/ic_home" />
+
+        <!-- The open site's name, just for reading: sites are opened from the home page tiles. -->
+        <TextView
+            android:id="@+id/pageTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:textColor="@color/ink"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <ImageButton android:id="@+id/menu" style="@style/ToolButton"
+            android:layout_marginStart="2dp"
+            android:contentDescription="More options" android:src="@drawable/ic_menu" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/updateBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/update"
+        android:paddingStart="14dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="10dp"
+        android:textColor="@color/bar"
+        android:textSize="14sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="6dp"
+        android:singleLine="true"
+        android:ellipsize="end"
+        android:text="@string/checking"
+        android:textColor="@color/muted"
+        android:textSize="12sp" />
+
+    <WebView
+        android:id="@+id/web"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+</LinearLayout>

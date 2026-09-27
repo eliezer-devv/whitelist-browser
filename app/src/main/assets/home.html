@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Home</title>
+<style>
+  :root { --bg: #eef4f2; --ink: #1f3a3d; --muted: #5e7a76; --tile: #ffffff; --edge: #d5e3df; --accent: #1f6f63; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #162a2c; --ink: #e8f1ef; --muted: #9cb8b4; --tile: #20393c; --edge: #2b4c50; --accent: #7fd1a8; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.4 system-ui, sans-serif;
+    -webkit-tap-highlight-color: transparent; }
+  main { max-width: 40rem; margin: 0 auto; padding: 2rem 1rem 3rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 1.4rem .5rem; }
+  a.tile { display: flex; flex-direction: column; align-items: center; gap: .45rem; text-decoration: none; color: inherit; }
+  .icon { width: 56px; height: 56px; border-radius: 16px; background: var(--tile); border: 1px solid var(--edge);
+    display: grid; place-items: center; }
+  .icon img { border-radius: 4px; }
+  .icon img { width: 32px; height: 32px; }
+  .icon .letter { font-size: 1.5rem; font-weight: 600; color: var(--accent); }
+  a.tile:active .icon { transform: scale(.94); }
+  a.tile:focus-visible .icon { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .icon { position: relative; }
+  .badge { position: absolute; right: -6px; top: -6px; background: var(--accent); color: var(--bg); font-size: .62rem;
+    font-weight: 600; padding: 1px 5px; border-radius: 8px; white-space: nowrap; }
+  .name { font-size: .8rem; text-align: center; max-width: 100%; overflow: hidden; display: -webkit-box;
+    -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+  .empty { text-align: center; color: var(--muted); padding: 3rem 1rem; }
+  .empty h1 { color: var(--ink); font-size: 1.3rem; margin: 0 0 .4rem; }
+  .ask { display: block; margin: 2.5rem auto 0; width: max-content; color: var(--accent); font-weight: 600;
+    text-decoration: none; padding: .6rem 1rem; border-radius: 10px; }
+  .ask:active { background: var(--edge); }
+</style>
+</head>
+<body>
+<main>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" hidden><h1 id="emptyTitle"></h1><p id="emptyText"></p></div>
+  <a class="ask" id="ask" href="wlb://request?action=allow" hidden>Ask for a new site</a>
+</main>
+<script>
+  function tile(t) {
+    const a = document.createElement('a');
+    a.className = 'tile';
+    a.href = t.url;
+    const icon = document.createElement('span');
+    icon.className = 'icon';
+    const img = document.createElement('img');
+    let host = t.domain;
+    try { host = new URL(t.url).hostname; } catch (e) {}
+    img.alt = '';
+    img.loading = 'lazy';
+    img.src = 'https://www.google.com/s2/favicons?sz=64&domain=' + encodeURIComponent(host);
+    img.onerror = () => {                       // no icon available: show the first letter
+      const l = document.createElement('span');
+      l.className = 'letter';
+      l.textContent = (t.name || t.domain).trim().charAt(0).toUpperCase();
+      img.replaceWith(l);
+    };
+    icon.append(img);
+    if (t.temp) {                               // open for a while: show the time left
+      const b = document.createElement('span');
+      b.className = 'badge';
+      b.textContent = '\u23F1 ' + t.temp;
+      icon.append(b);
+    }
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = t.name;
+    a.append(icon, name);
+    return a;
+  }
+
+  fetch('sites.json', { cache: 'no-store' }).then(r => r.json()).then(d => {
+    const grid = document.getElementById('grid');
+    d.tiles.forEach(t => grid.append(tile(t)));
+    if (!d.tiles.length) {
+      document.getElementById('empty').hidden = false;
+      document.getElementById('emptyTitle').textContent =
+        !d.loaded ? 'Loading the list of sites' : d.siteCount ? 'No sites on the home page' : 'No sites are allowed yet';
+      document.getElementById('emptyText').textContent =
+        !d.loaded ? 'This needs an internet connection the first time.'
+        : d.siteCount ? 'None of your sites have a tile yet. Ask for a site below.' : 'Ask for a site below.';
+    }
+    document.getElementById('ask').hidden = !d.canRequest;
+  });
+</script>
+</body>
+</html>

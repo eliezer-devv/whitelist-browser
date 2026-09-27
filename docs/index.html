@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Allowed sites</title>
+<style>
+  body { margin: 0; background: #eef4f2; color: #1f3a3d; font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 36rem; margin: 0 auto; padding: 2.5rem 1.25rem; }
+  h1 { font-size: 2rem; line-height: 1.15; margin: 0 0 .5rem; }
+  ul { list-style: none; padding: 0; margin: 1.5rem 0; }
+  li { padding: .6rem 0; border-bottom: 1px solid #cfdeda; }
+  a { color: #1f6f63; }
+  .muted { color: #5e7a76; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Allowed sites</h1>
+  <p class="muted" id="meta">Loading the current list.</p>
+  <ul id="list"></ul>
+  <p><a href="admin.html">Edit the list</a></p>
+  <p><a id="apk" href="#">Download the Android app</a></p>
+</main>
+<script>
+  fetch('whitelist.json?t=' + Date.now()).then(r => r.json()).then(d => {
+    const sites = d.sites || [];
+    document.getElementById('meta').textContent =
+      `${sites.length} sites. Phones check for changes every ${d.refreshMinutes || 5} minutes.`;
+    const ul = document.getElementById('list');
+    sites.forEach(s => {
+      const li = document.createElement('li');
+      li.textContent = (s.name ? `${s.name} (${s.domain})` : s.domain) + (s.home === false ? ', not on home page' : '')
+        + (s.subdomains === false ? ', exact site only' : '')
+        + (s.pages && s.pages.length ? `, only: ${s.pages.join(', ')}` : '');
+      ul.append(li);
+    });
+    (d.block || []).forEach(b => { const li = document.createElement('li'); li.textContent = `${b}, always blocked${b.includes('/') ? ' (page)' : ''}`; ul.append(li); });
+    (d.noMedia || []).forEach(b => { const li = document.createElement('li'); li.textContent = `${b}, no photos or videos`; ul.append(li); });
+  }).catch(() => { document.getElementById('meta').textContent = 'whitelist.json could not be read.'; });
+  if (location.hostname.endsWith('.github.io')) {
+    const owner = location.hostname.split('.')[0], repo = location.pathname.split('/')[1];
+    document.getElementById('apk').href = `https://github.com/${owner}/${repo}/releases/latest/download/whitelist-browser.apk`;
+  }
+</script>
+</body>
+</html>

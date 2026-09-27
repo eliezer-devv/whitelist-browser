@@ -1,0 +1,6 @@
+domain,name,home page,tile opens,subdomains,only these pages,no photos or videos
+wikipedia.org,Wikipedia,yes,,yes,,no
+scratch.mit.edu,Scratch,yes,https://scratch.mit.edu/explore,yes,,no
+youtube.com,YouTube (no pictures),yes,,yes,,yes
+khanacademy.org,Khan Academy maths,yes,,yes,khanacademy.org/math,no
+accounts.google.com,,no,,yes,,no

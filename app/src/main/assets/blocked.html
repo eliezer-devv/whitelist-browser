@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Not on the list</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; background: #eef4f2;
+    color: #1f3a3d; font: 17px/1.5 system-ui, sans-serif; }
+  @media (prefers-color-scheme: dark) { body { background: #162a2c; color: #e8f1ef; } code { background: #2b4c50 !important; } }
+  main { max-width: 32rem; padding: 1.75rem; }
+  h1 { font-size: 1.7rem; line-height: 1.2; margin: 0 0 .6rem; }
+  p { margin: 0 0 1rem; }
+  code { background: #d9e6e3; padding: .1rem .4rem; border-radius: 6px; word-break: break-all; }
+  .actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+  button, .button { font: inherit; border: 0; border-radius: 10px; padding: .65rem 1.2rem; background: #d9e6e3;
+    color: #1f3a3d; text-decoration: none; display: inline-block; }
+  .primary { background: #1f3a3d; color: #fff; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">This site isn't on the list</h1>
+  <p id="msg"></p>
+  <p class="actions">
+    <a id="ask" class="button primary" href="#">Ask to open</a>
+    <button id="back">Go back</button>
+  </p>
+</main>
+<script>
+  const q = new URLSearchParams(location.hash.slice(1));
+  const target = q.get('url') || '';
+  let host = target;
+  try { host = new URL(target).hostname; } catch (e) {}
+  const msg = document.getElementById('msg');
+  if (q.get('reason') === 'expired') {
+    document.getElementById('title').textContent = 'Time\'s up';
+    msg.append('Temporary access to ');
+    const c = document.createElement('code'); c.textContent = host || 'this site'; msg.append(c);
+    msg.append(' has ended. Tap Ask to open to ask for more time.');
+  } else if (q.get('reason') === 'page') {
+    document.getElementById('title').textContent = 'This page isn\'t on the list';
+    msg.append('Only some pages of ');
+    const c = document.createElement('code'); c.textContent = host; msg.append(c);
+    msg.append(' are allowed. Tap Ask to open to request this page. If it\'s approved, it opens by itself within a few minutes.');
+  } else if (q.get('reason') === 'empty') {
+    document.getElementById('title').textContent = 'No sites are allowed yet';
+    msg.textContent = 'The list hasn\'t loaded or is empty. Check the internet connection, or add sites to the list on GitHub.';
+  } else {
+    msg.append('This browser only opens approved sites. Tap Ask to open to request ');
+    const c = document.createElement('code'); c.textContent = host || 'this site'; msg.append(c);
+    msg.append('. If it\'s approved, this page opens by itself within a few minutes.');
+  }
+  // Handled by the app, which skips over blocked pages in the history.
+  document.getElementById('back').onclick = () => { location.href = 'wlb://back'; };
+  const ask = document.getElementById('ask');
+  if (target) ask.href = 'wlb://request?action=allow&url=' + encodeURIComponent(target);
+  else ask.href = 'wlb://request?action=allow';
+</script>
+</body>
+</html>

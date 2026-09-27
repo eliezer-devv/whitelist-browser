@@ -1,0 +1,9 @@
+{
+  "refreshMinutes": 5,
+  "sites": [
+    { "domain": "wikipedia.org", "name": "Wikipedia", "home": true },
+    { "domain": "khanacademy.org", "name": "Khan Academy", "home": true },
+    { "domain": "wikimedia.org", "home": false }
+  ],
+  "block": []
+}
