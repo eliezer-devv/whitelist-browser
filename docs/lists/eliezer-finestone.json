@@ -5,15 +5,6 @@
       "domain": "jepqueens.com",
       "home": true,
       "name": "JEP Queens"
-    },
-    {
-      "domain": "forums.jtechforums.org",
-      "home": true,
-      "passThrough": true,
-      "pages": [
-        "forums.jtechforums.org/"
-      ],
-      "name": "forums.jtechforums.org"
     }
   ],
   "block": [],
