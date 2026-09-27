@@ -7,5 +7,15 @@
       "name": "JEP Queens"
     }
   ],
-  "block": []
+  "block": [],
+  "temporary": [
+    {
+      "id": "tmuk6rq02jab",
+      "what": "site",
+      "entry": "forums.jtechforums.org",
+      "mode": "clock",
+      "minutes": 30,
+      "from": "2026-09-27T19:02:54.818Z"
+    }
+  ]
 }
