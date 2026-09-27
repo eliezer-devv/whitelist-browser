@@ -1,5 +1,24 @@
 {
   "refreshMinutes": 5,
-  "sites": [],
-  "block": []
+  "sites": [
+    {
+      "domain": "youtube.com",
+      "name": "youtube.com",
+      "home": false,
+      "pages": [
+        "youtube.com/user/khanacademy"
+      ]
+    }
+  ],
+  "block": [],
+  "temporary": [
+    {
+      "id": "tmuk5d8d2ufw",
+      "what": "page",
+      "entry": "youtube.com/user/khanacademy",
+      "mode": "clock",
+      "minutes": 5,
+      "from": "2026-09-27T18:23:39.158Z"
+    }
+  ]
 }
