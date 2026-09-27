@@ -2,1238 +2,1332 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
-<title>Allowed sites and phones</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Whitelist admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --ink: #1f3a3d; --muted: #5e7a76; --line: #cfdeda; --bg: #eef4f2; --field: #fff; --accent: #1f6f63; --bad: #b8412f; }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { max-width: 40rem; margin: 0 auto; padding: 2rem 1rem 5rem; }
-  h1 { font-size: 1.9rem; line-height: 1.15; margin: 0 0 1.25rem; }
-  h2 { font-size: 1.15rem; margin: 2rem 0 .25rem; }
-  p.hint, .hint { color: var(--muted); font-size: .9rem; margin: 0 0 .75rem; font-weight: 400; }
-  label { display: block; font-weight: 600; margin: .9rem 0 .3rem; }
-  input[type=file] { font: inherit; font-size: .9rem; max-width: 100%; }
-  input[type=text], input[type=password], input[type=number], textarea {
-    width: 100%; font: inherit; color: inherit; background: var(--field);
-    border: 1px solid var(--line); border-radius: 8px; padding: .55rem .7rem; }
-  textarea { min-height: 5rem; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; }
-  input:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 .75rem; }
-  button { font: inherit; font-weight: 600; border: 0; border-radius: 8px; padding: .65rem 1.1rem;
-    background: var(--accent); color: #fff; cursor: pointer; }
-  button.secondary { background: none; color: var(--accent); border: 1px solid var(--accent); }
-  button.link { background: none; color: var(--bad); padding: .4rem .5rem; font-weight: 500; }
-  button:disabled { opacity: .5; cursor: default; }
-  details { border-top: 1px solid var(--line); margin-top: 1rem; padding-top: .25rem; }
-  summary { cursor: pointer; font-weight: 600; padding: .5rem 0; }
+  :root {
+    --bg: #F5F3EE; --card: #FFFFFF; --ink: #1C2B2D; --ink2: #3E4B49; --muted: #5B6B69; --faint: #9AA5A3;
+    --line: #E7E3DB; --line2: #EFECE5; --field: #D5D1C8;
+    --accent: #1F5F55; --accent-dark: #16463F; --accent-soft: #E1EEEA; --mint: #7FD1A8;
+    --amber: #FBEFD5; --amber-line: #EFD9A6; --amber-ink: #5C3D00;
+    --red: #A33A2A; --red-soft: #F7E3DE;
+    --display: 'Bricolage Grotesque', Figtree, system-ui, sans-serif;
+    --body: Figtree, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    box-sizing: border-box;
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+  html { background: var(--bg); }
+  body { margin: 0; font: 16px/1.45 var(--body); color: var(--ink); background: var(--bg); -webkit-text-size-adjust: 100%; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: var(--accent); }
+  button { cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--mint); outline-offset: 2px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  [hidden] { display: none !important; }
 
-  .site { background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: .75rem; margin: .6rem 0;
-    display: grid; grid-template-columns: 1fr 1fr; gap: .5rem .6rem; align-items: center; }
-  .site input[type=text] { padding: .45rem .6rem; }
-  .site textarea.pages { min-height: 2.4rem; padding: .45rem .6rem; font-size: .85rem; resize: vertical; }
-  .site .full { grid-column: 1 / -1; }
-  .site .bottom { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; }
-  .check { display: flex; align-items: center; gap: .5rem; font-weight: 500; margin: 0; }
-  .check input { width: 1.2rem; height: 1.2rem; accent-color: var(--accent); }
-  .checks { display: flex; flex-wrap: wrap; gap: .3rem 1.1rem; }
-  /* An option with a note underneath it. */
-  .check.two { align-items: flex-start; margin: .5rem 0; }
-  .check.two input { margin-top: .2rem; flex: none; }
-  .check.two .hint { display: block; margin: .1rem 0 0; }
-  /* Scroll wheels for hours and minutes: 5 rows show, the middle one is chosen. */
-  .wheels { position: relative; display: flex; justify-content: center; gap: 1.8rem; height: 180px; margin: .4rem 0 .8rem;
-    user-select: none; -webkit-user-select: none; }
+  #app { max-width: 560px; margin: 0 auto; min-height: 100vh; padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+  #app.sub { padding-bottom: 40px; }
+  body.unsaved #app { padding-bottom: calc(160px + env(safe-area-inset-bottom, 0px)); }
+  body.unsaved #app.sub { padding-bottom: 100px; }
+  .top { display: flex; align-items: center; justify-content: space-between; padding: calc(16px + env(safe-area-inset-top, 0px)) 20px 4px; }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+  .brand .mark { width: 26px; height: 26px; border-radius: 8px; background: var(--accent); color: #fff; display: grid; place-items: center; }
+  .conn { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); background: none; border: 0; padding: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #2E8B57; }
+  .dot.off { background: #B4492F; }
+
+  main { padding: 0 16px; }
+  .title { padding: 10px 4px 12px; }
+  .title h1 { margin: 0; font: 700 32px/1.15 var(--display); letter-spacing: -.01em; }
+  .title p { margin: 2px 0 0; color: var(--muted); font-size: 15px; }
+  .back { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 8px 0 2px; margin: calc(8px + env(safe-area-inset-top, 0px)) 0 0 8px; font-weight: 600; text-decoration: none; background: none; border: 0; color: var(--accent); font-size: 15.5px; }
+  .stack { display: flex; flex-direction: column; gap: 12px; }
+  .h2row { display: flex; align-items: center; justify-content: space-between; margin: 10px 2px 0; }
+  h2.sec { margin: 14px 4px 0; font-size: 15px; font-weight: 700; color: var(--ink2); }
+  .h2row h2.sec { margin: 0; }
+  .hint { margin: 0 4px; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .card.focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+  .card h3 { margin: 0; font-size: 19px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+  .who { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .who > span { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .av { width: 32px; height: 32px; flex: none; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 700; font-size: 14px; }
+  .av.big { width: 44px; height: 44px; font-size: 19px; }
+  .av.grey { background: #EFEDE7; color: var(--ink2); }
+  .muted { color: var(--muted); }
+  .small { font-size: 13.5px; }
+  .mono { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+  .quote { margin: 0; padding: 9px 12px; background: var(--bg); border-radius: 10px; font-size: 14.5px; color: var(--ink2); }
+  .warn { margin: 0; padding: 9px 12px; background: var(--amber); border-radius: 10px; font-size: 14px; color: var(--amber-ink); }
+  .line { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--muted); }
+  .done { color: var(--accent); font-weight: 700; display: flex; align-items: center; gap: 6px; }
+
+  .chip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px; border-radius: 12px; font-size: 12.5px; font-weight: 600; background: #EFEDE7; color: var(--ink2); white-space: nowrap; }
+  .chip.teal { background: var(--accent-soft); color: var(--accent); }
+  .chip.amber { background: var(--amber); color: #7A4F00; }
+  .chip.red { background: var(--red-soft); color: #8E3322; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+
+  .btn { min-height: 44px; padding: 0 16px; border-radius: 12px; border: 1px solid transparent; font-weight: 700; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }
+  .btn.p { background: var(--accent); color: #fff; }
+  .btn.p:hover { background: var(--accent-dark); }
+  .btn.s { background: #fff; border-color: #C9D9D4; color: var(--accent); font-weight: 600; }
+  .btn.d { background: transparent; color: var(--red); font-weight: 600; padding: 0 12px; }
+  .btn.dline { background: #fff; border-color: #E5C3BB; color: var(--red); font-weight: 600; }
+  .btn.sm { min-height: 40px; padding: 0 14px; font-size: 14.5px; }
+  .btn.wide { width: 100%; min-height: 50px; font-size: 16px; border-radius: 14px; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .acts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 2px; }
+  .acts .grow { flex: 1 1 auto; }
+
+  .group { background: var(--card); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--line2); background: none; text-align: left; text-decoration: none; color: var(--ink); }
+  .group > .row:last-child, .group > :last-child > .row { border-bottom: 0; }
+  button.row:hover, a.row:hover { background: #FBFAF7; }
+  .row .grow { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .row .name { font-weight: 600; font-size: 15.5px; }
+  .row .dom { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .count { color: var(--muted); font-size: 14px; }
+  .row .chev { color: var(--faint); flex: none; display: flex; }
+  .row .ic { color: var(--muted); display: flex; flex: none; }
+  .tile { width: 40px; height: 40px; flex: none; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); display: grid; place-items: center; font-weight: 700; font-size: 17px; }
+  .tile.big { width: 56px; height: 56px; border-radius: 16px; font-size: 24px; background: #fff; }
+
+  .listchips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 4px; scrollbar-width: none; }
+  .listchips::-webkit-scrollbar { display: none; }
+  .lc { flex: none; min-height: 38px; padding: 0 14px; border-radius: 19px; font-size: 14px; font-weight: 600; white-space: nowrap; background: #fff; border: 1px solid var(--field); }
+  .lc[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .lc.add { width: 38px; padding: 0; border-style: dashed; border-color: #B9B4A9; background: transparent; display: grid; place-items: center; }
+  .pick { display: inline-flex; align-items: center; gap: 5px; }
+  .pick[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+  .tempcard { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--amber); border: 1px solid var(--amber-line); border-radius: 16px; color: var(--amber-ink); }
+  .tempcard .grow { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+  .tempcard b { overflow-wrap: anywhere; }
+  .tempcard button { min-height: 38px; padding: 0 12px; border: 1px solid #D9B96E; border-radius: 10px; background: #fff; color: var(--amber-ink); font-weight: 600; font-size: 13.5px; flex: none; }
+  a.tempcard { text-decoration: none; font-weight: 600; min-height: 52px; }
+
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field > label, .flabel { font-size: 14px; font-weight: 600; color: var(--ink2); }
+  .inp { width: 100%; min-height: 48px; padding: 0 14px; border: 1px solid var(--field); border-radius: 12px; background: #fff; font-size: 16px; }
+  textarea.inp { min-height: 150px; padding: 12px 14px; font-family: var(--mono); font-size: 14px; line-height: 1.6; resize: vertical; }
+  .inp.bad { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+  .inrow { display: flex; gap: 8px; }
+  .inrow .inp { flex: 1 1 auto; min-width: 0; }
+
+  .tg { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 12px 14px; border-bottom: 1px solid var(--line2); cursor: pointer; }
+  .group > .tg:last-child { border-bottom: 0; }
+  .tg .grow { flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; }
+  .tg .t { font-weight: 600; font-size: 15.5px; }
+  .tg .s { font-size: 13px; color: var(--muted); }
+  .sw { appearance: none; -webkit-appearance: none; width: 46px; height: 28px; border-radius: 14px; background: #CFCBC2; position: relative; margin: 0; flex: none; cursor: pointer; transition: background .15s; }
+  .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: left .15s; }
+  .sw:checked { background: var(--accent); }
+  .sw:checked::after { left: 21px; }
+  .radio { display: flex; align-items: flex-start; gap: 12px; min-height: 52px; padding: 12px 14px; border-bottom: 1px solid var(--line2); cursor: pointer; }
+  .group > .radio:last-child { border-bottom: 0; }
+  .radio input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink2); cursor: pointer; min-height: 32px; }
+  .check input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; }
+
+  .seg { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: #EFEDE7; }
+  .seg button { flex: 1; min-height: 40px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 600; font-size: 14px; }
+  .seg button[aria-pressed="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .stepper { display: flex; align-items: center; gap: 4px; }
+  .stepper button { width: 38px; height: 38px; border: 1px solid var(--field); border-radius: 10px; background: #fff; font-size: 18px; }
+  .stepper span { min-width: 72px; text-align: center; font-weight: 600; }
+
+  .panel { border-top: 1px solid var(--line2); margin-top: 4px; padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+
+  /* Scroll wheels: hours 0-24, minutes 0-55 */
+  .wheels { position: relative; display: flex; justify-content: center; gap: 1.8rem; height: 180px; margin: .2rem 0 .4rem; user-select: none; -webkit-user-select: none; }
   .wheel-col { display: flex; align-items: center; gap: .5rem; z-index: 1; }
   .wheel-col span { color: var(--muted); font-size: .9rem; width: 2.6rem; }
-  .wheel { height: 180px; width: 3.6rem; overflow-y: scroll; scroll-snap-type: y mandatory; scrollbar-width: none;
-    overscroll-behavior: contain; outline: none;
-    -webkit-mask-image: linear-gradient(transparent, #000 30%, #000 70%, transparent);
-            mask-image: linear-gradient(transparent, #000 30%, #000 70%, transparent); }
+  .wheel { height: 180px; width: 3.6rem; overflow-y: scroll; scroll-snap-type: y mandatory; scrollbar-width: none; overscroll-behavior: contain; outline: none;
+    -webkit-mask-image: linear-gradient(transparent, #000 30%, #000 70%, transparent); mask-image: linear-gradient(transparent, #000 30%, #000 70%, transparent); }
   .wheel::-webkit-scrollbar { display: none; }
-  .wheel div { height: 36px; line-height: 36px; text-align: center; font-size: 1.35rem; scroll-snap-align: center;
-    color: var(--muted); font-variant-numeric: tabular-nums; cursor: pointer; }
+  .wheel div { height: 36px; line-height: 36px; text-align: center; font-size: 1.35rem; scroll-snap-align: center; color: #8AA39F; font-variant-numeric: tabular-nums; cursor: pointer; }
   .wheel div.sel { color: var(--ink); font-weight: 600; }
   .wheel .pad { height: 72px; scroll-snap-align: none; cursor: default; }
   .wheel:focus-visible { box-shadow: 0 0 0 2px var(--accent); border-radius: 8px; }
-  .wheel-band { position: absolute; left: 50%; transform: translateX(-50%); width: min(16rem, 100%); top: 72px; height: 36px;
-    border-radius: 8px; background: rgba(31, 111, 99, .09); border: 1px solid var(--line); pointer-events: none; }
-  .temp { display: flex; justify-content: space-between; align-items: center; gap: .6rem; background: var(--field);
-    border: 1px solid var(--line); border-radius: 8px; padding: .55rem .7rem; margin: .4rem 0; font-size: .92rem; }
-  .temp.ended { opacity: .55; }
-  .tempnote { background: #fff6e0; border: 1px solid #e8c77a; color: #5a4300; border-radius: 8px; padding: .55rem .7rem; margin: .5rem 0; font-size: .9rem; }
-  .tempnote a { color: inherit; }
-  .site .auto { grid-column: 1 / -1; font-size: .8rem; color: var(--muted); }
-  /* Request cards */
-  .req { background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: .8rem; margin: .7rem 0; }
-  .req.focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
-  .req .what { font-weight: 600; line-height: 1.35; }
-  .req .meta { color: var(--muted); font-size: .85rem; margin: .25rem 0 .1rem; }
-  .req .note { font-size: .9rem; margin: .2rem 0; }
-  .req .actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .6rem; }
-  .req .actions button { padding: .5rem .9rem; }
-  .req .panel { border-top: 1px solid var(--line); margin-top: .7rem; padding-top: .4rem; }
-  .req .done { color: var(--accent); font-weight: 600; margin-top: .5rem; }
-  button.deny { background: none; color: var(--bad); border: 1px solid var(--bad); }
-  select { font: inherit; color: inherit; background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: .5rem .6rem; }
-  .listbar { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
-  .listbar select { flex: 1; min-width: 8rem; }
-  .phone { background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: .75rem; margin: .6rem 0; }
-  .phone .nick { font-weight: 600; font-size: .85rem; margin: 0 0 .25rem; display: block; }
-  .phone.unnamed { border-color: #d9a441; }
-  .phone .warn { color: #8a5a00; font-size: .8rem; margin-top: .25rem; }
-  .phone .meta { color: var(--muted); font-size: .8rem; margin: .3rem 0 .5rem; font-family: ui-monospace, Menlo, Consolas, monospace; }
-  .phone .row { display: flex; justify-content: space-between; align-items: center; gap: .5rem; margin-top: .5rem; flex-wrap: wrap; }
-  .phone select { font-size: .85rem; padding: .3rem .4rem; }
-  .phone.old { background: transparent; border-style: dashed; }
-  .phone.old .title { font-weight: 600; }
-  .site.bad { border-color: var(--bad); }
-  .toolbar { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: 1rem; }
-  #msg { margin-top: 1rem; min-height: 1.5rem; }
-  #msg.error { color: var(--bad); }
-  #editor[hidden] { display: none; }
-  @media (max-width: 30rem) { .site { grid-template-columns: 1fr; } }
+  .wheel-band { position: absolute; left: 50%; transform: translateX(-50%); width: min(15rem, 100%); top: 72px; height: 36px; border-radius: 8px; background: rgba(31, 95, 85, .09); border: 1px solid var(--line); pointer-events: none; }
+
+  /* Bottom bars */
+  #tabs { position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; width: min(560px, 100%); z-index: 20;
+    display: flex; justify-content: space-around; align-items: flex-start; padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+    background: #fff; border-top: 1px solid #E3E0D8; }
+  #tabs button { position: relative; width: 84px; min-height: 52px; display: flex; flex-direction: column; align-items: center; gap: 4px; border: 0; background: none; color: var(--muted); font-size: 12px; font-weight: 600; }
+  #tabs .pill { position: relative; display: grid; place-items: center; width: 56px; height: 30px; border-radius: 15px; }
+  #tabs button[aria-current="page"] { color: var(--accent); }
+  #tabs button[aria-current="page"] .pill { background: var(--accent-soft); }
+  #tabs .badge { position: absolute; top: -4px; right: 4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #B4492F; color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+  #savebar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(92px + env(safe-area-inset-bottom, 0px)); width: min(536px, calc(100% - 24px)); z-index: 21;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 16px; background: #1C2B2D; color: #fff; box-shadow: 0 6px 18px rgba(28,43,45,.25); }
+  #app.sub ~ #savebar { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+  #savebar span { font-size: 14.5px; font-weight: 500; }
+  #savebar button { min-height: 40px; padding: 0 14px; border: 0; border-radius: 10px; font-weight: 700; }
+  #savebar .undo { background: transparent; color: #CFE3DD; font-weight: 600; }
+  #savebar .save { background: var(--mint); color: #0E2A25; }
+  #toast { position: fixed; left: 50%; transform: translateX(-50%); top: calc(12px + env(safe-area-inset-top, 0px)); width: min(520px, calc(100% - 24px)); z-index: 30;
+    padding: 12px 16px; border-radius: 14px; background: #1C2B2D; color: #fff; font-size: 14.5px; box-shadow: 0 6px 18px rgba(28,43,45,.25); cursor: pointer; }
+  #toast.error { background: #7A2A1D; }
+  .empty { text-align: center; padding: 28px 16px; color: var(--muted); }
+  .empty b { display: block; color: var(--ink); font-size: 17px; margin-bottom: 4px; }
+  details.more > summary { cursor: pointer; font-weight: 600; color: var(--accent); padding: 6px 4px; list-style: none; }
+  details.more > summary::-webkit-details-marker { display: none; }
 </style>
 </head>
 <body>
-<main>
-  <h1>Allowed sites and phones</h1>
-
-  <details id="setup">
-    <summary>GitHub connection</summary>
-    <div class="row2">
-      <div><label for="owner">Owner</label><input type="text" id="owner" autocapitalize="off"></div>
-      <div><label for="repo">Repository</label><input type="text" id="repo" autocapitalize="off"></div>
-    </div>
-    <div class="row2">
-      <div><label for="branch">Branch</label><input type="text" id="branch" value="main" autocapitalize="off"></div>
-    </div>
-    <label for="token">Admin token <span class="hint">Contents: read and write, this repo only</span></label>
-    <input type="password" id="token" autocomplete="off">
-    <label class="check"><input id="remember" type="checkbox"> <span class="hint">Remember on this device</span></label>
-  </details>
-
-  <div class="toolbar"><button id="load">Load</button></div>
-
-  <section id="inboxSec" hidden>
-    <h2>Requests</h2>
-    <p class="hint">What phones have asked for. Answer with a tap: the phone is told the answer within a few minutes.</p>
-    <div id="inbox"></div>
-    <div id="newPhonesBox" hidden>
-      <h2>Phones without a name</h2>
-      <p class="hint">Each phone asks for the person's name when it's first opened. These don't have one yet: type it here.</p>
-      <div id="newPhones"></div>
-    </div>
-    <div class="toolbar"><button class="secondary" id="refreshInbox" type="button">Check for new requests</button></div>
-  </section>
-
-  <section id="editor" hidden>
-    <h2>Lists</h2>
-    <p class="hint">The <b>public</b> list is the general one. Make more lists for individual phones or groups,
-      then choose which lists each phone uses under <b>Phones</b>.</p>
-    <label for="listSel">List to edit</label>
-    <div class="listbar">
-      <select id="listSel" aria-label="List to edit"></select>
-      <button class="secondary" id="newList">New list</button>
-      <button class="link" id="delList" type="button">Delete</button>
-    </div>
-    <p class="hint" id="listInfo" style="margin-top:.5rem"></p>
-
-    <h2>Sites</h2>
-    <p class="hint">Untick <b>Home page</b> for sites only needed in the background, like sign-in pages.
-      Untick <b>Include subdomains</b> to allow only that exact site: <code>google.com</code> then won't open
-      <code>mail.google.com</code> or <code>maps.google.com</code>. Its <code>www.</code> version always works.
-      Fill in <b>Only these pages</b> to allow just those pages (and the pages below them) instead of the whole site.
-      Tick <b>No photos or videos</b> to open the site without pictures and videos.</p>
-    <div id="tempSummary"></div>
-    <div id="sites"></div>
-    <div class="toolbar"><button class="secondary" id="add">Add a site</button></div>
-
-    <details id="bulk">
-      <summary>Bulk import from a spreadsheet</summary>
-      <p class="hint">Columns in this order: <b>domain</b>, <b>name</b>, <b>home page</b> (yes or no), <b>tile opens</b>,
-        <b>subdomains</b> (yes or no), <b>only these pages</b> (separated by spaces), <b>no photos or videos</b> (yes or no).
-        Only the domain is required, and a header row is optional. Select the cells in Excel, Google Sheets or Numbers,
-        copy them and paste here, or choose a file.</p>
-      <textarea id="bulkText" spellcheck="false" autocapitalize="off" placeholder="wikipedia.org&#9;Wikipedia&#9;yes&#10;accounts.google.com&#9;&#9;no"></textarea>
-      <label for="bulkFile">Or choose a file <span class="hint">.csv, .tsv or .xlsx</span></label>
-      <input type="file" id="bulkFile" accept=".csv,.tsv,.txt,.xlsx,.xls,.ods">
-      <label class="check" style="margin-top:.9rem"><input type="radio" name="bulkMode" value="merge" checked> Add to the list, updating sites already on it</label>
-      <label class="check"><input type="radio" name="bulkMode" value="replace"> Replace the whole list</label>
-      <div class="toolbar">
-        <button class="secondary" id="import">Import</button>
-        <button class="secondary" id="export">Download current list</button>
-      </div>
-      <p class="hint" style="margin-top:.75rem"><a href="sites-template.csv" download>Download a template</a> to fill in.
-        Imported sites appear above as cards. Check them, then tap Save list.</p>
-    </details>
-
-    <h2>Always blocked</h2>
-    <p class="hint">Optional. Parts of allowed sites to keep blocked, one per line: a site like <code>maps.google.com</code>,
-      or a single page like <code>en.wikipedia.org/wiki/Fortnite</code>.</p>
-    <textarea id="block" spellcheck="false" autocapitalize="off"></textarea>
-
-    <h2>Temporary access</h2>
-    <p class="hint">Open something for a while only, even if it's otherwise blocked. Time runs out by itself, and the
-      phone shows how much is left. Expired entries are removed automatically each day.</p>
-    <div id="temps"></div>
-    <details id="addTemp">
-      <summary>Add temporary access</summary>
-      <label for="tAddr">Site or page</label>
-      <input type="text" id="tAddr" placeholder="e.g. coolmathgames.com or youtube.com/watch?v=abc" autocapitalize="off" spellcheck="false">
-      <label>What to open</label>
-      <div class="checks">
-        <label class="check"><input type="radio" name="tWhat" value="site" checked> Whole site</label>
-        <label class="check"><input type="radio" name="tWhat" value="page"> Just this page</label>
-        <label class="check"><input type="radio" name="tWhat" value="media"> Photos and videos</label>
-      </div>
-      <label>How long: <span id="tLen">30 min</span></label>
-      <div id="tPicker"></div>
-      <label>Count the time</label>
-      <label class="check two"><input type="radio" name="tMode" value="clock" checked>
-        <span>From now<span class="hint">Ends at a set time.</span></span></label>
-      <label class="check two"><input type="radio" name="tMode" value="use">
-        <span>Only while it's open on the phone<span class="hint">Time on the site, to use within 7 days.</span></span></label>
-      <div class="toolbar"><button class="secondary" id="tAdd" type="button">Add</button></div>
-      <p class="hint">Then tap <b>Save list</b>. (To answer a phone's request, use <b>Requests</b> at the top instead, so the phone is told.)</p>
-    </details>
-
-    <h2>No photos or videos on specific pages</h2>
-    <p class="hint">Optional. For a whole site, tick <b>No photos or videos</b> on its card above. Use this for single pages
-      of a site that's otherwise shown normally, one per line, e.g. <code>en.wikipedia.org/wiki/Shark</code>.</p>
-    <textarea id="noMedia" spellcheck="false" autocapitalize="off"></textarea>
-
-    <h2>Settings</h2>
-    <div class="row2">
-      <div><label for="homepage">Start page <span class="hint">empty = home page with tiles</span></label>
-        <input type="text" id="homepage" inputmode="url" autocapitalize="off"></div>
-      <div><label for="refresh">Check every (min)</label><input type="number" id="refresh" min="1" value="5"></div>
-    </div>
-
-    <div class="toolbar">
-      <button id="save">Save list</button>
-      <button class="secondary" id="reload">Discard changes</button>
-    </div>
-  </section>
-
-  <section id="phonesSec" hidden>
-    <h2 style="margin-top:3rem">Phones</h2>
-    <p class="hint">Each phone registers itself the first time the app opens (when requests are set up).
-      Tick the lists each phone uses. A site opens if <b>any</b> of the phone's lists allows it,
-      and is blocked if <b>any</b> of them blocks it.</p>
-    <div id="phones"></div>
-    <label for="newPhone">Add a phone by ID <span class="hint">shown on the phone under ⋮ → About this phone</span></label>
-    <div class="listbar">
-      <input type="text" id="newPhone" placeholder="K7M4-Q2XP" autocapitalize="characters" spellcheck="false" style="max-width:11rem">
-      <button class="secondary" id="addPhone">Add</button>
-    </div>
-    <h2>Approved requests</h2>
-    <p class="hint">Where a change goes when you reply <code>approve</code> to a phone's request.
-      You can still say <code>approve public</code> on any single request.</p>
-    <label class="check"><input type="radio" name="reqDefault" value="own"> Each phone's own private list <span class="hint">(recommended)</span></label>
-    <label class="check"><input type="radio" name="reqDefault" value="public"> The public list, for every phone using it</label>
-    <p class="hint" style="margin-top:.4rem">A phone's own <b>Approved requests go to</b> setting overrides this.</p>
-
-    <h2>Ad blocking</h2>
-    <p class="hint">Drops ads and trackers that pages load from known ad domains, using the AdGuard DNS filter (updated weekly).
-      It can't remove ads a site serves from its own servers, like YouTube's video ads.</p>
-    <label class="check"><input type="checkbox" id="adblock" checked> Block ads and trackers on all phones</label>
-    <p class="hint" style="margin-top:.4rem">A phone's own <b>Ads</b> setting overrides this.</p>
-    <label for="adblockExceptions">Never block these <span class="hint">one per line, if a site breaks because something it needs is on the ad list</span></label>
-    <textarea id="adblockExceptions" spellcheck="false" autocapitalize="off" placeholder="googletagmanager.com"></textarea>
-
-    <h2>When a new phone is set up</h2>
-    <p class="hint">The lists it starts with, besides its own private list (every new phone gets one, named after the person).
-      Untick them all to start new phones with only their own list, which is empty until you add sites or approve requests.
-      The app also comes with a copy of the public list built in (for before it's first online) only if <b>public</b> is ticked here
-      when the app is built.</p>
-    <div id="defaults" class="checks"></div>
-    <h2>Archived phones</h2>
-    <p class="hint">Phones that haven't opened the app for a while, probably uninstalled or not being used.
-      Their private lists are kept in <code>docs/lists/archive/</code>, not deleted. A phone that's used again comes back by itself.
-      After a factory reset a phone gets a new ID: use <b>Give to phone</b> to hand it its old name and lists.</p>
-    <div id="archived"></div>
-    <label for="inactiveDays">Archive phones not seen for</label>
-    <div class="listbar"><input type="number" id="inactiveDays" min="1" value="14" style="max-width:6rem"> <span class="hint">days</span></div>
-
-    <div class="toolbar"><button id="savePhones">Save phones</button></div>
-  </section>
-
-  <p id="msg" role="status"></p>
-</main>
-
-<template id="siteTpl">
-  <div class="site">
-    <input type="text" class="domain" placeholder="Domain, e.g. scratch.mit.edu" autocapitalize="off" spellcheck="false" aria-label="Domain">
-    <input type="text" class="name" placeholder="Name on home page" aria-label="Name on home page">
-    <input type="text" class="url full" placeholder="Tile opens (optional), e.g. https://scratch.mit.edu/explore" autocapitalize="off" spellcheck="false" aria-label="Tile opens">
-    <textarea class="pages full" rows="1" placeholder="Only these pages (optional), one per line, e.g. youtube.com/watch?v=abc123" autocapitalize="off" spellcheck="false" aria-label="Only these pages"></textarea>
-    <div class="bottom">
-      <div class="checks">
-        <label class="check"><input type="checkbox" class="home" checked> Home page</label>
-        <label class="check"><input type="checkbox" class="subs" checked> Include subdomains</label>
-        <label class="check"><input type="checkbox" class="nomedia"> No photos or videos</label>
-      </div>
-      <button class="link remove" type="button">Remove</button>
-    </div>
-  </div>
-</template>
-
+<div id="app">
+  <header class="top">
+    <div class="brand"><span class="mark" id="markIcon"></span>Whitelist</div>
+    <button type="button" class="conn" id="connBtn" hidden><span class="dot" id="connDot"></span><span id="connText">Connected</span></button>
+  </header>
+  <div id="view"></div>
+</div>
+<div id="savebar" hidden><span id="saveText">Changes not saved yet</span><div style="display:flex;gap:6px"><button type="button" class="undo" id="undoBtn">Undo</button><button type="button" class="save" id="saveBtn">Save</button></div></div>
+<nav id="tabs" aria-label="Sections" hidden></nav>
+<div id="toast" role="status" aria-live="polite" hidden></div>
 <script>
-  const $ = id => document.getElementById(id);
-  const fields = ['owner', 'repo', 'branch'];
-  let sha = null;              // version of the open list file (null = not saved yet)
-  let lists = ['public'];      // all list names
-  let current = 'public';      // list being edited
-  let devices = null;          // contents of docs/devices.json
-  let devicesSha = null;
-  let dirty = false;           // unsaved edits in the open list
+(() => {
+'use strict';
+// ============================================================================================
+// Whitelist admin page. Four tabs (Requests, Sites, Phones, Settings) plus sub-screens.
+// It reads and writes the same files as always: docs/whitelist.json, docs/lists/*.json and
+// docs/devices.json, and answers requests by posting the same replies you could type on GitHub.
+// ============================================================================================
+const $ = id => document.getElementById(id);
 
-  // Prefill from the Pages address: https://OWNER.github.io/REPO/admin.html
+// ---------- tiny DOM helper ----------
+// h('button', { class: 'btn p', onclick: fn }, 'Save') ; props with value null/false are skipped.
+const PROPS = new Set(['value', 'checked', 'disabled', 'hidden', 'selected', 'open']);
+function h(tag, props, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v == null || v === false) continue;
+    if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
+    else if (k === 'class') el.className = v;
+    else if (k === 'style') el.style.cssText = v;
+    else if (k === 'html') el.innerHTML = v;
+    else if (PROPS.has(k)) el[k] = v;
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of kids.flat(Infinity)) if (c != null && c !== false) el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return el;
+}
+const ICONS = {
+  inbox: '<path d="M4 13l2.5-7h11L20 13"/><path d="M4 13v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5h-5l-1.5 2h-3L9 13z"/>',
+  globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.5 2.6 3.5 5.4 3.5 8.5s-1 5.9-3.5 8.5c-2.5-2.6-3.5-5.4-3.5-8.5s1-5.9 3.5-8.5z"/>',
+  phone: '<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 17.5h2"/>',
+  sliders: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  chev: '<path d="M9 6l6 6-6 6"/>', back: '<path d="M15 6l-6 6 6 6"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>', check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>',
+  shield: '<path d="M12 3.5l7 3v5c0 4.2-3 7.6-7 9-4-1.4-7-4.8-7-9v-5z"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  ext: '<path d="M14 5h5v5"/><path d="M19 5l-8 8"/><path d="M18 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4"/>',
+  table: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 10h16M10 10v9"/>',
+  ban: '<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>',
+  photooff: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3 3l18 18"/>',
+  archive: '<rect x="3.5" y="4.5" width="17" height="4.5" rx="1"/><path d="M5 9v9.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
+  warn: '<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.01"/>'
+};
+function icon(name, size = 20, sw = 1.8) {
+  return h('span', { class: 'icwrap', style: 'display:inline-flex', 'aria-hidden': 'true',
+    html: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>` });
+}
+const chip = (text, kind = '', ic) => h('span', { class: `chip ${kind}` }, ic ? icon(ic, 14, 2) : null, text);
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const fmtMin = m => [Math.floor(m / 60) && `${Math.floor(m / 60)} h`, m % 60 && `${m % 60} min`].filter(Boolean).join(' ') || '0 min';
+const ago = iso => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
+  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
+const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
+const listLabel = n => n === 'public' ? 'Everyone' : cap(n);
+const tileColor = s => ['#3C3489', '#B4492F', '#6A4FB0', '#1F5F55', '#185FA5', '#854F0B', '#8E3322'][[...String(s)].reduce((a, c) => a + c.charCodeAt(0), 0) % 7];
+
+// ---------- messages ----------
+let toastTimer;
+function say(text, error = false) {
+  const t = $('toast');
+  t.textContent = text; t.className = error ? 'error' : ''; t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, error ? 9000 : 3500);
+}
+$('toast').onclick = () => { $('toast').hidden = true; };
+
+// ---------- address rules (the same as the app) ----------
+function normalize(entry) {
+  let s = String(entry || '').trim().toLowerCase();
+  if (!s) return null;
+  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//, '').replace(/^\*\./, '');
+  s = s.split('/')[0].split('?')[0].split(':')[0].replace(/\.$/, '');
+  return /^[a-z0-9.-]+$/.test(s) && s.includes('.') ? s : undefined;
+}
+// No scheme or #part, host without www./m./mobile., then path and query.
+function pageKey(entry) {
+  let s = String(entry || '').trim();
+  if (!s) return null;
+  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').split('#')[0];
+  let cut = s.search(/[/?]/); if (cut < 0) cut = s.length;
+  const host = s.slice(0, cut).toLowerCase().split(':')[0].replace(/\.$/, '').replace(/^(www|m|mobile)\./, '');
+  if (!/^[a-z0-9.-]+$/.test(host) || !host.includes('.')) return undefined;
+  let rest = s.slice(cut) || '/';
+  if (rest.startsWith('?')) rest = '/' + rest;
+  return host + rest;
+}
+function pageOnSite(key, domain, subdomains) {
+  const host = key.split('/')[0];
+  const d = domain.replace(/^(www|m|mobile)\./, '');
+  return host === d || (subdomains && host.endsWith('.' + d));
+}
+const hasPath = l => /[/?]./.test(String(l).replace(/^[a-z][a-z0-9+.-]*:\/\//i, ''));
+const blockEntry = l => hasPath(l) ? pageKey(l) : normalize(l);   // a site, or a single page
+
+// ---------- GitHub connection ----------
+const C = { owner: '', repo: '', branch: 'main', token: '', remember: false };
+(() => {
   const saved = JSON.parse(localStorage.getItem('wl-admin') || '{}');
   if (location.hostname.endsWith('.github.io')) {
-    $('owner').value = location.hostname.split('.')[0];
-    $('repo').value = location.pathname.split('/')[1] || '';
+    C.owner = location.hostname.split('.')[0];
+    C.repo = location.pathname.split('/')[1] || '';
   }
-  fields.forEach(f => { if (saved[f]) $(f).value = saved[f]; });
-  if (saved.token) { $('token').value = saved.token; $('remember').checked = true; }
-  if (!$('token').value) $('setup').open = true;
+  for (const f of ['owner', 'repo', 'branch']) if (saved[f]) C[f] = saved[f];
+  if (saved.token) { C.token = saved.token; C.remember = true; }
+})();
+function persist() {
+  const s = { owner: C.owner, repo: C.repo, branch: C.branch };
+  if (C.remember) s.token = C.token;
+  localStorage.setItem('wl-admin', JSON.stringify(s));
+}
+const branch = () => C.branch || 'main';
+const repoBase = () => `https://api.github.com/repos/${encodeURIComponent(C.owner)}/${encodeURIComponent(C.repo)}`;
+const contentsUrl = path => `${repoBase()}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
+const headers = () => ({ Authorization: `Bearer ${C.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' });
+function explain(status, what) {
+  if (status === 401) return 'GitHub rejected the token. Check it hasn\'t expired.';
+  if (status === 403) return 'The token can\'t write to this repo. It needs Contents: read and write.';
+  if (status === 409 || status === 422) return `${what} changed on GitHub since you loaded it (maybe an approved request or a new phone). Tap Undo to reload it, then redo your edit.`;
+  return `GitHub returned ${status}.`;
+}
+const b64decode = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\n/g, '')), c => c.charCodeAt(0)));
+const b64encode = s => { let bin = ''; new TextEncoder().encode(s).forEach(b => bin += String.fromCharCode(b)); return btoa(bin); };
+async function getRaw(path) {   // null if the file or folder doesn't exist
+  const res = await fetch(`${contentsUrl(path)}?ref=${encodeURIComponent(branch())}`, { headers: headers(), cache: 'no-store' });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(explain(res.status, 'It'));
+  return res.json();
+}
+async function getJson(path) {
+  const f = await getRaw(path);
+  return f ? { sha: f.sha, data: JSON.parse(b64decode(f.content)) } : null;
+}
+async function putJson(path, data, fileSha, message) {
+  const body = { message, content: b64encode(JSON.stringify(data, null, 2) + '\n'), branch: branch() };
+  if (fileSha) body.sha = fileSha;
+  const res = await fetch(contentsUrl(path), { method: 'PUT', headers: headers(), body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(explain(res.status, path.includes('devices') ? 'The phones list' : 'The list'));
+  return (await res.json()).content.sha;
+}
+async function deleteFile(path, fileSha, message) {
+  const res = await fetch(contentsUrl(path), { method: 'DELETE', headers: headers(), body: JSON.stringify({ message, sha: fileSha, branch: branch() }) });
+  if (!res.ok && res.status !== 404) throw new Error(explain(res.status, 'The list'));
+}
+async function moveFile(from, to, message) {   // keeps the content exactly
+  const f = await getRaw(from);
+  if (!f) return false;
+  const res = await fetch(contentsUrl(to), { method: 'PUT', headers: headers(), body: JSON.stringify({ message, content: f.content.replace(/\n/g, ''), branch: branch() }) });
+  if (!res.ok) throw new Error(explain(res.status, 'A list'));
+  await deleteFile(from, f.sha, message);
+  return true;
+}
+// Issues (requests): needs the token's Issues permission.
+async function apiGet(path) {
+  const res = await fetch(`${repoBase()}/${path}`, { headers: headers(), cache: 'no-store' });
+  if (res.status === 403 || res.status === 404) throw new Error('NO_ISSUES');
+  if (!res.ok) throw new Error(explain(res.status, 'It'));
+  return res.json();
+}
+async function reply(number, text) {
+  const res = await fetch(`${repoBase()}/issues/${number}/comments`, { method: 'POST', headers: headers(), body: JSON.stringify({ body: text }) });
+  if (res.status === 403 || res.status === 404) throw new Error('NO_ISSUES');
+  if (!res.ok) throw new Error(explain(res.status, 'The request'));
+}
+const NO_ISSUES_MSG = 'To answer requests here, your admin token needs one more permission: Issues: Read and write (GitHub → Settings → Developer settings → Fine-grained tokens → your token → Edit).';
+const listPathOf = name => name === 'public' ? 'docs/whitelist.json' : `docs/lists/${name}.json`;
 
-  function say(text, error = false) { $('msg').textContent = text; $('msg').className = error ? 'error' : ''; }
-  function persist() {
-    const s = {}; fields.forEach(f => s[f] = $(f).value.trim());
-    if ($('remember').checked) s.token = $('token').value.trim();
-    localStorage.setItem('wl-admin', JSON.stringify(s));
-  }
-  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-  const listPathOf = name => name === 'public' ? 'docs/whitelist.json' : `docs/lists/${name}.json`;
-  const branch = () => $('branch').value.trim() || 'main';
-  function contentsUrl(path) {
-    const v = f => encodeURIComponent($(f).value.trim());
-    return `https://api.github.com/repos/${v('owner')}/${v('repo')}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
-  }
-  function explain(status, what) {
-    if (status === 401) return 'GitHub rejected the token. Check it hasn\'t expired.';
-    if (status === 403) return 'The token can\'t write to this repo. It needs Contents: read and write.';
-    if (status === 409 || status === 422) return `${what} changed on GitHub since you loaded it (maybe an approved request or a new phone). Tap Load, then redo your edit.`;
-    return `GitHub returned ${status}.`;
-  }
-  async function getRaw(path) {   // null if the file or folder doesn't exist
-    const res = await fetch(`${contentsUrl(path)}?ref=${encodeURIComponent(branch())}`, { headers: headers(), cache: 'no-store' });
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error(explain(res.status, 'It'));
-    return res.json();
-  }
-  async function getJson(path) {
-    const f = await getRaw(path);
-    return f ? { sha: f.sha, data: JSON.parse(b64decode(f.content)) } : null;
-  }
-  async function putJson(path, data, fileSha, message) {
-    const body = { message, content: b64encode(JSON.stringify(data, null, 2) + '\n'), branch: branch() };
-    if (fileSha) body.sha = fileSha;
-    const res = await fetch(contentsUrl(path), { method: 'PUT', headers: headers(), body: JSON.stringify(body) });
-    if (!res.ok) throw new Error(explain(res.status, path.includes('devices') ? 'The phones list' : 'The list'));
-    return (await res.json()).content.sha;
-  }
-  async function deleteFile(path, fileSha, message) {
-    const res = await fetch(contentsUrl(path), { method: 'DELETE', headers: headers(),
-      body: JSON.stringify({ message, sha: fileSha, branch: branch() }) });
-    if (!res.ok && res.status !== 404) throw new Error(explain(res.status, 'The list'));
-  }
-  function headers() {
-    return { Authorization: `Bearer ${$('token').value.trim()}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
-  }
-  const b64decode = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\n/g, '')), c => c.charCodeAt(0)));
-  const b64encode = s => { let bin = ''; new TextEncoder().encode(s).forEach(b => bin += String.fromCharCode(b)); return btoa(bin); };
+// ---------- state ----------
+const S = {
+  connected: false,
+  lists: ['public'], current: 'public',
+  L: null, listSha: null, listDirty: false,       // the open list (editable model)
+  D: null, devicesSha: null, devDirty: false,      // devices.json
+  requests: null, newPhones: [], inboxError: null, answered: [],
+  tab: 'requests', sub: null, focusRequest: new URLSearchParams(location.search).get('request')
+};
 
-  function normalize(entry) {
-    let s = String(entry || '').trim().toLowerCase();
-    if (!s) return null;
-    s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//, '').replace(/^\*\./, '');
-    s = s.split('/')[0].split('?')[0].split(':')[0].replace(/\.$/, '');
-    return /^[a-z0-9.-]+$/.test(s) && s.includes('.') ? s : undefined;
-  }
-
-  // Same rules as the app: no scheme or #part, host without www./m./mobile., then path and query.
-  function pageKey(entry) {
-    let s = String(entry || '').trim();
-    if (!s) return null;
-    s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').split('#')[0];
-    let cut = s.search(/[/?]/); if (cut < 0) cut = s.length;
-    const host = s.slice(0, cut).toLowerCase().split(':')[0].replace(/\.$/, '').replace(/^(www|m|mobile)\./, '');
-    if (!/^[a-z0-9.-]+$/.test(host) || !host.includes('.')) return undefined;
-    let rest = s.slice(cut) || '/';
-    if (rest.startsWith('?')) rest = '/' + rest;
-    return host + rest;
-  }
-  // Does this page belong to the site?
-  function pageOnSite(key, domain, subdomains) {
-    const host = key.split('/')[0];
-    const d = domain.replace(/^(www|m|mobile)\./, '');
-    return host === d || (subdomains && host.endsWith('.' + d));
-  }
-
-  function addSite(site = { domain: '', name: '', url: '', home: true, subdomains: true }, focus = false) {
-    const node = $('siteTpl').content.firstElementChild.cloneNode(true);
-    node.querySelector('.domain').value = site.domain || '';
-    node.querySelector('.name').value = site.name || '';
-    node.querySelector('.url').value = site.url || '';
-    node.querySelector('.home').checked = site.home !== false;
-    node.querySelector('.subs').checked = site.subdomains !== false;
-    node.querySelector('.nomedia').checked = !!site.noMedia;
-    if (site.passThrough) {
-      node.dataset.pass = '1';
-      const note = el('div', 'auto', 'Added automatically: a link passes through this address on its way to an approved site.');
-      node.insertBefore(note, node.querySelector('.bottom'));
+// The open list, as an editable model. Unknown keys in the file are kept as they are.
+const KNOWN = ['sites', 'block', 'noMedia', 'temporary', 'homepage', 'refreshMinutes'];
+function toModel(data) {
+  const sites = (data.sites || []).map(s => ({ domain: s.domain || '', name: s.name || '', url: s.url || '',
+    home: s.home !== false, subdomains: s.subdomains !== false, pages: Array.isArray(s.pages) ? [...s.pages] : [],
+    passThrough: !!s.passThrough, noMedia: false }));
+  const domains = new Set(sites.map(s => normalize(s.domain)).filter(Boolean));
+  const nm = (data.noMedia || []).map(String);
+  sites.forEach(s => { s.noMedia = nm.includes(normalize(s.domain) || ''); });
+  const extra = {}; Object.keys(data).forEach(k => { if (!KNOWN.includes(k)) extra[k] = data[k]; });
+  return { sites, block: [...(data.block || [])], noMediaPages: nm.filter(e => !domains.has(e)),
+    temporary: Array.isArray(data.temporary) ? data.temporary.map(t => ({ ...t })) : [],
+    homepage: data.homepage || '', refreshMinutes: Number(data.refreshMinutes) || 5, extra };
+}
+// Back to the file format. Returns { data } or { error }.
+function fromModel(L) {
+  const sites = [], seen = new Set(), bad = [], mediaOff = [];
+  for (const s of L.sites) {
+    const domain = normalize(s.domain);
+    if (!domain) { bad.push(s.domain || '(empty)'); continue; }
+    if (seen.has(domain)) continue;
+    seen.add(domain);
+    const site = { domain, home: s.home };
+    if (!s.subdomains) site.subdomains = false;
+    if (s.name.trim()) site.name = s.name.trim();
+    let url = s.url.trim();
+    if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+    if (url) site.url = url;
+    const pages = [];
+    for (const p of s.pages) {
+      const k = pageKey(p);
+      if (!k) continue;
+      if (!pageOnSite(k, domain, s.subdomains)) return { error: `The page ${p} isn't on ${domain}.` };
+      pages.push(k);
     }
-    const pagesBox = node.querySelector('.pages');
-    pagesBox.value = (site.pages || []).join('\n');
-    const grow = () => { pagesBox.rows = Math.max(1, pagesBox.value.split('\n').length); };
-    pagesBox.oninput = grow; grow();
-    node.querySelector('.remove').onclick = () => node.remove();
-    $('sites').append(node);
-    if (focus) node.querySelector('.domain').focus();
+    if (pages.length) site.pages = [...new Set(pages)];
+    if (s.passThrough) site.passThrough = true;
+    if (s.noMedia) mediaOff.push(domain);
+    sites.push(site);
   }
+  const badBlock = [...L.block, ...L.noMediaPages].filter(l => !blockEntry(l));
+  if (bad.length || badBlock.length) return { error: `These don't look like website addresses: ${bad.concat(badBlock).join(', ')}` };
+  let homepage = L.homepage.trim();
+  if (homepage && !/^https?:\/\//i.test(homepage)) homepage = 'https://' + homepage;
+  const data = { ...L.extra, refreshMinutes: Math.max(1, Math.round(L.refreshMinutes) || 5), sites, block: [...new Set(L.block.map(blockEntry))] };
+  const noMedia = [...new Set([...mediaOff, ...L.noMediaPages.map(blockEntry)])];
+  if (noMedia.length) data.noMedia = noMedia;
+  const live = L.temporary.filter(t => tempEnd(t) > Date.now());
+  if (live.length) data.temporary = live;
+  if (homepage) data.homepage = homepage;
+  return { data };
+}
+const tempEnd = t => (Date.parse(t.from) || 0) + (t.mode === 'use' ? 7 * 1440 : Number(t.minutes) || 0) * 60000;
+function tempLeft(t) {
+  if (t.mode === 'use') return `${fmtMin(t.minutes)} of use, until ${new Date(tempEnd(t)).toLocaleDateString([], { day: 'numeric', month: 'short' })}`;
+  const m = Math.max(1, Math.round((tempEnd(t) - Date.now()) / 60000));
+  return m >= 90 ? `until ${new Date(tempEnd(t)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : `for ${fmtMin(m)} more`;
+}
+function phonesUsing(name) {
+  return Object.entries(S.D.devices).filter(([, d]) => (d.lists || []).includes(name)).map(([id, d]) => d.name || id);
+}
+function markList() { S.listDirty = true; renderSaveBar(); }
+function markDevices() { S.devDirty = true; renderSaveBar(); }
 
-  // Loads everything: the list names, the phones, and the list being edited.
-  async function load() {
-    persist();
-    say('Loading from GitHub.');
+// ---------- loading ----------
+async function loadAll() {
+  persist();
+  const folder = await getRaw('docs/lists');
+  S.lists = ['public', ...(Array.isArray(folder) ? folder.filter(f => f.type === 'file' && f.name.endsWith('.json')).map(f => f.name.slice(0, -5)).sort() : [])];
+  await loadDevices();
+  await openList(S.lists.includes(S.current) ? S.current : 'public');
+  S.connected = true;
+  loadInbox();   // in the background; the Requests tab fills in when it arrives
+}
+async function loadDevices() {
+  const d = await getJson('docs/devices.json');
+  S.D = d ? d.data : { default: ['public'], devices: {} };
+  if (!Array.isArray(S.D.default)) S.D.default = ['public'];
+  if (!S.D.devices) S.D.devices = {};
+  if (!S.D.archived) S.D.archived = {};
+  S.devicesSha = d ? d.sha : null;
+  S.devDirty = false;
+}
+async function openList(name) {
+  const f = await getJson(listPathOf(name));
+  S.current = name;
+  S.L = toModel(f ? f.data : { sites: [], block: [] });
+  S.listSha = f ? f.sha : null;
+  S.listDirty = false;
+}
+
+// ---------- saving ----------
+async function saveAll() {
+  $('saveBtn').disabled = true;
+  try {
+    if (S.listDirty) {
+      const out = fromModel(S.L);
+      if (out.error) { say(out.error, true); return; }
+      S.listSha = await putJson(listPathOf(S.current), out.data, S.listSha, `Update ${S.current} list from admin page`);
+      S.L = toModel(out.data);
+      S.listDirty = false;
+    }
+    if (S.devDirty) {
+      S.devicesSha = await putJson('docs/devices.json', S.D, S.devicesSha, 'Update phones and settings');
+      S.devDirty = false;
+    }
+    say('Saved. Phones pick up the change within a few minutes.');
+    render();
+  } catch (e) { say(e.message, true); }
+  finally { $('saveBtn').disabled = false; renderSaveBar(); }
+}
+async function undoAll() {
+  if (!confirm('Undo all unsaved changes?')) return;
+  try {
+    if (S.listDirty) await openList(S.current);
+    if (S.devDirty) await loadDevices();
+    say('Changes undone.');
+    render();
+  } catch (e) { say(e.message, true); }
+}
+function renderSaveBar() {
+  const n = (S.listDirty ? 1 : 0) + (S.devDirty ? 1 : 0);
+  $('savebar').hidden = !n || !S.connected;
+  document.body.classList.toggle('unsaved', !!n && S.connected);
+  $('saveText').textContent = S.listDirty && S.devDirty ? `Changes to ${listLabel(S.current)} and phones not saved yet`
+    : S.listDirty ? `Changes to ${listLabel(S.current)} not saved yet` : 'Changes to phones not saved yet';
+}
+$('saveBtn').onclick = saveAll;
+$('undoBtn').onclick = undoAll;
+window.addEventListener('beforeunload', e => { if (S.listDirty || S.devDirty) { e.preventDefault(); e.returnValue = ''; } });
+
+// ---------- lists ----------
+async function switchList(name) {
+  if (name === S.current) return;
+  if (S.listDirty && !confirm(`Discard unsaved changes to ${listLabel(S.current)}?`)) return;
+  try { await openList(name); render(); } catch (e) { say(e.message, true); }
+}
+function newList() {
+  if (S.listDirty && !confirm(`Discard unsaved changes to ${listLabel(S.current)}?`)) return;
+  const raw = prompt('Name for the new list, e.g. year-5 or weekend', '');
+  if (raw === null) return;
+  const name = raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30);
+  if (!name) return say('Use letters and numbers for the list name.', true);
+  if (S.lists.includes(name)) return say(`There's already a list called ${name}.`, true);
+  S.lists.push(name);
+  S.current = name; S.listSha = null;
+  S.L = toModel({ sites: [], block: [] });
+  markList();
+  render();
+  say(`New list "${listLabel(name)}". Add sites and tap Save, then give it to phones under Phones.`);
+}
+async function deleteList() {
+  const name = S.current;
+  if (name === 'public') return;
+  const users = phonesUsing(name);
+  if (!confirm(`Delete the ${listLabel(name)} list?` + (users.length ? ` ${users.join(', ')} will stop using it.` : ''))) return;
+  try {
+    if (S.listSha) await deleteFile(listPathOf(name), S.listSha, `Delete list ${name}`);
+    Object.values(S.D.devices).forEach(d => { d.lists = (d.lists || []).filter(l => l !== name); if (d.requestsTo === name) delete d.requestsTo; });
+    S.D.default = S.D.default.filter(l => l !== name);
+    S.devicesSha = await putJson('docs/devices.json', S.D, S.devicesSha, `Remove list ${name} from phones`);
+    S.devDirty = false;
+    S.lists = S.lists.filter(l => l !== name);
+    await openList('public');
+    S.sub = null; render();
+    say(`Deleted the ${listLabel(name)} list.`);
+  } catch (e) { say(e.message, true); }
+}
+
+// ---------- scroll wheels (hours 0-24, minutes 0-55 in steps of 5) ----------
+// makePicker(host, minutes, onChange) -> { get(), set(min), sync() }. Wheels only scroll while visible.
+const ROW = 36;
+function makePicker(host, startMinutes, onChange) {
+  host.innerHTML = '<div class="wheels"><div class="wheel-band"></div>' +
+    '<div class="wheel-col"><div class="wheel" tabindex="0" role="listbox" aria-label="Hours"></div><span>hours</span></div>' +
+    '<div class="wheel-col"><div class="wheel" tabindex="0" role="listbox" aria-label="Minutes"></div><span>min</span></div></div>';
+  const [hEl, mEl] = host.querySelectorAll('.wheel');
+  const cols = [{ el: hEl, values: Array.from({ length: 25 }, (_, i) => i), value: 0 },
+                { el: mEl, values: Array.from({ length: 12 }, (_, i) => i * 5), value: 0 }];
+  const total = () => cols[0].value * 60 + cols[1].value;
+  const changed = () => onChange && onChange(total());
+  const mark = (c, idx) => c.el.querySelectorAll('[data-v]').forEach((d, i) => { d.classList.toggle('sel', i === idx); d.setAttribute('aria-selected', i === idx); });
+  function setCol(c, v, smooth) {
+    let idx = c.values.indexOf(v);
+    if (idx < 0) idx = c.values.reduce((b, x, i) => Math.abs(x - v) < Math.abs(c.values[b] - v) ? i : b, 0);
+    c.value = c.values[idx];
+    c.el.scrollTo({ top: idx * ROW, behavior: smooth ? 'smooth' : 'auto' });
+    mark(c, idx);
+  }
+  cols.forEach(c => {
+    c.el.innerHTML = '<div class="pad"></div>' + c.values.map(v => `<div data-v="${v}" role="option">${String(v).padStart(2, '0')}</div>`).join('') + '<div class="pad"></div>';
+    let settle;
+    c.el.addEventListener('scroll', () => {
+      clearTimeout(settle);
+      settle = setTimeout(() => {
+        const idx = Math.max(0, Math.min(c.values.length - 1, Math.round(c.el.scrollTop / ROW)));
+        const moved = c.values[idx] !== c.value;
+        c.value = c.values[idx]; mark(c, idx);
+        if (moved) changed();
+      }, 90);
+    });
+    c.el.addEventListener('click', e => { const d = e.target.closest('[data-v]'); if (d) { setCol(c, Number(d.dataset.v), true); changed(); } });
+    c.el.addEventListener('keydown', e => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      const idx = c.values.indexOf(c.value) + (e.key === 'ArrowDown' ? 1 : -1);
+      setCol(c, c.values[Math.max(0, Math.min(c.values.length - 1, idx))], true); changed();
+    });
+  });
+  const picker = {
+    get: total,
+    set(min, smooth) {
+      min = Math.max(0, Math.min(24 * 60 + 55, Math.round(min)));
+      setCol(cols[0], Math.floor(min / 60), smooth);
+      setCol(cols[1], Math.min(55, Math.round((min % 60) / 5) * 5), smooth);
+      changed();
+    },
+    sync() { setCol(cols[0], cols[0].value, false); setCol(cols[1], cols[1].value, false); }
+  };
+  picker.set(startMinutes);
+  requestAnimationFrame(() => picker.sync());
+  return picker;
+}
+
+// ---------- spreadsheets ----------
+function parseDelimited(text) {
+  const first = text.split('\n')[0];
+  const delim = text.includes('\t') ? '\t' : (first.split(';').length > first.split(',').length ? ';' : ',');
+  const rows = []; let row = [], cell = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+      else if (ch === '"') quoted = false;
+      else cell += ch;
+    } else if (ch === '"' && cell === '') quoted = true;
+    else if (ch === delim) { row.push(cell); cell = ''; }
+    else if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+    else if (ch !== '\r') cell += ch;
+  }
+  row.push(cell); rows.push(row);
+  return rows;
+}
+const NO = ['no', 'n', 'false', '0', 'off', 'hidden', 'hide', 'nee', 'nein', 'non'];
+function rowsToSites(rows) {
+  rows = rows.map(r => r.map(c => String(c ?? '').trim())).filter(r => r.some(Boolean));
+  if (!rows.length) return { sites: [], bad: [] };
+  let col = { domain: 0, name: 1, home: 2, url: 3, subs: 4, pages: 5, media: 6 };
+  const head = rows[0].map(x => x.toLowerCase());
+  const find = (words, skip = []) => {
+    for (const w of words) { const i = head.findIndex((x, n) => x.includes(w) && !skip.includes(n)); if (i >= 0) return i; }
+    return -1;
+  };
+  const subCols = head.map((x, n) => x.includes('sub') || /photo|video|media/.test(x) ? n : -1).filter(n => n >= 0);
+  const d = find(['domain', 'website', 'address', 'web', 'url', 'site'], subCols);
+  if (d >= 0 && !normalize(rows[0][d])) {               // first row is a header
+    const name = find(['name', 'title', 'label'], [d]);
+    const subs = find(['subdomain', 'sub'], [d, name]);
+    const media = find(['photo', 'video', 'media'], [d, name, subs]);
+    const pages = find(['pages', 'page', 'only'], [d, name, subs, media]);
+    const home = find(['home', 'tile', 'show'], [d, name, subs, pages, media]);
+    const url = find(['opens', 'start', 'link', 'url'], [d, name, home, subs, pages, media]);
+    col = { domain: d, name, home, url, subs, pages, media };
+    rows = rows.slice(1);
+  }
+  const sites = [], bad = [];
+  rows.forEach(r => {
+    const raw = r[col.domain] || '';
+    const domain = normalize(raw);
+    if (!domain) { if (raw) bad.push(raw); return; }
+    const homeCell = col.home >= 0 ? (r[col.home] || '').toLowerCase() : '';
+    let url = col.url >= 0 ? (r[col.url] || '') : '';
+    if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+    if (!url && /^(https?:\/\/)?[^/\s]+\/[^\s]+/i.test(raw)) url = /^https?:\/\//i.test(raw) ? raw : 'https://' + raw;
+    const subsCell = col.subs >= 0 ? (r[col.subs] || '').toLowerCase() : '';
+    const pages = col.pages >= 0 ? (r[col.pages] || '').split(/\s+/).filter(Boolean) : [];
+    const mediaCell = col.media >= 0 ? (r[col.media] || '').toLowerCase() : '';
+    sites.push({ domain, name: col.name >= 0 ? (r[col.name] || '') : '', url, home: !NO.includes(homeCell),
+      subdomains: !NO.includes(subsCell), pages, noMedia: ['yes', 'y', 'true', '1', 'x', 'on'].includes(mediaCell), passThrough: false });
+  });
+  return { sites, bad };
+}
+function loadSheetJs() {
+  if (window.XLSX) return Promise.resolve();
+  return new Promise((ok, fail) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    sc.onload = ok; sc.onerror = () => fail(new Error('Couldn\'t load the Excel reader. Save the sheet as CSV instead.'));
+    document.head.append(sc);
+  });
+}
+function exportCsv() {
+  const q = v => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  const lines = ['domain,name,home page,tile opens,subdomains,only these pages,no photos or videos'];
+  S.L.sites.forEach(s => {
+    if (!s.domain.trim()) return;
+    lines.push([s.domain.trim(), s.name.trim(), s.home ? 'yes' : 'no', s.url.trim(), s.subdomains ? 'yes' : 'no', s.pages.join(' '), s.noMedia ? 'yes' : 'no'].map(q).join(','));
+  });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\r\n') + '\r\n'], { type: 'text/csv' }));
+  a.download = `${S.current}-sites.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ============================================================================================
+// Navigation
+// ============================================================================================
+let lastScreenKey = '';
+function go(tab) { S.tab = tab; S.sub = null; render(); }
+function open(sub) { S.sub = sub; render(); }
+function back() { S.sub = null; render(); }
+const screenTitle = (title, sub) => h('div', { class: 'title' }, h('h1', null, title), sub ? h('p', null, sub) : null);
+const backLink = (label, onclick = back) => h('button', { type: 'button', class: 'back', onclick }, icon('back', 20, 2), label);
+function render() {
+  const view = $('view');
+  let node;
+  if (!S.connected || (S.sub && S.sub.name === 'connect')) node = connectScreen();
+  else if (S.sub) node = ({ site: siteScreen, temp: tempScreen, block: blockScreen, nomedia: noMediaScreen, import: importScreen,
+    listsettings: listSettingsScreen, phone: phoneScreen, archived: archivedScreen, neverblock: neverBlockScreen })[S.sub.name]();
+  else node = ({ requests: requestsScreen, sites: sitesScreen, phones: phonesScreen, settings: settingsScreen })[S.tab]();
+  view.replaceChildren(node);
+  const key = S.connected ? (S.sub ? 'sub:' + S.sub.name : 'tab:' + S.tab) : 'connect';
+  if (key !== lastScreenKey) { window.scrollTo(0, 0); lastScreenKey = key; }
+  const inSub = !S.connected || !!S.sub;
+  $('app').classList.toggle('sub', inSub);
+  document.querySelector('.top').hidden = !!S.sub && S.connected;
+  $('tabs').hidden = inSub;
+  $('connBtn').hidden = !S.connected;
+  renderTabs(); renderSaveBar();
+  view.querySelectorAll('[data-sync]').forEach(n => n._picker && n._picker.sync());
+}
+function renderTabs() {
+  const waiting = S.requests ? S.requests.length + S.newPhones.length : 0;
+  const tabs = [['requests', 'Requests', 'inbox', waiting], ['sites', 'Sites', 'globe', 0], ['phones', 'Phones', 'phone', 0], ['settings', 'Settings', 'sliders', 0]];
+  $('tabs').replaceChildren(...tabs.map(([id, label, ic, badge]) => h('button', { type: 'button', 'aria-current': S.tab === id ? 'page' : null, onclick: () => go(id) },
+    h('span', { class: 'pill' }, icon(ic, 22), badge ? h('span', { class: 'badge', 'aria-label': `${badge} waiting` }, badge) : null), label)));
+}
+$('markIcon').append(icon('check', 16, 2.4));
+$('connBtn').onclick = () => go('settings');
+
+// ============================================================================================
+// Connect
+// ============================================================================================
+function connectScreen() {
+  const token = h('input', { class: 'inp', id: 'cToken', type: 'password', autocomplete: 'off', value: C.token, placeholder: 'github_pat_…' });
+  const owner = h('input', { class: 'inp', id: 'cOwner', value: C.owner, autocapitalize: 'off', spellcheck: 'false' });
+  const repo = h('input', { class: 'inp', id: 'cRepo', value: C.repo, autocapitalize: 'off', spellcheck: 'false' });
+  const br = h('input', { class: 'inp', id: 'cBranch', value: C.branch || 'main', autocapitalize: 'off', spellcheck: 'false' });
+  const remember = h('input', { type: 'checkbox', id: 'cRemember', checked: C.remember || !C.token });
+  const go1 = h('button', { type: 'button', class: 'btn p wide', id: 'cConnect' }, 'Connect');
+  go1.onclick = async () => {
+    C.token = token.value.trim(); C.owner = owner.value.trim(); C.repo = repo.value.trim(); C.branch = br.value.trim() || 'main'; C.remember = remember.checked;
+    if (!C.token) return say('Paste your admin token first.', true);
+    if (!C.owner || !C.repo) return say('Fill in the owner and repository under Repository.', true);
+    go1.disabled = true; go1.textContent = 'Connecting…';
+    try { await loadAll(); S.sub = null; render(); say(`Connected to ${C.owner}/${C.repo}.`); }
+    catch (e) { S.connected = false; say(e.message, true); go1.disabled = false; go1.textContent = 'Connect'; }
+  };
+  return h('main', { class: 'stack' },
+    S.connected ? backLink('Settings', () => { S.sub = null; S.tab = 'settings'; render(); }) : null,
+    screenTitle('Connect to GitHub', 'Your admin page uses a token to read and change your lists.'),
+    h('div', { class: 'field' }, h('label', { for: 'cToken' }, 'Admin token'), token,
+      h('p', { class: 'hint', style: 'margin:0' }, 'A fine-grained token for this repository with Contents and Issues set to Read and write.')),
+    h('label', { class: 'check', for: 'cRemember' }, remember, 'Remember on this device'),
+    h('details', { class: 'more', open: !C.owner || !C.repo }, h('summary', null, `Repository: ${C.owner || '?'}/${C.repo || '?'}`),
+      h('div', { class: 'stack', style: 'margin-top:8px' },
+        h('div', { class: 'field' }, h('label', { for: 'cOwner' }, 'Owner (your GitHub username)'), owner),
+        h('div', { class: 'field' }, h('label', { for: 'cRepo' }, 'Repository'), repo),
+        h('div', { class: 'field' }, h('label', { for: 'cBranch' }, 'Branch'), br))),
+    go1);
+}
+
+// ============================================================================================
+// Requests
+// ============================================================================================
+function marker(body) {
+  const m = (body || '').match(/<!-- whitelist-request\s*([\s\S]*?)-->/);
+  try { return m ? JSON.parse(m[1]) : null; } catch { return null; }
+}
+const field = (body, name) => ((body || '').match(new RegExp('\\*\\*' + name + ':\\*\\*\\s*(.+)')) || [])[1] || '';
+async function loadInbox() {
+  try {
+    const reqs = await apiGet('issues?labels=' + encodeURIComponent('site request') + '&state=open&per_page=50');
+    const phones = await apiGet('issues?labels=' + encodeURIComponent('new phone') + '&state=open&per_page=50');
+    S.requests = reqs.filter(i => !i.pull_request && marker(i.body));
+    S.newPhones = phones.filter(i => !i.pull_request && (marker(i.body) || {}).type === 'register');
+    S.inboxError = null;
+  } catch (e) {
+    S.requests = []; S.newPhones = [];
+    S.inboxError = e.message === 'NO_ISSUES' ? NO_ISSUES_MSG : e.message;
+  }
+  if (S.focusRequest && !S.sub) S.tab = 'requests';
+  render();
+  if (S.focusRequest) {
+    const card = document.querySelector(`[data-n="${CSS.escape(S.focusRequest)}"]`);
+    if (card) { card.classList.add('focus'); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    else say('That request has already been answered.');
+    S.focusRequest = null;
+  }
+}
+function describe(req) {
+  const site = req.domain || '?';
+  const page = req.scope === 'page' && req.url ? pageKey(req.url) : null;
+  if (req.action === 'block') {
+    if (req.media === 'off') return { title: page ? `Turn off photos on one page of ${site}` : `Turn off photos on ${site}`, page };
+    return { title: page ? `Block one page on ${site}` : `Block ${site}`, page };
+  }
+  if (req.media === 'on') return { title: page ? `Photos and videos on one page of ${site}` : `Photos and videos on ${site}`, page };
+  return { title: page ? `Open one page on ${site}` : `Open ${site}`, page };
+}
+function requestsScreen() {
+  const reqs = S.requests;
+  const waiting = reqs ? reqs.length : 0;
+  const sub = reqs === null ? 'Checking for requests…' : waiting ? `${plural(waiting, 'request')} waiting for you` : 'Nothing waiting for you';
+  const kids = [screenTitle('Requests', sub)];
+  if (S.inboxError) kids.push(h('div', { class: 'card' }, h('p', { class: 'warn' }, S.inboxError)));
+  if (reqs && reqs.length) kids.push(...reqs.map(requestCard));
+  else if (reqs && !S.inboxError) kids.push(h('div', { class: 'empty' }, h('b', null, 'All caught up'), 'New requests from phones appear here.'));
+  if (S.newPhones.length) {
+    kids.push(h('h2', { class: 'sec' }, S.newPhones.length === 1 ? 'New phone' : 'New phones'));
+    kids.push(...S.newPhones.map(newPhoneCard));
+  }
+  kids.push(h('div', { class: 'acts', style: 'justify-content:center' },
+    h('button', { type: 'button', class: 'btn s sm', id: 'refreshInbox', onclick: async e => { e.target.disabled = true; await loadInbox(); } }, 'Check for new requests')));
+  if (S.answered.length) {
+    kids.push(h('h2', { class: 'sec' }, 'Answered just now'));
+    kids.push(h('div', { class: 'group' }, S.answered.map(a => h('div', { class: 'row' }, h('span', { class: 'ic', style: 'color:var(--accent)' }, icon('check', 20, 2.2)),
+      h('span', { class: 'grow' }, h('span', { class: 'name' }, a.title), h('span', { class: 'dom' }, a.label))))));
+  }
+  return h('main', { class: 'stack' }, kids);
+}
+function requestCard(issue) {
+  const req = marker(issue.body);
+  const { title, page } = describe(req);
+  const phone = field(issue.body, 'Phone').replace(/`/g, '').replace(/\s*\([A-Z0-9-]+\)\s*$/, '') || 'A phone';
+  const note = field(issue.body, 'Note');
+  const asked = Number(req.minutes) || 0;
+  const allow = req.action !== 'block';
+  const hops = Array.isArray(req.hops) ? req.hops : [];
+  const card = h('article', { class: 'card', 'data-n': issue.number });
+  const everyone = h('input', { type: 'checkbox', class: 'everyone' });
+  const actions = h('div', { class: 'acts' });
+  const panels = h('div');
+  const send = async (text, label) => {
+    actions.querySelectorAll('button').forEach(b => b.disabled = true);
     try {
-      const folder = await getRaw('docs/lists');
-      lists = ['public', ...(Array.isArray(folder) ? folder.filter(f => f.type === 'file' && f.name.endsWith('.json')).map(f => f.name.slice(0, -5)).sort() : [])];
-      const d = await getJson('docs/devices.json');
-      devices = d ? d.data : { default: ['public'], devices: {} };
-      if (!Array.isArray(devices.default)) devices.default = ['public'];
-      if (!devices.devices) devices.devices = {};
-      if (!devices.archived) devices.archived = {};
-      devicesSha = d ? d.sha : null;
-      await openList(lists.includes(current) ? current : 'public');
-      renderPhones();
-      $('editor').hidden = false;
-      $('phonesSec').hidden = false;
-      $('setup').open = false;
-      await loadInbox();
-    } catch (e) { say(e.message, true); }
-  }
-
-  // ---------- requests inbox ----------
-  // Open requests from phones, answered with a tap. Each button posts the same reply you could type on
-  // GitHub ("approve", "approve for 1h30m use", "deny too distracting"), so the phone is told the answer.
-  // Needs the admin token to have Issues: Read and write.
-  const repoApi = path => `https://api.github.com/repos/${encodeURIComponent($('owner').value.trim())}/${encodeURIComponent($('repo').value.trim())}/${path}`;
-  async function apiGet(path) {
-    const res = await fetch(repoApi(path), { headers: headers(), cache: 'no-store' });
-    if (res.status === 403 || res.status === 404) throw new Error('NO_ISSUES');
-    if (!res.ok) throw new Error(explain(res.status, 'It'));
-    return res.json();
-  }
-  async function reply(number, text) {
-    const res = await fetch(repoApi(`issues/${number}/comments`), { method: 'POST', headers: headers(), body: JSON.stringify({ body: text }) });
-    if (res.status === 403 || res.status === 404) throw new Error('NO_ISSUES');
-    if (!res.ok) throw new Error(explain(res.status, 'The request'));
-  }
-  const NO_ISSUES_MSG = 'To answer requests here, your admin token needs one more permission: Issues: Read and write ' +
-    '(GitHub → Settings → Developer settings → Fine-grained tokens → your token → Edit). See README, section 6.';
-  function marker(body) {
-    const m = (body || '').match(/<!-- whitelist-request\s*([\s\S]*?)-->/);
-    try { return m ? JSON.parse(m[1]) : null; } catch { return null; }
-  }
-  const field = (body, name) => ((body || '').match(new RegExp('\\*\\*' + name + ':\\*\\*\\s*(.+)')) || [])[1] || '';
-  const ago = iso => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
-    return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
-
-  async function loadInbox() {
-    $('inboxSec').hidden = false;
-    let requests, phones;
-    try {
-      requests = await apiGet('issues?labels=' + encodeURIComponent('site request') + '&state=open&per_page=50');
-      phones = await apiGet('issues?labels=' + encodeURIComponent('new phone') + '&state=open&per_page=50');
+      await reply(issue.number, text + (everyone.checked ? ' public' : ''));
+      S.requests = S.requests.filter(i => i.number !== issue.number);
+      S.answered.unshift({ title, label: `${label}${everyone.checked ? ', for every phone' : ''}` });
+      render();
+      say(`${label}. ${phone} will be told in a few minutes.`);
     } catch (e) {
-      $('inbox').innerHTML = '';
-      const p = document.createElement('p'); p.className = 'hint';
-      p.textContent = e.message === 'NO_ISSUES' ? NO_ISSUES_MSG : e.message;
-      $('inbox').append(p); $('newPhonesBox').hidden = true;
-      return;
+      actions.querySelectorAll('button').forEach(b => b.disabled = false);
+      say(e.message === 'NO_ISSUES' ? NO_ISSUES_MSG : e.message, true);
     }
-    renderRequests(requests.filter(i => !i.pull_request && marker(i.body)));
-    renderNewPhones(phones.filter(i => !i.pull_request && marker(i.body) && marker(i.body).type === 'register'));
-    const want = params.get('request');
-    if (want) {
-      const card = document.querySelector(`.req[data-n="${CSS.escape(want)}"]`);
-      if (card) { card.classList.add('focus'); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-      else say('That request has already been answered.');
-    }
-  }
-
-  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
-  function button(text, cls, onclick) { const b = el('button', cls, text); b.type = 'button'; b.onclick = onclick; return b; }
-
-  function renderRequests(items) {
-    const box = $('inbox');
-    box.innerHTML = '';
-    if (!items.length) { box.append(el('p', 'hint', 'No requests waiting.')); return; }
-    items.forEach(issue => box.append(requestCard(issue)));
-  }
-
-  function requestCard(issue) {
-    const req = marker(issue.body);
-    const card = el('div', 'req'); card.dataset.n = issue.number;
-    const allow = req.action !== 'block';
-    card.append(el('div', 'what', issue.title));
-    const phone = field(issue.body, 'Phone').replace(/`/g, '');
-    card.append(el('div', 'meta', [phone, ago(issue.created_at)].filter(Boolean).join(' · ')));
-    const note = field(issue.body, 'Note');
-    if (note) card.append(el('div', 'note', `“${note}”`));
-    if (req.unverified) card.append(el('div', 'note', '⚠️ The phone couldn\'t find this site when asking. It may be a typo: check it before approving.'));
-    const hops = Array.isArray(req.hops) ? req.hops.length : 0;
-    if (hops) card.append(el('div', 'meta', `Passes through ${hops} other address${hops === 1 ? '' : 'es'} on the way (allowed too when you approve).`));
-
-    // "Change it for everyone": the public list instead of the phone's own.
-    const everyone = el('label', 'check');
-    const everyoneBox = el('input'); everyoneBox.type = 'checkbox';
-    everyone.append(everyoneBox, ' Change it for everyone (public list)');
-    everyone.style.fontSize = '.9rem';
-
-    const status = el('div', 'done'); status.hidden = true;
-    const actions = el('div', 'actions');
-    const send = async (text, label) => {
-      actions.querySelectorAll('button').forEach(b => b.disabled = true);
-      try {
-        await reply(issue.number, text + (everyoneBox.checked ? ' public' : ''));
-        [...card.children].forEach(c => { if (c !== card.firstChild) c.remove(); });
-        status.hidden = false; status.textContent = `✓ ${label}. The phone will be told in a few minutes.`;
-        card.append(status);
-      } catch (e) {
-        actions.querySelectorAll('button').forEach(b => b.disabled = false);
-        say(e.message === 'NO_ISSUES' ? NO_ISSUES_MSG : e.message, true);
-      }
+  };
+  // "For a while": the hour and minute wheels.
+  let whilePanel = null;
+  const openWhile = () => {
+    if (whilePanel) { whilePanel.hidden = !whilePanel.hidden; if (!whilePanel.hidden) whilePanel._picker.sync(); return; }
+    const label = h('div', { class: 'flabel' });
+    const host = h('div');
+    const use = h('input', { type: 'checkbox', class: 'use' });
+    const goBtn = h('button', { type: 'button', class: 'btn p grow approveFor' });
+    const setLabels = m => { label.textContent = `How long: ${fmtMin(m)}`; goBtn.textContent = `Approve for ${fmtMin(m)}`; goBtn.disabled = !m; };
+    whilePanel = h('div', { class: 'panel', 'data-sync': '' }, label, host,
+      h('label', { class: 'check' }, use, 'Only count time while it\'s open on the phone'),
+      h('div', { class: 'acts' }, goBtn));
+    panels.append(whilePanel);
+    const picker = makePicker(host, asked || 30, setLabels);
+    whilePanel._picker = picker;
+    goBtn.onclick = () => {
+      const m = picker.get(); if (!m) return;
+      send(`approve for ${Math.floor(m / 60) ? Math.floor(m / 60) + 'h' : ''}${m % 60 ? m % 60 + 'm' : ''}${use.checked ? ' use' : ''}`,
+        `Approved for ${fmtMin(m)}${use.checked ? ' of use' : ''}`);
     };
-    const asked = Number(req.minutes) || 0;
-    actions.append(button(asked ? `Approve (${fmtMin(asked)}, as asked)` : 'Approve', '',
-      () => send('approve', asked ? `Approved for ${fmtMin(asked)} only` : 'Approved')));
-
-    // For a while: the same hour and minute wheels, and how to count the time.
-    let whilePanel = null;
-    if (allow) {
-      actions.append(button('For a while', 'secondary', () => {
-        if (!whilePanel) {
-          whilePanel = el('div', 'panel');
-          const host = el('div');
-          const label = el('div', null); label.style.fontWeight = '600';
-          const go = button('', '', () => send(`approve for ${Math.floor(picker.get() / 60) ? Math.floor(picker.get() / 60) + 'h' : ''}` +
-            `${picker.get() % 60 ? picker.get() % 60 + 'm' : ''}${useBox.checked ? ' use' : ''}`, `Approved for ${fmtMin(picker.get())}`));
-          const setLabels = min => { label.textContent = `How long: ${fmtMin(min)}`; go.textContent = `Approve for ${fmtMin(min)}`; go.disabled = !min; };
-          const picker = makePicker(host, asked || 30, setLabels);
-          const use = el('label', 'check two');
-          const useBox = el('input'); useBox.type = 'checkbox';
-          const useText = el('span', null, 'Only count time while it\'s open on the phone');
-          useText.append(el('span', 'hint', 'To use within 7 days. Otherwise the time starts now.'));
-          use.append(useBox, useText);
-          const row = el('div', 'actions'); row.append(go);
-          whilePanel.append(label, host, use, row);
-          card.insertBefore(whilePanel, status);
-          picker.sync(); setLabels(picker.get());
-        } else {
-          whilePanel.hidden = !whilePanel.hidden;
-        }
-      }));
-    }
-
-    // Deny, with an optional reason for the phone.
-    let denyPanel = null;
-    actions.append(button('Deny', 'deny', () => {
-      if (!denyPanel) {
-        denyPanel = el('div', 'panel');
-        const reason = el('input'); reason.type = 'text'; reason.placeholder = 'Reason for them (optional), e.g. too distracting in class';
-        const row = el('div', 'actions');
-        row.append(button('Deny', 'deny', () => send(('deny ' + reason.value.trim()).trim(), 'Denied')));
-        denyPanel.append(el('label', null, 'Why not?'), reason, row);
-        card.insertBefore(denyPanel, status);
-        reason.focus();
-      } else {
-        denyPanel.hidden = !denyPanel.hidden;
-      }
-    }));
-    card.append(actions, everyone, status);
-    return card;
+    picker.sync();
+  };
+  // "Deny", with an optional reason shown on the phone.
+  let denyPanel = null;
+  const openDeny = () => {
+    if (denyPanel) { denyPanel.hidden = !denyPanel.hidden; return; }
+    const reason = h('input', { class: 'inp reason', type: 'text', placeholder: 'e.g. too distracting in class', 'aria-label': 'Reason' });
+    denyPanel = h('div', { class: 'panel' }, h('div', { class: 'flabel' }, 'Why not? (optional, shown on their phone)'), reason,
+      h('div', { class: 'acts' }, h('button', { type: 'button', class: 'btn dline grow denySend', onclick: () => send(('deny ' + reason.value.trim()).trim(), 'Denied') }, 'Deny')));
+    panels.append(denyPanel);
+    reason.focus();
+  };
+  if (!allow) {
+    actions.append(h('button', { type: 'button', class: 'btn p grow approve', onclick: () => send('approve', req.media === 'off' ? 'Photos turned off' : 'Blocked') }, req.media === 'off' ? 'Turn them off' : 'Block it'));
+  } else {
+    actions.append(h('button', { type: 'button', class: 'btn p grow approve', onclick: () => send('approve', asked ? `Approved for ${fmtMin(asked)}` : 'Approved') },
+      asked ? `Approve for ${fmtMin(asked)}` : 'Approve'));
+    actions.append(h('button', { type: 'button', class: 'btn s while', onclick: openWhile }, asked ? 'Other time' : 'For a while'));
   }
-
-  function renderNewPhones(items) {
-    const box = $('newPhones');
-    box.innerHTML = '';
-    $('newPhonesBox').hidden = !items.length;
-    items.forEach(issue => {
-      const r = marker(issue.body);
-      const card = el('div', 'req');
-      card.append(el('div', 'what', `${r.model || 'Phone'} (${r.id})`), el('div', 'meta', `Registered ${ago(issue.created_at)}`));
-      const row = el('div', 'listbar');
-      const nick = el('input'); nick.type = 'text'; nick.placeholder = 'Name, e.g. Emma'; nick.style.maxWidth = '14rem';
-      row.append(nick, button('Save name', '', async () => {
-        const n = nick.value.trim();
-        if (!n) return say('Type a name first.', true);
-        try {
-          await reply(issue.number, `name ${n}`);
-          card.innerHTML = ''; card.append(el('div', 'done', `✓ Named ${n}. It shows under Phones in a minute (tap Load to refresh).`));
-        } catch (e) { say(e.message === 'NO_ISSUES' ? NO_ISSUES_MSG : e.message, true); }
-      }));
-      card.append(row);
-      box.append(card);
-    });
-  }
-
-  // ---------- temporary access ----------
-  const params = new URLSearchParams(location.search); // ?request=N when opened from a request's link
-  let temps = [];   // the open list's "temporary" entries
-  const fmtMin = m => [Math.floor(m / 60) && `${Math.floor(m / 60)} h`, m % 60 && `${m % 60} min`].filter(Boolean).join(' ') || '0 min';
-  function tempEnd(t) { return (Date.parse(t.from) || 0) + (t.mode === 'use' ? 7 * 1440 : t.minutes) * 60000; }
-  function renderTemps() {
-    // At the top of Sites: what's only open for a while, so it isn't mistaken for the list itself.
-    const live = temps.filter(t => tempEnd(t) > Date.now());
-    const sum = $('tempSummary');
-    sum.innerHTML = '';
-    live.forEach(t => {
-      const left = t.mode === 'use' ? `${fmtMin(t.minutes)} of use` : `until ${new Date(tempEnd(t)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-      const n = el('div', 'tempnote');
-      n.textContent = `⏱ ${t.entry}: ${t.what === 'media' ? 'photos and videos on' : 'open'} for a while only (${left}). `;
-      const a = el('a', null, 'See Temporary access'); a.href = '#temps';
-      n.append(a);
-      sum.append(n);
-    });
-    const box = $('temps');
-    box.innerHTML = '';
-    if (!temps.length) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'None.'; box.append(p); return; }
-    temps.forEach((t, i) => {
-      const row = document.createElement('div');
-      const end = tempEnd(t), ended = end <= Date.now();
-      row.className = 'temp' + (ended ? ' ended' : '');
-      const what = t.what === 'media' ? 'Photos and videos on' : t.what === 'page' ? 'Page open' : 'Site open';
-      const when = new Date(end).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-      const info = document.createElement('span');
-      info.textContent = `${what}: ${t.entry}, ` + (t.mode === 'use'
-        ? `${fmtMin(t.minutes)} of use, until ${when}` : `${fmtMin(t.minutes)}, ${ended ? 'ended' : 'until ' + when}`);
-      const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'link'; rm.textContent = 'Remove';
-      rm.onclick = () => { temps.splice(i, 1); dirty = true; renderTemps(); };
-      row.append(info, rm);
-      box.append(row);
-    });
-  }
-  // ---- scroll wheels (hours 0-24, minutes 0-55 in steps of 5) ----
-  // makePicker(host, minutes, onChange) puts a pair of wheels in `host`; returns { get(), set(min), sync() }.
-  // Wheels can only scroll while visible, so call sync() when a hidden picker is shown.
-  const ROW = 36;
-  function makePicker(host, startMinutes, onChange) {
-    host.innerHTML = '<div class="wheels"><div class="wheel-band"></div>' +
-      '<div class="wheel-col"><div class="wheel" tabindex="0" role="listbox" aria-label="Hours"></div><span>hours</span></div>' +
-      '<div class="wheel-col"><div class="wheel" tabindex="0" role="listbox" aria-label="Minutes"></div><span>min</span></div></div>';
-    const [hEl, mEl] = host.querySelectorAll('.wheel');
-    const cols = [
-      { el: hEl, values: Array.from({ length: 25 }, (_, i) => i), value: 0 },
-      { el: mEl, values: Array.from({ length: 12 }, (_, i) => i * 5), value: 0 }
-    ];
-    const total = () => cols[0].value * 60 + cols[1].value;
-    const changed = () => onChange && onChange(total());
-    const mark = (c, idx) => c.el.querySelectorAll('[data-v]').forEach((d, i) => {
-      d.classList.toggle('sel', i === idx); d.setAttribute('aria-selected', i === idx);
-    });
-    function setCol(c, v, smooth) {
-      let idx = c.values.indexOf(v);
-      if (idx < 0) idx = c.values.reduce((b, x, i) => Math.abs(x - v) < Math.abs(c.values[b] - v) ? i : b, 0);
-      c.value = c.values[idx];
-      c.el.scrollTo({ top: idx * ROW, behavior: smooth ? 'smooth' : 'auto' });
-      mark(c, idx);
-    }
-    cols.forEach(c => {
-      c.el.innerHTML = '<div class="pad"></div>' +
-        c.values.map(v => `<div data-v="${v}" role="option">${String(v).padStart(2, '0')}</div>`).join('') + '<div class="pad"></div>';
-      let settle;
-      c.el.addEventListener('scroll', () => {            // when a flick settles, read the middle row
-        clearTimeout(settle);
-        settle = setTimeout(() => {
-          const idx = Math.max(0, Math.min(c.values.length - 1, Math.round(c.el.scrollTop / ROW)));
-          const moved = c.values[idx] !== c.value;
-          c.value = c.values[idx]; mark(c, idx);
-          if (moved) changed();
-        }, 90);
-      });
-      c.el.addEventListener('click', e => { const d = e.target.closest('[data-v]'); if (d) { setCol(c, Number(d.dataset.v), true); changed(); } });
-      c.el.addEventListener('keydown', e => {
-        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-        e.preventDefault();
-        const idx = c.values.indexOf(c.value) + (e.key === 'ArrowDown' ? 1 : -1);
-        setCol(c, c.values[Math.max(0, Math.min(c.values.length - 1, idx))], true); changed();
-      });
-    });
-    const picker = {
-      get: total,
-      set(min, smooth) {
-        min = Math.max(0, Math.min(24 * 60 + 55, Math.round(min)));
-        setCol(cols[0], Math.floor(min / 60), smooth);
-        setCol(cols[1], Math.min(55, Math.round((min % 60) / 5) * 5), smooth);
-        changed();
-      },
-      sync() { setCol(cols[0], cols[0].value, false); setCol(cols[1], cols[1].value, false); }
-    };
-    picker.set(startMinutes);
-    return picker;
-  }
-
-  let tPicker; // the picker in "Add temporary access"
-  function updateLen(min) { $('tLen').textContent = fmtMin(min); }
-  function addTemp() {
-    const raw = $('tAddr').value.trim();
-    const what = document.querySelector('input[name=tWhat]:checked').value;
-    const mode = document.querySelector('input[name=tMode]:checked').value;
-    const minutes = tPicker.get();
-    const hasPath = /[/?]./.test(raw.replace(/^[a-z][a-z0-9+.-]*:\/\//i, ''));
-    const entry = what === 'page' || (what === 'media' && hasPath) ? pageKey(raw) : normalize(raw);
-    if (!entry) return say(what === 'page' ? 'Type the page address, e.g. youtube.com/watch?v=abc' : 'Type a website address.', true);
-    if (what === 'page' && !hasPath) return say('For "Just this page", type the full page address.', true);
-    if (!minutes) return say('Choose how long on the hours and minutes wheels.', true);
-    temps = temps.filter(t => !(t.what === what && t.entry === entry));
-    temps.push({ id: 't' + Date.now().toString(36), what, entry, mode, minutes, from: new Date().toISOString() });
-    dirty = true;
-    renderTemps();
-    $('tAddr').value = '';
-    say(`Added: ${entry} for ${fmtMin(minutes)}${mode === 'use' ? ' of use' : ''}. Tap Save list to apply it.`);
-  }
-
-  function fillEditor(data) {
-    const sites = data.sites || [];
-    // A "noMedia" entry that's exactly a site on the list shows as that card's tick box; pages and
-    // anything else stay in the "specific pages" box.
-    const siteDomains = new Set(sites.map(s => normalize(s.domain)).filter(Boolean));
-    const noMedia = (data.noMedia || []).map(String);
-    $('sites').innerHTML = '';
-    sites.forEach(s => addSite({ ...s, noMedia: noMedia.includes(normalize(s.domain) || '') }));
-    $('block').value = (data.block || []).join('\n');
-    $('noMedia').value = noMedia.filter(e => !siteDomains.has(e)).join('\n');
-    temps = Array.isArray(data.temporary) ? data.temporary.slice() : [];
-    renderTemps();
-    $('homepage').value = data.homepage || '';
-    $('refresh').value = data.refreshMinutes || 5;
-    dirty = false;
-    return sites.length;
-  }
-
-  async function openList(name) {
-    const f = await getJson(listPathOf(name));
-    if (!f && name === 'public') throw new Error('docs/whitelist.json not found. Check the connection settings and that the token can access this repo.');
-    current = name;
-    sha = f ? f.sha : null;
-    const n = fillEditor(f ? f.data : { sites: [], block: [] });
-    renderListBar();
-    say(`Loaded the ${name} list: ${plural(n, 'site')}.`);
-  }
-
-  function phonesUsing(name) {
-    return Object.entries(devices.devices).filter(([, d]) => (d.lists || []).includes(name)).map(([id, d]) => d.name || id);
-  }
-
-  function renderListBar() {
-    const sel = $('listSel');
-    sel.innerHTML = '';
-    lists.forEach(n => { const o = document.createElement('option'); o.value = n; o.textContent = n; sel.append(o); });
-    sel.value = current;
-    const users = phonesUsing(current);
-    // (phones are listed by nickname)
-    const isDefault = devices.default.includes(current);
-    $('listInfo').textContent =
-      (users.length ? `Used by ${users.length} phone${users.length > 1 ? 's' : ''}: ${users.join(', ')}.` : 'No phones use this list yet. Tick it for a phone under Phones.') +
-      (isDefault ? ' New phones get it too.' : '');
-    $('delList').hidden = current === 'public';
-  }
-
-  async function switchList() {
-    const next = $('listSel').value;
-    if (next === current) return;
-    if (dirty && !confirm(`Discard unsaved changes to the ${current} list?`)) { $('listSel').value = current; return; }
-    try { await openList(next); } catch (e) { say(e.message, true); $('listSel').value = current; }
-  }
-
-  function newList() {
-    if (dirty && !confirm(`Discard unsaved changes to the ${current} list?`)) return;
-    const raw = prompt('Name for the new list, e.g. emma or year-5', '');
-    if (raw === null) return;
-    const name = raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30);
-    if (!name) return say('Use letters and numbers for the list name.', true);
-    if (lists.includes(name)) return say(`There's already a list called ${name}.`, true);
-    devices = readPhones();
-    lists.push(name);
-    current = name;
-    sha = null;
-    fillEditor({ sites: [], block: [] });
-    dirty = true;
-    renderListBar();
-    renderPhones();
-    say(`New list "${name}". Add sites and tap Save list, then tick it for phones under Phones.`);
-  }
-
-  async function deleteList() {
-    if (current === 'public') return;
-    const users = phonesUsing(current);
-    if (!confirm(`Delete the ${current} list?` + (users.length ? ` ${users.join(', ')} will stop using it.` : ''))) return;
+  actions.append(h('button', { type: 'button', class: 'btn d deny', onclick: openDeny }, 'Deny'));
+  card.append(...[
+    h('div', { class: 'who' }, h('span', null, h('span', { class: 'av' }, phone[0].toUpperCase()), h('b', null, phone), h('span', { class: 'muted small' }, '· ' + ago(issue.created_at))),
+      asked ? chip(fmtMin(asked), 'amber', 'clock') : !allow ? chip(req.media === 'off' ? 'Photos' : 'Block', 'red', 'ban') : req.media === 'on' ? chip('Photos', 'teal', 'photooff') : null),
+    h('h3', null, title),
+    page ? h('p', { class: 'mono muted', style: 'margin:0' }, page) : null,
+    allow && req.media === 'off' ? h('p', { class: 'line' }, icon('photooff', 16), 'Asked without photos and videos') : null,
+    hops.length ? h('p', { class: 'line' }, icon('link', 16), `Goes through ${plural(hops.length, 'other address')} first, allowed too when you approve`) : null,
+    req.unverified ? h('p', { class: 'warn' }, 'The phone couldn\'t find this site when asking. It may be a typo: check it before approving.') : null,
+    note ? h('p', { class: 'quote' }, `“${note}”`) : null,
+    actions, panels,
+    h('label', { class: 'check' }, everyone, 'Change it for every phone (the Everyone list)')].filter(Boolean)); // skip lines that don't apply
+  return card;
+}
+function newPhoneCard(issue) {
+  const r = marker(issue.body);
+  const name = h('input', { class: 'inp', type: 'text', placeholder: 'Their name, e.g. Leo', 'aria-label': 'Name' });
+  const save = h('button', { type: 'button', class: 'btn p' }, 'Save');
+  save.onclick = async () => {
+    const n = name.value.trim();
+    if (!n) return say('Type a name first.', true);
+    save.disabled = true;
     try {
-      const name = current;
-      if (sha) await deleteFile(listPathOf(name), sha, `Delete list ${name}`);
-      devices = readPhones();
-      Object.values(devices.devices).forEach(d => { d.lists = (d.lists || []).filter(l => l !== name); if (d.requestsTo === name) delete d.requestsTo; });
-      devices.default = devices.default.filter(l => l !== name);
-      devicesSha = await putJson('docs/devices.json', devices, devicesSha, `Remove list ${name} from phones`);
-      lists = lists.filter(l => l !== name);
-      await openList('public');
-      renderPhones();
-      say(`Deleted the ${name} list.`);
-    } catch (e) { say(e.message, true); }
+      await reply(issue.number, `name ${n}`);
+      S.newPhones = S.newPhones.filter(i => i.number !== issue.number);
+      S.answered.unshift({ title: `${r.model || 'Phone'} (${r.id})`, label: `Named ${n}` });
+      render(); say(`Named ${n}. It shows under Phones in a minute or two.`);
+    } catch (e) { save.disabled = false; say(e.message === 'NO_ISSUES' ? NO_ISSUES_MSG : e.message, true); }
+  };
+  return h('article', { class: 'card' },
+    h('div', { class: 'who' }, h('span', null, h('span', { class: 'av grey' }, icon('phone', 18)),
+      h('span', { style: 'display:flex;flex-direction:column' }, h('b', null, r.model || 'Phone'), h('span', { class: 'muted small' }, `Registered ${ago(issue.created_at)}, no name yet`)))),
+    h('div', { class: 'inrow' }, name, save));
+}
+
+// ============================================================================================
+// Sites
+// ============================================================================================
+function siteChips(s) {
+  const c = [];
+  c.push(s.home ? chip('On home page', 'teal') : chip('No tile'));
+  if (s.pages.length) c.push(chip(s.pages.length === 1 ? '1 page only' : `${s.pages.length} pages only`));
+  if (!s.subdomains) c.push(chip('Exact address'));
+  if (s.noMedia) c.push(chip('No photos', '', 'photooff'));
+  if (s.passThrough) c.push(chip('Added automatically', '', 'link'));
+  return c;
+}
+function sitesScreen() {
+  const L = S.L;
+  const users = phonesUsing(S.current);
+  const info = S.current === 'public'
+    ? `The general list${users.length ? `, used by ${users.join(', ')}` : ''}.`
+    : users.length ? `${users.join(', ')}'s list. It adds to their other lists.` : 'Not given to any phone yet (see Phones).';
+  const live = L.temporary.filter(t => tempEnd(t) > Date.now());
+  const temps = live.map(t => h('div', { class: 'tempcard' }, icon('clock', 22),
+    h('span', { class: 'grow' }, h('b', null, t.entry), h('span', { class: 'small' }, `${t.what === 'media' ? 'Photos and videos on' : 'Open'} ${tempLeft(t)}`)),
+    h('button', { type: 'button', onclick: () => { L.temporary = L.temporary.filter(x => x !== t); markList(); render(); say(`${t.entry} will close when you tap Save.`); } }, 'End now')));
+  const rows = L.sites.map((s, i) => h('button', { type: 'button', class: 'row siterow', onclick: () => open({ name: 'site', index: i }) },
+    h('span', { class: 'tile', style: `color:${tileColor(s.domain)}` }, (s.name || s.domain || '?').replace(/^www\./, '')[0].toUpperCase()),
+    h('span', { class: 'grow' }, h('span', { style: 'display:flex;align-items:baseline;gap:6px;min-width:0' },
+      h('span', { class: 'name' }, s.name || s.domain.replace(/^www\./, '')), s.name ? h('span', { class: 'dom' }, s.domain) : null),
+      h('span', { class: 'chips' }, siteChips(s))),
+    h('span', { class: 'chev' }, icon('chev', 18))));
+  const moreRow = (ic, label, count, onclick, id) => h('button', { type: 'button', class: 'row', onclick, id },
+    h('span', { class: 'ic' }, icon(ic, 20)), h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, label)),
+    count != null ? h('span', { class: 'count' }, count) : null, h('span', { class: 'chev' }, icon('chev', 18)));
+  return h('main', { class: 'stack' },
+    screenTitle('Sites', 'What each list lets phones open'),
+    h('div', { class: 'listchips', role: 'group', 'aria-label': 'Lists' },
+      S.lists.map(n => h('button', { type: 'button', class: 'lc', 'aria-pressed': String(n === S.current), onclick: () => switchList(n) }, listLabel(n))),
+      h('button', { type: 'button', class: 'lc add', 'aria-label': 'New list', onclick: newList }, icon('plus', 18))),
+    h('p', { class: 'hint', style: 'margin-top:-4px' }, info),
+    temps,
+    h('div', { class: 'h2row' }, h('h2', { class: 'sec' }, 'Allowed ', h('span', { class: 'muted', style: 'font-weight:500' }, `· ${L.sites.length}`)),
+      h('button', { type: 'button', class: 'btn p sm', id: 'addSite', onclick: () => open({ name: 'site', index: -1 }) }, icon('plus', 18, 2.2), 'Add site')),
+    L.sites.length ? h('div', { class: 'group', id: 'siteList' }, rows)
+      : h('div', { class: 'card empty' }, h('b', null, 'No sites yet'), 'Tap Add site, or import a spreadsheet below.'),
+    h('div', { class: 'group' },
+      moreRow('clock', 'Open something for a while', null, () => open({ name: 'temp' }), 'openTemp'),
+      moreRow('ban', 'Always blocked', L.block.length, () => open({ name: 'block' }), 'openBlock'),
+      moreRow('photooff', 'No photos on some pages', L.noMediaPages.length, () => open({ name: 'nomedia' }), 'openNoMedia'),
+      moreRow('table', 'Import from a spreadsheet', null, () => open({ name: 'import' }), 'openImport'),
+      moreRow('gear', 'List settings', null, () => open({ name: 'listsettings' }), 'openListSettings')));
+}
+
+// ---------- one site ----------
+function siteScreen() {
+  const sub = S.sub;
+  const isNew = sub.index < 0;
+  if (!sub.draft) {
+    const s = isNew ? { domain: '', name: '', url: '', home: true, subdomains: true, pages: [], noMedia: false, passThrough: false } : S.L.sites[sub.index];
+    sub.draft = { ...s, pages: [...s.pages], only: s.pages.length > 0 };
   }
+  const d = sub.draft;
+  const name = h('input', { class: 'inp', id: 'sName', value: d.name, placeholder: 'e.g. Wikipedia', oninput: e => { d.name = e.target.value; } });
+  const addr = h('input', { class: 'inp', id: 'sDomain', value: d.domain, placeholder: 'e.g. wikipedia.org', autocapitalize: 'off', spellcheck: 'false', inputmode: 'url',
+    oninput: e => { d.domain = e.target.value; e.target.classList.remove('bad'); } });
+  const url = h('input', { class: 'inp', id: 'sUrl', value: d.url, placeholder: 'e.g. https://www.bbc.co.uk/bitesize', autocapitalize: 'off', spellcheck: 'false', oninput: e => { d.url = e.target.value; } });
+  const toggle = (id, title, hint, key) => h('label', { class: 'tg', for: id },
+    h('span', { class: 'grow' }, h('span', { class: 't' }, title), hint ? h('span', { class: 's' }, hint) : null),
+    h('input', { type: 'checkbox', class: 'sw', id, checked: !!d[key], onchange: e => { d[key] = e.target.checked; if (key === 'only') render(); } }));
+  const bare = (normalize(d.domain) || 'the site').replace(/^www\./, '');
+  const pageInput = h('input', { class: 'inp', id: 'sPageNew', placeholder: `e.g. ${bare}/some-page`, autocapitalize: 'off', spellcheck: 'false' });
+  const addPage = () => {
+    const k = pageKey(pageInput.value);
+    const dom = normalize(d.domain);
+    if (!k) return say('Type a page address, e.g. youtube.com/watch?v=abc', true);
+    if (dom && !pageOnSite(k, dom, d.subdomains)) return say(`That page isn't on ${dom}.`, true);
+    if (!d.pages.includes(k)) d.pages.push(k);
+    render();
+  };
+  const pages = d.only ? h('div', { class: 'group' },
+    d.pages.map((p, i) => h('div', { class: 'row' }, h('span', { class: 'grow mono' }, p),
+      h('button', { type: 'button', class: 'btn s sm', 'aria-label': `Remove ${p}`, style: 'min-height:36px;padding:0 10px', onclick: () => { d.pages.splice(i, 1); render(); } }, icon('x', 16, 2)))),
+    h('div', { class: 'row' }, h('span', { class: 'grow' }, h('div', { class: 'inrow' }, pageInput, h('button', { type: 'button', class: 'btn s', id: 'sAddPage', onclick: addPage }, 'Add')))))
+    : null;
+  pageInput.addEventListener('keydown', e => { if (e.key === 'Enter') addPage(); });
+  const done = () => {
+    const dom = normalize(d.domain);
+    if (!dom) { addr.classList.add('bad'); addr.focus(); return say(d.domain.trim() ? `"${d.domain}" doesn't look like a website address.` : 'Type the site\'s address.', true); }
+    if (S.L.sites.some((s, i) => i !== sub.index && normalize(s.domain) === dom)) return say(`${dom} is already on this list.`, true);
+    for (const p of d.pages) if (!pageOnSite(p, dom, d.subdomains)) return say(`The page ${p} isn't on ${dom}.`, true);
+    const site = { domain: dom, name: d.name.trim(), url: d.url.trim(), home: d.home, subdomains: d.subdomains,
+      pages: d.only ? [...d.pages] : [], noMedia: d.noMedia, passThrough: d.passThrough };
+    if (isNew) S.L.sites.push(site); else S.L.sites[sub.index] = site;
+    markList(); back();
+    say(`${isNew ? 'Added' : 'Updated'} ${site.name || dom}. Tap Save to apply it.`);
+  };
+  const remove = () => {
+    if (!confirm(`Remove ${d.name || d.domain} from ${listLabel(S.current)}?`)) return;
+    S.L.sites.splice(sub.index, 1); markList(); back();
+  };
+  const letter = (d.name || d.domain || '?').replace(/^www\./, '')[0] || '?';
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' },
+    backLink('Sites'),
+    h('div', { style: 'display:flex;align-items:center;gap:14px;padding:0 4px' },
+      h('span', { class: 'tile big', style: `color:${tileColor(d.domain)}` }, letter.toUpperCase()),
+      h('div', null, h('h1', { style: 'margin:0;font:700 28px/1.15 var(--display)' }, isNew ? 'Add a site' : (d.name || d.domain)),
+        h('span', { class: 'muted small' }, `In ${listLabel(S.current)}`))),
+    d.passThrough ? h('p', { class: 'warn' }, 'Added automatically: a link passes through this address on its way to an approved site.') : null,
+    h('div', { class: 'field' }, h('label', { for: 'sDomain' }, 'Address'), addr),
+    h('div', { class: 'field' }, h('label', { for: 'sName' }, 'Name on the home page'), name),
+    h('div', { class: 'group' },
+      toggle('sHome', 'Show on the home page', 'Gives it a tile', 'home'),
+      toggle('sSubs', 'Include subdomains', `Also m.${bare}, and other addresses ending in ${bare}`, 'subdomains'),
+      toggle('sNoMedia', 'No photos or videos', 'The pages open, pictures and videos don\'t', 'noMedia'),
+      toggle('sOnly', 'Only some pages', 'Everything else on the site stays blocked', 'only')),
+    pages,
+    h('details', { class: 'more' }, h('summary', null, 'More options'),
+      h('div', { class: 'field', style: 'margin-top:8px' }, h('label', { for: 'sUrl' }, 'Where the tile opens (optional)'), url,
+        h('p', { class: 'hint', style: 'margin:0' }, 'Leave empty to open the site\'s front page.'))),
+    !isNew && normalize(d.domain) ? h('a', { href: '#', class: 'tempcard', onclick: e => { e.preventDefault(); open({ name: 'temp', entry: normalize(d.domain), what: 'site' }); } },
+      icon('clock', 20), h('span', { class: 'grow' }, 'Open it just for a while instead'), icon('chev', 18)) : null,
+    h('button', { type: 'button', class: 'btn p wide', id: 'sDone', onclick: done }, isNew ? 'Add site' : 'Done'),
+    !isNew ? h('button', { type: 'button', class: 'btn d', id: 'sRemove', onclick: remove }, 'Remove this site') : null);
+}
 
-  // ---------- phones ----------
+// ---------- open something for a while ----------
+function tempScreen() {
+  const sub = S.sub;
+  sub.what = sub.what || 'site'; sub.mode = sub.mode || 'clock';
+  const addr = h('input', { class: 'inp', id: 'tAddr', value: sub.entry || '', placeholder: 'e.g. coolmathgames.com', autocapitalize: 'off', spellcheck: 'false', oninput: e => { sub.entry = e.target.value; } });
+  const len = h('div', { class: 'flabel', id: 'tLen' });
+  const host = h('div', { 'data-sync': '' });
+  const picker = makePicker(host, sub.minutes || 30, m => { sub.minutes = m; len.textContent = `How long: ${fmtMin(m)}`; });
+  host._picker = picker;
+  const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'What to open' },
+    [['site', 'Whole site'], ['page', 'One page'], ['media', 'Photos & videos']].map(([v, t]) =>
+      h('button', { type: 'button', 'aria-pressed': String(sub.what === v), onclick: () => { sub.what = v; render(); } }, t)));
+  const radio = (v, t, s) => h('label', { class: 'radio' }, h('input', { type: 'radio', name: 'tMode', value: v, checked: sub.mode === v, onchange: () => { sub.mode = v; } }),
+    h('span', null, h('b', { style: 'font-weight:600' }, t), h('span', { class: 'small muted', style: 'display:block' }, s)));
+  const add = () => {
+    const raw = (sub.entry || '').trim();
+    const entry = sub.what === 'page' || (sub.what === 'media' && hasPath(raw)) ? pageKey(raw) : normalize(raw);
+    if (!entry) return say(sub.what === 'page' ? 'Type the page address, e.g. youtube.com/watch?v=abc' : 'Type a website address.', true);
+    if (sub.what === 'page' && !hasPath(raw)) return say('For One page, type the full page address.', true);
+    const minutes = picker.get();
+    if (!minutes) return say('Choose how long on the wheels.', true);
+    S.L.temporary = S.L.temporary.filter(t => !(t.what === sub.what && t.entry === entry));
+    S.L.temporary.push({ id: 't' + Date.now().toString(36), what: sub.what, entry, mode: sub.mode, minutes, from: new Date().toISOString() });
+    markList(); back();
+    say(`${entry}: ${fmtMin(minutes)}${sub.mode === 'use' ? ' of use' : ''}. Tap Save to apply it.`);
+  };
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' },
+    backLink('Sites'),
+    screenTitle('Open for a while', `In ${listLabel(S.current)}. Even if it's otherwise blocked, and it closes by itself.`),
+    h('p', { class: 'hint' }, 'To answer a phone\'s request, use For a while on the request instead, so the phone is told.'),
+    h('div', { class: 'field' }, h('label', { for: 'tAddr' }, sub.what === 'page' ? 'Page address' : 'Site or page'), addr),
+    h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'What to open'), seg),
+    h('div', { class: 'card', style: 'padding:12px 16px 4px' }, len, host),
+    h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Count the time'),
+      h('div', { class: 'group' }, radio('clock', 'From now', 'Ends at a set time.'), radio('use', 'Only while it\'s open on the phone', 'Time on the site, to use within 7 days.'))),
+    h('button', { type: 'button', class: 'btn p wide', id: 'tAdd', onclick: add }, 'Add'));
+}
 
-  function checkbox(label, checked, cls, value) {
-    const l = document.createElement('label');
-    l.className = 'check';
-    const i = document.createElement('input');
-    i.type = 'checkbox'; i.checked = checked; i.className = cls; i.value = value;
-    l.append(i, ' ' + label);
-    return l;
-  }
+// ---------- always blocked / no photos on pages / never block (one address per line) ----------
+function linesScreen({ backTo, title, sub, hint, value, placeholder, check, apply, id }) {
+  const ta = h('textarea', { class: 'inp', id, spellcheck: 'false', autocapitalize: 'off', placeholder, value });
+  const done = () => {
+    const lines = ta.value.split('\n').map(l => l.trim()).filter(Boolean);
+    const bad = lines.filter(l => !check(l));
+    if (bad.length) { ta.classList.add('bad'); return say(`These don't look like website addresses: ${bad.join(', ')}`, true); }
+    apply(lines); back();
+  };
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink(backTo), screenTitle(title, sub),
+    h('p', { class: 'hint' }, hint), ta, h('button', { type: 'button', class: 'btn p wide', id: id + 'Done', onclick: done }, 'Done'));
+}
+const blockScreen = () => linesScreen({ backTo: 'Sites', title: 'Always blocked', sub: `In ${listLabel(S.current)}`, id: 'blockText',
+  hint: 'Parts of allowed sites to keep blocked, one per line: a site like maps.google.com, or a single page like en.wikipedia.org/wiki/Fortnite.',
+  value: S.L.block.join('\n'), placeholder: 'maps.google.com', check: blockEntry,
+  apply: lines => { if (lines.join('\n') !== S.L.block.join('\n')) { S.L.block = lines; markList(); } } });
+const noMediaScreen = () => linesScreen({ backTo: 'Sites', title: 'No photos on some pages', sub: `In ${listLabel(S.current)}`, id: 'noMediaText',
+  hint: 'Single pages of a site that\'s otherwise shown normally, one per line, e.g. en.wikipedia.org/wiki/Shark. For a whole site, use the No photos or videos switch on the site instead.',
+  value: S.L.noMediaPages.join('\n'), placeholder: 'en.wikipedia.org/wiki/Shark', check: blockEntry,
+  apply: lines => { if (lines.join('\n') !== S.L.noMediaPages.join('\n')) { S.L.noMediaPages = lines; markList(); } } });
+const neverBlockScreen = () => linesScreen({ backTo: 'Settings', title: 'Never block these', sub: 'Ad blocking exceptions, for every phone', id: 'neverText',
+  hint: 'If a site breaks because something it needs is blocked as an ad, add that address here, one per line.',
+  value: (S.D.adblockExceptions || []).join('\n'), placeholder: 'googletagmanager.com', check: normalize,
+  apply: lines => { S.D.adblockExceptions = [...new Set(lines.map(normalize))]; markDevices(); } });
 
-  function renderPhones() {
-    const box = $('phones');
-    box.innerHTML = '';
-    // Phones without a name first, so they get named; then by name.
-    const entries = Object.entries(devices.devices).sort((a, b) =>
-      (!!a[1].name - !!b[1].name) || (a[1].name || a[0]).localeCompare(b[1].name || b[0]));
-    if (!entries.length) {
-      const p = document.createElement('p'); p.className = 'hint';
-      p.textContent = 'No phones yet. Install the app on a phone and open it, or add one by its ID below.';
-      box.append(p);
-    }
-    entries.forEach(([id, d]) => {
-      const card = document.createElement('div');
-      card.className = 'phone' + (d.name ? '' : ' unnamed'); card.dataset.id = id;
-      const nickLabel = document.createElement('label');
-      nickLabel.className = 'nick'; nickLabel.textContent = 'Name';
-      nickLabel.htmlFor = 'nick-' + id;
-      const name = document.createElement('input');
-      name.type = 'text'; name.className = 'pname'; name.id = 'nick-' + id;
-      name.value = d.name || ''; name.placeholder = 'e.g. Emma, or Emma\'s tablet';
-      name.oninput = () => card.classList.toggle('unnamed', !name.value.trim());
-      const meta = document.createElement('div');
-      meta.className = 'meta';
-      meta.textContent = [id, d.model, d.registered && `registered ${d.registered}`].filter(Boolean).join(' · ');
-      const checks = document.createElement('div');
-      checks.className = 'checks';
-      lists.forEach(n => checks.append(checkbox(n, (d.lists || []).includes(n), 'plist', n)));
-      const row = document.createElement('div');
-      row.className = 'row';
-      const reqLabel = document.createElement('label');
-      reqLabel.className = 'check';
-      reqLabel.style.fontSize = '.85rem';
-      const req = document.createElement('select');
-      req.className = 'preq';
-      [['', 'default (below)'], ['own', 'its own private list'], ...lists.map(n => [n, n + ' list'])].forEach(([v, t]) => {
-        const o = document.createElement('option'); o.value = v; o.textContent = t; req.append(o);
-      });
-      req.value = d.requestsTo === 'own' || lists.includes(d.requestsTo) ? d.requestsTo : '';
-      reqLabel.append('Approved requests go to ', req);
-      const adsLabel = document.createElement('label');
-      adsLabel.className = 'check';
-      adsLabel.style.fontSize = '.85rem';
-      const ads = document.createElement('select');
-      ads.className = 'pads';
-      [['', 'default'], ['on', 'blocked'], ['off', 'not blocked']].forEach(([v, t]) => {
-        const o = document.createElement('option'); o.value = v; o.textContent = t; ads.append(o);
-      });
-      ads.value = d.adblock === 'on' || d.adblock === 'off' ? d.adblock : '';
-      adsLabel.append('Ads ', ads);
-      const remove = document.createElement('button');
-      remove.type = 'button'; remove.className = 'link'; remove.textContent = 'Remove';
-      remove.onclick = () => {
-        if (confirm(`Remove ${d.name || id}? It will use the lists for new phones until you add it again.`)) card.remove();
-      };
-      row.append(reqLabel, adsLabel, remove);
-      card.append(nickLabel, name, meta, checks, row);
-      box.append(card);
-    });
-    renderArchived();
-    $('adblock').checked = devices.adblock !== false;
-    $('adblockExceptions').value = (devices.adblockExceptions || []).join('\n');
-    $('inactiveDays').value = devices.inactiveDays || 14;
-    document.querySelectorAll('input[name=reqDefault]').forEach(r => { r.checked = r.value === (devices.requestsTo === 'public' ? 'public' : 'own'); });
-    const defs = $('defaults');
-    defs.innerHTML = '';
-    lists.forEach(n => defs.append(checkbox(n, devices.default.includes(n), 'dlist', n)));
-  }
-
-  function renderArchived() {
-    const box = $('archived');
-    box.innerHTML = '';
-    const entries = Object.entries(devices.archived || {});
-    if (!entries.length) {
-      const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'None.'; box.append(p); return;
-    }
-    entries.forEach(([id, a]) => {
-      const card = document.createElement('div');
-      card.className = 'phone old';
-      const title = document.createElement('div'); title.className = 'title';
-      title.textContent = a.name || `${a.model || 'Phone'} (no name)`;
-      const meta = document.createElement('div'); meta.className = 'meta';
-      meta.textContent = [id, a.model, a.lastSeen && `last seen ${String(a.lastSeen).slice(0, 10)}`, a.archivedOn && `archived ${a.archivedOn}`].filter(Boolean).join(' · ');
-      const info = document.createElement('div'); info.className = 'hint';
-      info.textContent = `Lists: ${(a.lists || []).join(', ') || 'none'}` + ((a.archivedLists || []).length ? ` · archived: ${a.archivedLists.join(', ')}` : '');
-      const row = document.createElement('div'); row.className = 'row';
-      const restore = document.createElement('button'); restore.type = 'button'; restore.className = 'secondary'; restore.textContent = 'Restore';
-      restore.onclick = () => bringBack(id, id);
-      const give = document.createElement('select');
-      give.setAttribute('aria-label', 'Give to phone');
-      [['', 'Give to phone…'], ...Object.entries(devices.devices).map(([pid, d]) => [pid, `${d.name || d.model || 'Phone'} (${pid})`])]
-        .forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; give.append(o); });
-      give.onchange = () => { if (give.value) bringBack(id, give.value); };
-      const del = document.createElement('button'); del.type = 'button'; del.className = 'link'; del.textContent = 'Delete for good';
-      del.onclick = () => deleteArchived(id);
-      row.append(restore, give, del);
-      card.append(title, meta, info, row);
-      box.append(card);
-    });
-  }
-
-  // Moves a file within the repo (keeps its content exactly).
-  async function moveFile(from, to, message) {
-    const f = await getRaw(from);
-    if (!f) return false;
-    const res = await fetch(contentsUrl(to), { method: 'PUT', headers: headers(),
-      body: JSON.stringify({ message, content: f.content.replace(/\n/g, ''), branch: branch() }) });
-    if (!res.ok) throw new Error(explain(res.status, 'A list'));
-    await deleteFile(from, f.sha, message);
-    return true;
-  }
-
-  // Gives archived phone `fromId`'s nickname and lists to phone `toId` (itself, or its reinstall).
-  async function bringBack(fromId, toId) {
-    devices = readPhones();
-    const a = devices.archived[fromId];
-    const to = devices.devices[toId];
-    const who = a.name || fromId;
-    if (!confirm(fromId === toId ? `Restore ${who} with its lists?` :
-      `Give ${who}'s name and lists to ${to.name || to.model || toId}?`)) { renderPhones(); return; }
-    say('Restoring from the archive.');
+// ---------- import ----------
+function importScreen() {
+  const ta = h('textarea', { class: 'inp', id: 'bulkText', spellcheck: 'false', autocapitalize: 'off', placeholder: 'domain\tname\twikipedia.org\tWikipedia' });
+  const file = h('input', { type: 'file', id: 'bulkFile', accept: '.csv,.tsv,.txt,.xlsx,.xls,.ods' });
+  const mode = v => h('label', { class: 'radio' }, h('input', { type: 'radio', name: 'bulkMode', value: v, checked: v === 'merge' }),
+    h('span', null, h('b', { style: 'font-weight:600' }, v === 'merge' ? 'Add to the list' : 'Replace the list'),
+      h('span', { class: 'small muted', style: 'display:block' }, v === 'merge' ? 'Sites already on it are updated.' : 'Sites not in the spreadsheet are removed.')));
+  const run = async () => {
     try {
-      const renamed = {};
-      for (const l of a.archivedLists || []) {
-        let name = l, n = 2;
-        while (lists.includes(name)) name = `${l}-${n++}`;
-        if (await moveFile(`docs/lists/archive/${l}.json`, `docs/lists/${name}.json`, `Restore list ${name} from the archive`)) {
-          lists.push(name); renamed[l] = name;
-        }
-      }
-      const restoredLists = (a.lists || []).map(l => renamed[l] || l).filter(l => lists.includes(l));
-      const { lastSeen, archivedOn, archivedLists, ...kept } = a;
-      const target = to || { lists: [], registered: new Date().toISOString().slice(0, 10) };
-      devices.devices[toId] = { ...kept, ...target, name: target.name || a.name || '', model: target.model || a.model,
-        lists: [...new Set([...(target.lists || []), ...restoredLists])],
-        ...(fromId !== toId ? { previousIds: [...(a.previousIds || []), fromId] } : {}) };
-      if (!target.requestsTo && a.requestsTo) devices.devices[toId].requestsTo = a.requestsTo;
-      delete devices.archived[fromId];
-      devicesSha = await putJson('docs/devices.json', devices, devicesSha, `Restore phone ${who}`);
-      renderListBar(); renderPhones();
-      say(`${who} restored. Lists: ${devices.devices[toId].lists.join(', ') || 'none'}.`);
-    } catch (e) { say(e.message, true); }
-  }
-
-  async function deleteArchived(id) {
-    devices = readPhones();
-    const a = devices.archived[id];
-    const lostLists = a.archivedLists || [];
-    if (!confirm(`Delete ${a.name || id} for good?` + (lostLists.length ? ` Its archived lists (${lostLists.join(', ')}) are deleted too.` : ''))) return;
-    try {
-      for (const l of lostLists) {
-        const f = await getRaw(`docs/lists/archive/${l}.json`);
-        if (f) await deleteFile(`docs/lists/archive/${l}.json`, f.sha, `Delete archived list ${l}`);
-      }
-      delete devices.archived[id];
-      devicesSha = await putJson('docs/devices.json', devices, devicesSha, `Delete archived phone ${a.name || id}`);
-      renderPhones();
-      say(`${a.name || id} deleted.`);
-    } catch (e) { say(e.message, true); }
-  }
-
-  // The phones as currently shown on screen.
-  function readPhones() {
-    const out = { default: [...document.querySelectorAll('.dlist:checked')].map(i => i.value),
-      requestsTo: (document.querySelector('input[name=reqDefault]:checked') || {}).value || devices.requestsTo || 'own',
-      inactiveDays: Math.max(1, Number($('inactiveDays').value) || devices.inactiveDays || 14),
-      adblock: $('adblock').checked,
-      adblockExceptions: [...new Set($('adblockExceptions').value.split('\n').map(l => normalize(l)).filter(Boolean))],
-      archived: devices.archived || {},
-      devices: {} };
-    if (!document.querySelector('.dlist')) out.default = devices.default;
-    document.querySelectorAll('#phones .phone').forEach(card => {
-      const old = devices.devices[card.dataset.id] || {};
-      const d = { ...old, name: card.querySelector('.pname').value.trim(),
-        lists: [...card.querySelectorAll('.plist:checked')].map(i => i.value) };
-      const r = card.querySelector('.preq').value;
-      if (r) d.requestsTo = r; else delete d.requestsTo;
-      const a = card.querySelector('.pads').value;
-      if (a) d.adblock = a; else delete d.adblock;
-      out.devices[card.dataset.id] = d;
-    });
-    return out;
-  }
-
-  function addPhone() {
-    const raw = $('newPhone').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const id = raw.slice(0, 4) + '-' + raw.slice(4);
-    if (!/^[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/.test(id)) return say('A phone ID looks like K7M4-Q2XP. Find it on the phone under ⋮ → About this phone.', true);
-    devices = readPhones();
-    if (devices.devices[id]) return say(`That phone is already listed as ${devices.devices[id].name || id}.`, true);
-    devices.devices[id] = { name: '', lists: [...devices.default] };
-    $('newPhone').value = '';
-    renderPhones();
-    const nick = document.getElementById('nick-' + id);
-    if (nick) nick.focus();
-    say('Phone added. Give it a name and lists, then tap Save phones.');
-  }
-
-  async function savePhones() {
-    devices = readPhones();
-    const unnamed = Object.values(devices.devices).filter(d => !d.name).length;
-    $('savePhones').disabled = true;
-    say('Saving phones to GitHub.');
-    try {
-      devicesSha = await putJson('docs/devices.json', devices, devicesSha, 'Update phones');
-      renderListBar();
-      say('Phones saved. They pick up the change within a few minutes.' +
-        (unnamed ? ` ${unnamed === 1 ? 'One phone has' : unnamed + ' phones have'} no name yet (outlined in yellow).` : ''));
-    } catch (e) { say(e.message, true); }
-    $('savePhones').disabled = false;
-  }
-
-  async function save() {
-    const sites = [], seen = new Set(), bad = [], mediaOffSites = [];
-    document.querySelectorAll('.site').forEach(node => {
-      node.classList.remove('bad');
-      const raw = node.querySelector('.domain').value;
-      if (!raw.trim()) return;                           // empty row: ignore
-      const domain = normalize(raw);
-      if (!domain) { bad.push(raw.trim()); node.classList.add('bad'); return; }
-      if (seen.has(domain)) return;
-      seen.add(domain);
-      const site = { domain, home: node.querySelector('.home').checked };
-      if (node.querySelector('.nomedia').checked) mediaOffSites.push(domain);
-      if (node.dataset.pass) site.passThrough = true;
-      if (!node.querySelector('.subs').checked) site.subdomains = false;
-      const pageLines = node.querySelector('.pages').value.split('\n').map(l => l.trim()).filter(Boolean);
-      const pages = [];
-      pageLines.forEach(l => {
-        const k = pageKey(l);
-        if (!k || !pageOnSite(k, domain, site.subdomains !== false)) { bad.push(`${l} (not a page on ${domain})`); node.classList.add('bad'); }
-        else if (!pages.includes(k)) pages.push(k);
-      });
-      if (pages.length) site.pages = pages;
-      const name = node.querySelector('.name').value.trim();
-      const url = node.querySelector('.url').value.trim();
-      if (name) site.name = name;
-      if (url) site.url = /^https?:\/\//i.test(url) ? url : 'https://' + url;
-      sites.push(site);
-    });
-    const blockLines = $('block').value.split('\n').map(l => l.trim()).filter(Boolean);
-    // A line with a path blocks that page; otherwise the whole site.
-    const blockEntry = l => /[/?]./.test(l.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '')) ? pageKey(l) : normalize(l);
-    const badBlock = blockLines.filter(l => !blockEntry(l));
-    const noMediaLines = $('noMedia').value.split('\n').map(l => l.trim()).filter(Boolean);
-    badBlock.push(...noMediaLines.filter(l => !blockEntry(l)));
-    if (bad.length || badBlock.length) return say(`These don't look like website addresses: ${bad.concat(badBlock).join(', ')}`, true);
-
-    let homepage = $('homepage').value.trim();
-    if (homepage && !/^https?:\/\//i.test(homepage)) homepage = 'https://' + homepage;
-    const data = { refreshMinutes: Math.max(1, Number($('refresh').value) || 5), sites, block: [...new Set(blockLines.map(blockEntry))] };
-    const noMedia = [...new Set([...mediaOffSites, ...noMediaLines.map(blockEntry)])];
-    if (noMedia.length) data.noMedia = noMedia;
-    const liveTemps = temps.filter(t => tempEnd(t) > Date.now()); // expired ones are dropped on save
-    if (liveTemps.length) data.temporary = liveTemps;
-    if (homepage) data.homepage = homepage;
-
-    $('save').disabled = true;
-    say('Saving to GitHub.');
-    try {
-      sha = await putJson(listPathOf(current), data, sha, `Update list ${current} (${sites.length} sites)`);
-      dirty = false;
-      const users = phonesUsing(current).length;
-      say(`Saved the ${current} list: ${plural(sites.length, 'site')}. ` +
-        (users ? 'Phones pick it up within a few minutes.' : 'No phone uses it yet. Tick it for a phone under Phones.'));
-    } catch (e) { say(e.message, true); }
-    $('save').disabled = false;
-  }
-
-  // ---------- bulk import / export ----------
-
-  // Splits pasted cells or a CSV/TSV file into rows of cells. Handles quoted cells.
-  function parseDelimited(text) {
-    const first = text.split('\n')[0];
-    const delim = text.includes('\t') ? '\t'
-      : (first.split(';').length > first.split(',').length ? ';' : ',');
-    const rows = []; let row = [], cell = '', quoted = false;
-    for (let i = 0; i < text.length; i++) {
-      const ch = text[i];
-      if (quoted) {
-        if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
-        else if (ch === '"') quoted = false;
-        else cell += ch;
-      } else if (ch === '"' && cell === '') quoted = true;
-      else if (ch === delim) { row.push(cell); cell = ''; }
-      else if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
-      else if (ch !== '\r') cell += ch;
-    }
-    row.push(cell); rows.push(row);
-    return rows;
-  }
-
-  const NO = ['no', 'n', 'false', '0', 'off', 'hidden', 'hide', 'nee', 'nein', 'non'];
-
-  // Turns rows into sites. Works out the columns from a header row if there is one.
-  function rowsToSites(rows) {
-    rows = rows.map(r => r.map(c => String(c ?? '').trim())).filter(r => r.some(Boolean));
-    if (!rows.length) return { sites: [], bad: [] };
-    let col = { domain: 0, name: 1, home: 2, url: 3, subs: 4, pages: 5, media: 6 };
-    const head = rows[0].map(h => h.toLowerCase());
-    const find = (words, skip = []) => {
-      for (const w of words) {
-        const i = head.findIndex((h, n) => h.includes(w) && !skip.includes(n));
-        if (i >= 0) return i;
-      }
-      return -1;
-    };
-    const subCols = head.map((h, n) => h.includes('sub') || /photo|video|media/.test(h) ? n : -1).filter(n => n >= 0);
-    const d = find(['domain', 'website', 'address', 'web', 'url', 'site'], subCols);
-    if (d >= 0 && !normalize(rows[0][d])) {               // first row is a header
-      const name = find(['name', 'title', 'label'], [d]);
-      const subs = find(['subdomain', 'sub'], [d, name]);
-      const media = find(['photo', 'video', 'media'], [d, name, subs]);
-      const pages = find(['pages', 'page', 'only'], [d, name, subs, media]);
-      const home = find(['home', 'tile', 'show'], [d, name, subs, pages, media]);
-      const url = find(['opens', 'start', 'link', 'url'], [d, name, home, subs, pages, media]);
-      col = { domain: d, name, home, url, subs, pages, media };
-      rows = rows.slice(1);
-    }
-    const sites = [], bad = [];
-    rows.forEach(r => {
-      const raw = r[col.domain] || '';
-      const domain = normalize(raw);
-      if (!domain) { if (raw) bad.push(raw); return; }
-      const homeCell = col.home >= 0 ? (r[col.home] || '').toLowerCase() : '';
-      let url = col.url >= 0 ? (r[col.url] || '') : '';
-      if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
-      // A full address with a page path, e.g. https://www.bbc.co.uk/bitesize, becomes where the tile opens.
-      if (!url && /^(https?:\/\/)?[^/\s]+\/[^\s]+/i.test(raw)) url = /^https?:\/\//i.test(raw) ? raw : 'https://' + raw;
-      const subsCell = col.subs >= 0 ? (r[col.subs] || '').toLowerCase() : '';
-      const pages = col.pages >= 0 ? (r[col.pages] || '').split(/\s+/).filter(Boolean) : [];
-      // "No photos or videos" is off unless the cell says yes.
-      const mediaCell = col.media >= 0 ? (r[col.media] || '').toLowerCase() : '';
-      sites.push({ domain, name: col.name >= 0 ? (r[col.name] || '') : '', url,
-                   home: !NO.includes(homeCell), subdomains: !NO.includes(subsCell), pages,
-                   noMedia: ['yes', 'y', 'true', '1', 'x', 'on'].includes(mediaCell) });
-    });
-    return { sites, bad };
-  }
-
-  // Excel files are read with SheetJS, loaded only when needed.
-  function loadSheetJs() {
-    if (window.XLSX) return Promise.resolve();
-    return new Promise((ok, fail) => {
-      const sc = document.createElement('script');
-      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-      sc.onload = ok; sc.onerror = () => fail(new Error('Couldn\'t load the Excel reader. Save the sheet as CSV instead.'));
-      document.head.append(sc);
-    });
-  }
-
-  async function readBulkInput() {
-    const file = $('bulkFile').files[0];
-    if (file) {
-      if (/\.(xlsx|xls|ods)$/i.test(file.name)) {
+      let rows;
+      const f = file.files[0];
+      if (f && /\.(xlsx|xls|ods)$/i.test(f.name)) {
         await loadSheetJs();
-        const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-        return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
-      }
-      return parseDelimited(await file.text());
-    }
-    return parseDelimited($('bulkText').value);
-  }
-
-  function cardsByDomain() {
-    const map = new Map();
-    document.querySelectorAll('.site').forEach(node => {
-      const d = normalize(node.querySelector('.domain').value);
-      if (d) map.set(d, node);
-    });
-    return map;
-  }
-
-  async function importBulk() {
-    try {
-      const { sites, bad } = rowsToSites(await readBulkInput());
-      if (!sites.length) return say(bad.length ? `No valid website addresses found. Check: ${bad.slice(0, 5).join(', ')}` : 'Paste some rows or choose a file first.', true);
+        const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+        rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+      } else if (f) rows = parseDelimited((await f.text()).replace(/^\ufeff/, ''));
+      else rows = parseDelimited(ta.value);
+      const { sites, bad } = rowsToSites(rows);
+      if (!sites.length) return say(bad.length ? `No website addresses found. Not understood: ${bad.slice(0, 5).join(', ')}` : 'Paste some rows or choose a file first.', true);
       const replace = document.querySelector('input[name=bulkMode]:checked').value === 'replace';
-      if (replace && !confirm(`Replace the whole list with ${sites.length} sites from the spreadsheet?`)) return;
-      if (replace) $('sites').innerHTML = '';
-      const existing = cardsByDomain();
+      if (replace) S.L.sites = [];
       let added = 0, updated = 0;
-      sites.forEach(site => {
-        const node = existing.get(site.domain);
-        if (!node) { addSite(site); existing.set(site.domain, $('sites').lastElementChild); added++; return; }
-        if (site.name) node.querySelector('.name').value = site.name;
-        if (site.url) node.querySelector('.url').value = site.url;
-        node.querySelector('.home').checked = site.home;
-        node.querySelector('.subs').checked = site.subdomains;
-        node.querySelector('.nomedia').checked = site.noMedia;
-        if (site.pages.length) { const pb = node.querySelector('.pages'); pb.value = site.pages.join('\n'); pb.rows = site.pages.length; }
-        updated++;
-      });
-      $('bulkText').value = ''; $('bulkFile').value = '';
-      let msg = `Imported: ${added} added` + (updated ? `, ${updated} updated` : '') + '.';
-      if (bad.length) msg += ` Skipped ${bad.length} that aren't website addresses: ${bad.slice(0, 5).join(', ')}${bad.length > 5 ? '…' : ''}.`;
-      say(msg + ' Check the cards, then tap Save list.', bad.length > 0);
+      for (const s of sites) {
+        const i = S.L.sites.findIndex(x => normalize(x.domain) === s.domain);
+        if (i >= 0) { S.L.sites[i] = { ...S.L.sites[i], ...s, passThrough: S.L.sites[i].passThrough }; updated++; } else { S.L.sites.push(s); added++; }
+      }
+      markList(); back();
+      say(`${plural(added, 'site')} added${updated ? `, ${updated} updated` : ''}${bad.length ? `. Skipped: ${bad.slice(0, 5).join(', ')}` : ''}. Check them, then tap Save.`);
     } catch (e) { say(e.message, true); }
+  };
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Sites'),
+    screenTitle('Import from a spreadsheet', `Into ${listLabel(S.current)}`),
+    h('p', { class: 'hint' }, 'Paste cells from Excel or Google Sheets, or choose a file. Columns: domain, name, home page, tile opens, subdomains, only these pages, no photos or videos. Only the domain is needed.'),
+    ta, h('div', { class: 'field' }, h('label', { for: 'bulkFile' }, 'Or choose a file (.csv, .xlsx)'), file),
+    h('div', { class: 'group' }, mode('merge'), mode('replace')),
+    h('button', { type: 'button', class: 'btn p wide', id: 'bulkImport', onclick: run }, 'Import'),
+    h('div', { class: 'acts', style: 'justify-content:center' },
+      h('button', { type: 'button', class: 'btn s sm', onclick: exportCsv }, 'Download this list as a spreadsheet'),
+      h('a', { class: 'btn s sm', href: 'sites-template.csv', download: '' }, 'Download a template')));
+}
+
+// ---------- list settings ----------
+function listSettingsScreen() {
+  const L = S.L;
+  const home = h('input', { class: 'inp', id: 'lHome', value: L.homepage, placeholder: 'Empty = the built-in home page', autocapitalize: 'off', spellcheck: 'false',
+    oninput: e => { L.homepage = e.target.value; markList(); } });
+  const val = h('span', null, `${L.refreshMinutes} min`);
+  const step = d => { L.refreshMinutes = Math.max(1, Math.min(1440, L.refreshMinutes + d)); val.textContent = `${L.refreshMinutes} min`; markList(); };
+  const users = phonesUsing(S.current);
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Sites'),
+    screenTitle(`${listLabel(S.current)} list`, S.current === 'public' ? 'The general list, for every phone that uses it' : users.length ? `Used by ${users.join(', ')}` : 'Not given to any phone yet'),
+    h('div', { class: 'field' }, h('label', { for: 'lHome' }, 'Start page'), home, h('p', { class: 'hint', style: 'margin:0' }, 'The page the app opens on. Leave empty for the home page with tiles.')),
+    h('div', { class: 'group' }, h('div', { class: 'tg', style: 'cursor:default' }, h('span', { class: 'grow' }, h('span', { class: 't' }, 'Phones check for changes every'),
+      h('span', { class: 's' }, 'Lower is quicker, but uses a little more data')),
+      h('div', { class: 'stepper' }, h('button', { type: 'button', 'aria-label': 'Fewer minutes', onclick: () => step(-1) }, '−'), val, h('button', { type: 'button', 'aria-label': 'More minutes', onclick: () => step(1) }, '+')))),
+    S.current !== 'public' ? h('button', { type: 'button', class: 'btn dline wide', id: 'delList', onclick: deleteList }, `Delete the ${listLabel(S.current)} list`) : null);
+}
+
+// ============================================================================================
+// Phones
+// ============================================================================================
+function phonesScreen() {
+  const entries = Object.entries(S.D.devices)
+    .sort(([, a], [, b]) => (!!a.name - !!b.name) || (a.name || '').localeCompare(b.name || ''));
+  const archived = Object.keys(S.D.archived || {}).length;
+  const cards = entries.map(([id, d]) => {
+    const adsChip = d.adblock === 'off' ? chip('Ads allowed') : d.adblock === 'on' ? chip('Ads blocked') : null;
+    return h('button', { type: 'button', class: 'card phonecard', 'data-id': id, style: 'text-align:left;width:100%', onclick: () => open({ name: 'phone', id }) },
+      h('div', { style: 'display:flex;align-items:center;gap:12px' },
+        h('span', { class: 'av big' }, (d.name || '?')[0].toUpperCase()),
+        h('span', { style: 'flex:1;min-width:0;display:flex;flex-direction:column;gap:2px' },
+          h('b', { style: 'font-size:17px' }, d.name || 'No name yet'),
+          h('span', { class: 'muted small' }, [d.model || 'Phone', d.registered ? `added ${new Date(d.registered).toLocaleDateString([], { day: 'numeric', month: 'short' })}` : null].filter(Boolean).join(' · '))),
+        h('span', { class: 'chev', style: 'color:var(--faint)' }, icon('chev', 18))),
+      h('div', { class: 'chips' }, !d.name ? chip('Needs a name', 'amber') : null,
+        (d.lists || []).length ? (d.lists || []).map(l => chip(listLabel(l), 'teal')) : chip('No lists'), adsChip));
+  });
+  const addPhone = () => {
+    const raw = (prompt('The phone\'s ID, e.g. K7M4-Q2XP (on the phone: ⋮ → About this phone)', '') || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!raw) return;
+    const id = raw.slice(0, 4) + '-' + raw.slice(4);
+    if (!/^[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/.test(id)) return say('A phone ID looks like K7M4-Q2XP.', true);
+    if (S.D.devices[id]) return say(`That phone is already listed as ${S.D.devices[id].name || id}.`, true);
+    S.D.devices[id] = { name: '', lists: [...S.D.default] };
+    markDevices(); open({ name: 'phone', id });
+  };
+  return h('main', { class: 'stack' },
+    screenTitle('Phones', `${plural(entries.length, 'phone')}${archived ? ` · ${archived} archived` : ''}`),
+    entries.length ? cards : h('div', { class: 'card empty' }, h('b', null, 'No phones yet'), 'Phones appear here when the app is opened on them.'),
+    h('div', { class: 'group' },
+      h('button', { type: 'button', class: 'row', id: 'openArchived', onclick: () => open({ name: 'archived' }) }, h('span', { class: 'ic' }, icon('archive', 20)),
+        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Archived phones')), h('span', { class: 'count' }, archived), h('span', { class: 'chev' }, icon('chev', 18))),
+      h('button', { type: 'button', class: 'row', id: 'addPhone', onclick: addPhone }, h('span', { class: 'ic' }, icon('plus', 20)),
+        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Add a phone by its ID')), h('span', { class: 'chev' }, icon('chev', 18)))),
+    h('p', { class: 'hint' }, 'Each phone asks for the person\'s name when it\'s first opened, and gets its own list named after them. Tap a phone to rename it or change its lists.'));
+}
+function phoneScreen() {
+  const id = S.sub.id;
+  const d = S.D.devices[id];
+  if (!d) { S.sub = null; return phonesScreen(); }
+  const name = h('input', { class: 'inp', id: 'pName', value: d.name || '', placeholder: 'e.g. Emma', oninput: e => { d.name = e.target.value.trim(); markDevices(); } });
+  const lists = h('div', { class: 'chips', style: 'gap:8px' }, S.lists.map(l => {
+    const on = (d.lists || []).includes(l);
+    return h('button', { type: 'button', class: 'lc pick', 'aria-pressed': String(on), onclick: () => {
+      d.lists = on ? d.lists.filter(x => x !== l) : [...(d.lists || []), l]; markDevices(); render(); } }, on ? icon('check', 15, 2.4) : null, listLabel(l));
+  }));
+  const req = h('select', { class: 'inp', id: 'pReq', onchange: e => { if (e.target.value) d.requestsTo = e.target.value; else delete d.requestsTo; markDevices(); } },
+    [['', 'The usual (see Settings)'], ['own', 'Its own list'], ...S.lists.map(n => [n, `The ${listLabel(n)} list`])].map(([v, t]) => h('option', { value: v }, t)));
+  req.value = d.requestsTo === 'own' || S.lists.includes(d.requestsTo) ? d.requestsTo : '';
+  const ads = h('div', { class: 'seg', role: 'group', 'aria-label': 'Ads' },
+    [['', 'Usual'], ['on', 'Blocked'], ['off', 'Allowed']].map(([v, t]) => h('button', { type: 'button', 'aria-pressed': String((d.adblock || '') === v),
+      onclick: () => { if (v) d.adblock = v; else delete d.adblock; markDevices(); render(); } }, t)));
+  const remove = () => {
+    if (!confirm(`Remove ${d.name || id}? It will use the lists for new phones until you add it again.`)) return;
+    delete S.D.devices[id]; markDevices(); back();
+  };
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Phones'),
+    h('div', { style: 'display:flex;align-items:center;gap:14px;padding:0 4px' }, h('span', { class: 'av big' }, (d.name || '?')[0].toUpperCase()),
+      h('div', null, h('h1', { style: 'margin:0;font:700 28px/1.15 var(--display)' }, d.name || 'No name yet'), h('span', { class: 'muted small mono' }, `${id}${d.model ? ' · ' + d.model : ''}`))),
+    h('div', { class: 'field' }, h('label', { for: 'pName' }, 'Name'), name),
+    h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Lists it uses'), lists,
+      h('p', { class: 'hint', style: 'margin:0' }, 'A site opens if any of these allows it, and is blocked if any of them blocks it.')),
+    h('div', { class: 'field' }, h('label', { for: 'pReq' }, 'When you approve its requests, change'), req),
+    h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Ads'), ads),
+    h('button', { type: 'button', class: 'btn d', id: 'pRemove', onclick: remove }, 'Remove this phone'));
+}
+function archivedScreen() {
+  const entries = Object.entries(S.D.archived || {});
+  const phones = Object.entries(S.D.devices);
+  const cards = entries.map(([aid, a]) => {
+    const give = h('select', { class: 'inp', 'aria-label': 'Give to phone', style: 'min-height:44px' }, h('option', { value: '' }, 'Give to another phone…'),
+      phones.map(([pid, p]) => h('option', { value: pid }, `${p.name || 'No name'} (${pid})`)));
+    give.onchange = () => { if (give.value) bringBack(aid, give.value); };
+    return h('div', { class: 'card', 'data-archived': aid },
+      h('div', null, h('b', { style: 'font-size:17px' }, a.name || `${a.model || 'Phone'} (no name)`),
+        h('div', { class: 'muted small mono' }, [aid, a.model, a.lastSeen ? `last seen ${String(a.lastSeen).slice(0, 10)}` : null].filter(Boolean).join(' · '))),
+      h('div', { class: 'chips' }, (a.lists || []).map(l => chip(listLabel(l), (a.archivedLists || []).includes(l) ? 'amber' : 'teal'))),
+      h('div', { class: 'acts' }, h('button', { type: 'button', class: 'btn p grow', onclick: () => bringBack(aid, aid) }, 'Restore'),
+        h('button', { type: 'button', class: 'btn d', onclick: () => deleteArchived(aid) }, 'Delete for good')),
+      phones.length ? give : null);
+  });
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Phones'),
+    screenTitle('Archived phones', 'Phones that stopped checking in. Their own lists are kept, not deleted.'),
+    entries.length ? cards : h('div', { class: 'card empty' }, h('b', null, 'None'), 'Phones not seen for a while are archived here automatically.'),
+    h('p', { class: 'hint' }, 'After a factory reset a phone gets a new ID and appears as a new phone. Use Give to another phone to hand it its old name and lists.'));
+}
+async function bringBack(fromId, toId) {
+  if (S.devDirty) return say('Save or undo your phone changes first.', true);
+  const a = S.D.archived[fromId], to = S.D.devices[toId], who = a.name || fromId;
+  if (!confirm(fromId === toId ? `Restore ${who} with its lists?` : `Give ${who}'s name and lists to ${to.name || to.model || toId}?`)) return render();
+  try {
+    const renamed = {};
+    for (const l of a.archivedLists || []) {
+      let name = l, n = 2;
+      while (S.lists.includes(name)) name = `${l}-${n++}`;
+      if (await moveFile(`docs/lists/archive/${l}.json`, `docs/lists/${name}.json`, `Restore list ${name} from the archive`)) { S.lists.push(name); renamed[l] = name; }
+    }
+    const restoredLists = (a.lists || []).map(l => renamed[l] || l).filter(l => S.lists.includes(l));
+    const { lastSeen, archivedOn, archivedLists, ...kept } = a;
+    const target = to || { lists: [], registered: new Date().toISOString().slice(0, 10) };
+    S.D.devices[toId] = { ...kept, ...target, name: target.name || a.name || '', model: target.model || a.model,
+      lists: [...new Set([...(target.lists || []), ...restoredLists])],
+      ...(fromId !== toId ? { previousIds: [...(a.previousIds || []), fromId] } : {}) };
+    if (!target.requestsTo && a.requestsTo) S.D.devices[toId].requestsTo = a.requestsTo;
+    delete S.D.archived[fromId];
+    S.devicesSha = await putJson('docs/devices.json', S.D, S.devicesSha, `Restore phone ${who}`);
+    render();
+    say(`${who} restored. Lists: ${S.D.devices[toId].lists.map(listLabel).join(', ') || 'none'}.`);
+  } catch (e) { say(e.message, true); }
+}
+async function deleteArchived(id) {
+  if (S.devDirty) return say('Save or undo your phone changes first.', true);
+  const a = S.D.archived[id];
+  const lost = a.archivedLists || [];
+  if (!confirm(`Delete ${a.name || id} for good?` + (lost.length ? ` Its archived lists (${lost.join(', ')}) are deleted too.` : ''))) return;
+  try {
+    for (const l of lost) {
+      const f = await getRaw(`docs/lists/archive/${l}.json`);
+      if (f) await deleteFile(`docs/lists/archive/${l}.json`, f.sha, `Delete archived list ${l}`);
+    }
+    delete S.D.archived[id];
+    S.devicesSha = await putJson('docs/devices.json', S.D, S.devicesSha, `Delete archived phone ${a.name || id}`);
+    render(); say(`${a.name || id} deleted.`);
+  } catch (e) { say(e.message, true); }
+}
+
+// ============================================================================================
+// Settings
+// ============================================================================================
+function settingsScreen() {
+  const D = S.D;
+  const section = (title, ...kids) => h('section', { class: 'stack', style: 'gap:8px' }, h('h2', { class: 'sec', style: 'margin-top:4px' }, title), ...kids);
+  const row = (ic, label, count, onclick, id) => h('button', { type: 'button', class: 'row', onclick, id }, h('span', { class: 'ic' }, icon(ic, 20)),
+    h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, label)), count != null ? h('span', { class: 'count' }, count) : null, h('span', { class: 'chev' }, icon('chev', 18)));
+  const days = h('span', null, `${D.inactiveDays || 14} days`);
+  const step = d => { D.inactiveDays = Math.max(1, Math.min(365, (D.inactiveDays || 14) + d)); days.textContent = `${D.inactiveDays} days`; markDevices(); };
+  const status = `https://${C.owner.toLowerCase()}.github.io/${C.repo}/`;
+  return h('main', { class: 'stack' },
+    screenTitle('Settings', 'For every phone'),
+    section('Ad blocking', h('div', { class: 'group' },
+      h('label', { class: 'tg', for: 'adblock' }, h('span', { class: 'grow' }, h('span', { class: 't' }, 'Block ads and trackers'), h('span', { class: 's' }, 'Uses AdGuard\'s list, updated weekly')),
+        h('input', { type: 'checkbox', class: 'sw', id: 'adblock', checked: D.adblock !== false, onchange: e => { D.adblock = e.target.checked; markDevices(); } })),
+      row('shield', 'Never block these', (D.adblockExceptions || []).length || 'None', () => open({ name: 'neverblock' }), 'openNever'))),
+    section('New phones', h('div', { class: 'card', style: 'gap:8px' },
+      h('span', { style: 'font-weight:600' }, 'Start with these lists'),
+      h('div', { class: 'chips', style: 'gap:8px' }, S.lists.map(l => {
+        const on = D.default.includes(l);
+        return h('button', { type: 'button', class: 'lc pick dlist', 'aria-pressed': String(on), onclick: () => {
+          D.default = on ? D.default.filter(x => x !== l) : [...D.default, l]; markDevices(); render(); } }, on ? icon('check', 15, 2.4) : null, listLabel(l));
+      })),
+      h('p', { class: 'hint', style: 'margin:0' }, 'Every phone also gets its own list, named after the person. The app\'s built-in starter lists follow these ticks from the next Build APK.'))),
+    section('When you approve a request', h('div', { class: 'card', style: 'gap:8px' },
+      h('span', { class: 'muted small' }, 'Change the list of'),
+      h('div', { class: 'seg', role: 'group', 'aria-label': 'When you approve a request' },
+        [['own', 'Just that phone'], ['public', 'Every phone']].map(([v, t]) => h('button', { type: 'button', 'aria-pressed': String((D.requestsTo === 'public' ? 'public' : 'own') === v),
+          onclick: () => { D.requestsTo = v; markDevices(); render(); } }, t))))),
+    section('Phones that stop being used', h('div', { class: 'group' }, h('div', { class: 'tg', style: 'cursor:default' },
+      h('span', { class: 'grow' }, h('span', { class: 't' }, 'Archive after'), h('span', { class: 's' }, 'Days without the app being opened')),
+      h('div', { class: 'stepper' }, h('button', { type: 'button', 'aria-label': 'Fewer days', onclick: () => step(-1) }, '−'), days, h('button', { type: 'button', 'aria-label': 'More days', onclick: () => step(1) }, '+'))))),
+    section('GitHub', h('div', { class: 'group' },
+      h('div', { class: 'row' }, h('span', { class: 'ic', style: 'color:#2E8B57' }, icon('check', 20, 2.2)),
+        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, `Connected to ${C.owner}/${C.repo}`), h('span', { class: 'dom' }, C.remember ? 'Token remembered on this device' : 'Token not remembered')),
+        h('button', { type: 'button', class: 'btn s sm', onclick: () => open({ name: 'connect' }) }, 'Change')),
+      C.remember ? h('button', { type: 'button', class: 'row', onclick: () => { C.remember = false; persist(); render(); say('This device won\'t remember the token any more.'); } },
+        h('span', { class: 'ic' }, icon('x', 20)), h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Forget the token on this device'))) : null,
+      h('a', { class: 'row', href: status, target: '_blank', rel: 'noopener' }, h('span', { class: 'ic' }, icon('ext', 20)),
+        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Open the status page'))))));
+}
+
+// ============================================================================================
+// Start
+// ============================================================================================
+(async () => {
+  if (C.token && C.owner && C.repo) {
+    $('view').replaceChildren(h('main', null, screenTitle('Connecting…', `${C.owner}/${C.repo}`)));
+    try { await loadAll(); }
+    catch (e) { S.connected = false; say(e.message, true); }
   }
-
-  function exportCsv() {
-    const q = v => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
-    const lines = ['domain,name,home page,tile opens,subdomains,only these pages,no photos or videos'];
-    document.querySelectorAll('.site').forEach(node => {
-      const d = node.querySelector('.domain').value.trim();
-      if (!d) return;
-      lines.push([d, node.querySelector('.name').value.trim(), node.querySelector('.home').checked ? 'yes' : 'no',
-        node.querySelector('.url').value.trim(), node.querySelector('.subs').checked ? 'yes' : 'no',
-        node.querySelector('.pages').value.split('\n').map(l => l.trim()).filter(Boolean).join(' '),
-        node.querySelector('.nomedia').checked ? 'yes' : 'no'].map(q).join(','));
-    });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\r\n') + '\r\n'], { type: 'text/csv' }));
-    a.download = `${current}-sites.csv`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  }
-
-  $('import').onclick = importBulk;
-  $('export').onclick = exportCsv;
-  $('load').onclick = load;
-  $('save').onclick = save;
-  tPicker = makePicker($('tPicker'), 30, updateLen);
-  $('addTemp').addEventListener('toggle', () => { if ($('addTemp').open) tPicker.sync(); });
-  $('tAdd').onclick = addTemp;
-  $('refreshInbox').onclick = () => loadInbox().catch(e => say(e.message, true));
-
-  $('reload').onclick = () => openList(current).catch(e => say(e.message, true));
-  $('listSel').onchange = switchList;
-  $('newList').onclick = newList;
-  $('delList').onclick = deleteList;
-  $('addPhone').onclick = addPhone;
-  $('savePhones').onclick = savePhones;
-  $('editor').addEventListener('input', e => { if (!e.target.closest('#bulk') && e.target.id !== 'listSel') dirty = true; });
-  $('add').onclick = () => addSite(undefined, true);
-  $('remember').onchange = persist;
+  render();
+})();
+})();
 </script>
 </body>
 </html>
