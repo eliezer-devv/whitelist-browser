@@ -1,5 +1,18 @@
 {
   "refreshMinutes": 5,
   "sites": [],
-  "block": []
+  "block": [],
+  "temporary": [
+    {
+      "id": "tmukd9m4vgpi",
+      "what": "site",
+      "entry": "youtube.com",
+      "mode": "clock",
+      "minutes": 5,
+      "from": "2026-09-27T22:04:47.311Z"
+    }
+  ],
+  "noMedia": [
+    "youtube.com"
+  ]
 }
