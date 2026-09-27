@@ -748,11 +748,13 @@ The same admin page is built into the app, so you can manage everything from the
   **5 wrong PINs wipe it** (then just paste the token again). Untick it to paste the token every time.
 - **It works like the web page:** the same tabs, buttons and saving. Downloads and outside links aren't available
   inside the app, so use a computer for those.
+- **To change the PIN** (or set one, if you chose to paste the token each time): **Settings** → **GitHub** →
+  **Change the PIN**. Type the new one twice. The old PIN stops working straight away.
 - **To leave,** tap **Close** at the top or the phone's back button. The browser checks for your changes straight away.
 - **Screenshots are blocked** on the admin screen, and it doesn't appear in the recent-apps preview.
 - **"Clear cookies and site data → All sites"** in the browser also removes the saved PIN and token. Just paste the token again.
-- **It's the version of the page from when the app was built.** The web page updates as soon as you change
-  `docs/admin.html`, and the in-app one with the next **Build APK**.
+- **It's the version of the page from when the app was built.** Changing `docs/admin.html` updates the web page
+  straight away, and starts a **Build APK** so the in-app one follows with the next app update.
 
 **Not needed?** You can manage everything through request replies (section 3) and by editing the files on github.com.
 

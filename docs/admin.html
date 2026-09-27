@@ -743,7 +743,7 @@ function render() {
   if (!S.connected && INAPP && getLock() && !S.usePaste) node = unlockScreen();
   else if (!S.connected || (S.sub && S.sub.name === 'connect')) node = connectScreen();
   else if (S.sub) node = ({ site: siteScreen, temp: tempScreen, block: blockScreen, nomedia: noMediaScreen, import: importScreen,
-    listsettings: listSettingsScreen, phone: phoneScreen, archived: archivedScreen, neverblock: neverBlockScreen })[S.sub.name]();
+    listsettings: listSettingsScreen, phone: phoneScreen, archived: archivedScreen, neverblock: neverBlockScreen, pin: pinScreen })[S.sub.name]();
   else node = ({ requests: requestsScreen, sites: sitesScreen, phones: phonesScreen, settings: settingsScreen })[S.tab]();
   view.replaceChildren(node);
   const key = S.connected ? (S.sub ? 'sub:' + S.sub.name : 'tab:' + S.tab) : 'connect';
@@ -807,6 +807,29 @@ function connectScreen() {
         h('div', { class: 'field' }, h('label', { for: 'cRepo' }, 'Private repository'), repo),
         h('div', { class: 'field' }, h('label', { for: 'cBranch' }, 'Branch'), br))),
     go1);
+}
+
+// Change the PIN (or set one) once signed in, in the app. The token is re-saved under the new PIN.
+function pinScreen() {
+  const had = !!getLock();
+  const field = (id, label) => h('div', { class: 'field' }, h('label', { for: id }, label),
+    h('input', { class: 'inp', id, type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '8', placeholder: '4 to 8 digits', style: 'max-width:12rem;font-size:20px;letter-spacing:.2em' }));
+  const saveBtn = h('button', { type: 'button', class: 'btn p wide', id: 'pinSave' }, had ? 'Change the PIN' : 'Save the PIN');
+  saveBtn.onclick = async () => {
+    const a = $('pinNew').value, b = $('pinAgain').value;
+    if (!/^\d{4,8}$/.test(a)) return say('The PIN needs 4 to 8 digits.', true);
+    if (a !== b) { $('pinAgain').value = ''; return say('The two PINs don\'t match. Type it again.', true); }
+    saveBtn.disabled = true;
+    await lockToken(a, C.token);
+    C.remember = true;
+    back();
+    say(had ? 'PIN changed. Use the new one next time.' : 'PIN saved. Next time, just type it to open the admin.');
+  };
+  setTimeout(() => $('pinNew') && $('pinNew').focus(), 50);
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Settings'),
+    screenTitle(had ? 'Change the PIN' : 'Remember with a PIN', had ? 'The old PIN stops working straight away.' : 'Keep the token on this phone, locked with a PIN.'),
+    field('pinNew', 'New PIN'), field('pinAgain', 'The same PIN again'), saveBtn,
+    h('p', { class: 'hint' }, 'After 5 wrong PINs, the token is wiped from this phone and needs pasting again.'));
 }
 
 function unlockScreen() {
@@ -1404,6 +1427,8 @@ function settingsScreen() {
         h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, `Connected to ${C.owner}/${C.repo}`),
           h('span', { class: 'dom' }, INAPP ? (getLock() ? 'Token protected by a PIN on this phone' : 'Token not remembered') : C.remember ? 'Token remembered on this device' : 'Token not remembered')),
         h('button', { type: 'button', class: 'btn s sm', onclick: () => open({ name: 'connect' }) }, 'Change')),
+      INAPP ? h('button', { type: 'button', class: 'row', id: 'openPin', onclick: () => open({ name: 'pin' }) }, h('span', { class: 'ic' }, icon('shield', 20)),
+        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, getLock() ? 'Change the PIN' : 'Remember with a PIN')), h('span', { class: 'chev' }, icon('chev', 18))) : null,
       (INAPP ? getLock() : C.remember) ? h('button', { type: 'button', class: 'row', onclick: () => { C.remember = false; localStorage.removeItem(LOCK_KEY); persist(); render(); say('This device won\'t remember the token any more.'); } },
         h('span', { class: 'ic' }, icon('x', 20)), h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Forget the token on this device'))) : null,
       INAPP ? null : h('a', { class: 'row', href: status, target: '_blank', rel: 'noopener' }, h('span', { class: 'ic' }, icon('ext', 20)),
