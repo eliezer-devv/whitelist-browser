@@ -192,7 +192,8 @@ You can keep something blocked but open it **for a while**: a whole site, a sing
 - **Temporary access wins over blocks** while it lasts, so it works even for something on **Always blocked**.
 - **On the phone:**
   - **Time left** shows in the status line, e.g. *"Temporary: 23 min left."* or *"Temporary: 40 min of use left."*
-  - **A temporarily open site** gets a home page tile with a ⏱ badge.
+  - **A temporarily open site** gets a home page tile with a ⏱ badge showing the time left. When the time is up,
+    the tile disappears by itself, even if the home page is open at the time.
   - **A warning pops up** 5 minutes before the end.
   - **When time runs out,** the page is replaced by **"Time's up"**, with **Ask to open** to ask for more.
 - **Expired entries are removed from the lists** by the daily check.

@@ -73,11 +73,26 @@
     return a;
   }
 
-  fetch('sites.json', { cache: 'no-store' }).then(r => r.json()).then(d => {
+  // The tiles are checked again every 20 seconds (and when the app comes back to the front), so a
+  // temporary site's tile disappears when its time is up, its time left counts down, and newly
+  // approved sites appear. Only changes are redrawn, so the tiles don't flicker.
+  let shown = '';
+  const keyOf = t => `${t.url}|${t.name}`;
+  function render(d) {
     const grid = document.getElementById('grid');
-    d.tiles.forEach(t => grid.append(tile(t)));
+    const keys = d.tiles.map(keyOf).join('\n');
+    if (keys !== shown) {                        // tiles added or removed: redraw them
+      grid.replaceChildren(...d.tiles.map(tile));
+      shown = keys;
+    } else {                                     // same tiles: just update the time left
+      d.tiles.forEach((t, i) => {
+        const b = grid.children[i] && grid.children[i].querySelector('.badge');
+        if (b && t.temp) b.textContent = '\u23F1 ' + t.temp;
+      });
+    }
+    const empty = document.getElementById('empty');
+    empty.hidden = d.tiles.length > 0;
     if (!d.tiles.length) {
-      document.getElementById('empty').hidden = false;
       document.getElementById('emptyTitle').textContent =
         !d.loaded ? 'Loading the list of sites' : d.siteCount ? 'No sites on the home page' : 'No sites are allowed yet';
       document.getElementById('emptyText').textContent =
@@ -85,7 +100,13 @@
         : d.siteCount ? 'None of your sites have a tile yet. Ask for a site below.' : 'Ask for a site below.';
     }
     document.getElementById('ask').hidden = !d.canRequest;
-  });
+  }
+  function load() {
+    fetch('sites.json', { cache: 'no-store' }).then(r => r.json()).then(render).catch(() => {});
+  }
+  load();
+  setInterval(() => { if (!document.hidden) load(); }, 20000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 </script>
 </body>
 </html>
