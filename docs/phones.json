@@ -1,0 +1,13 @@
+{
+  "default": [
+    "public"
+  ],
+  "devices": {
+    "TXYB-V9AE": {
+      "lists": [
+        "public",
+        "eliezer-finestone"
+      ]
+    }
+  }
+}
