@@ -96,6 +96,17 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
         web = findViewById(R.id.web)
         pageTitle = findViewById(R.id.pageTitle)
+        // Hidden way into the admin page: tap the name at the top 7 times within 4 seconds.
+        var taps = 0
+        var firstTap = 0L
+        pageTitle.setOnClickListener {
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - firstTap > 4000) { firstTap = now; taps = 0 }
+            if (++taps >= 7) {
+                taps = 0
+                startActivity(Intent(this, AdminActivity::class.java))
+            }
+        }
         status = findViewById(R.id.status)
         backBtn = findViewById(R.id.back)
         forwardBtn = findViewById(R.id.forward)
@@ -1081,7 +1092,9 @@ class MainActivity : Activity() {
         if (!url.startsWith("https://") && !url.startsWith("http://")) return null
         val host = Uri.parse(url).host?.lowercase() ?: return null
         val site = Whitelist.state.sites.firstOrNull { it.matches(host) }
-        return if (site != null && site.subdomains) site.domain.removePrefix("www.") else host.removePrefix("www.")
+        // Ask for the site itself: m.youtube.com and www.youtube.com both mean youtube.com.
+        val bare = host.replace(Regex("^(www|m|mobile)\\.(?=[^.]+\\.[^.]+)"), "")
+        return if (site != null && site.subdomains) site.domain.removePrefix("www.") else bare
     }
 
     /** Clears cookies, stored data and permission answers for one site and its subdomains. */
