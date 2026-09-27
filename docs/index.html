@@ -32,11 +32,23 @@
       const li = document.createElement('li');
       li.textContent = (s.name ? `${s.name} (${s.domain})` : s.domain) + (s.home === false ? ', not on home page' : '')
         + (s.subdomains === false ? ', exact site only' : '')
-        + (s.pages && s.pages.length ? `, only: ${s.pages.join(', ')}` : '');
+        + (s.pages && s.pages.length ? `, only: ${s.pages.join(', ')}` : '')
+        + (s.passThrough ? ' (a link passes through here)' : '');
       ul.append(li);
     });
     (d.block || []).forEach(b => { const li = document.createElement('li'); li.textContent = `${b}, always blocked${b.includes('/') ? ' (page)' : ''}`; ul.append(li); });
     (d.noMedia || []).forEach(b => { const li = document.createElement('li'); li.textContent = `${b}, no photos or videos`; ul.append(li); });
+    // Temporary access: open for a while only.
+    (d.temporary || []).forEach(t => {
+      const from = Date.parse(t.from) || 0, end = from + (t.mode === 'use' ? 7 * 1440 : t.minutes) * 60000;
+      if (end <= Date.now()) return;
+      const until = new Date(end).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      const what = t.what === 'media' ? 'photos and videos on' : 'open';
+      const li = document.createElement('li');
+      li.textContent = `⏱ ${t.entry}: ${what} for a while only, ` +
+        (t.mode === 'use' ? `${t.minutes} min of use, until ${until}` : `until ${until}`);
+      ul.append(li);
+    });
   }).catch(() => { document.getElementById('meta').textContent = 'whitelist.json could not be read.'; });
   if (location.hostname.endsWith('.github.io')) {
     const owner = location.hostname.split('.')[0], repo = location.pathname.split('/')[1];
