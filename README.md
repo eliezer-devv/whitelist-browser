@@ -292,7 +292,20 @@ The link in GitHub's notification (**Answer it on the admin page**) opens the pa
 
 This needs your admin token to have the **Issues** permission as well (section 6).
 
-**Or reply on GitHub** (in the GitHub app or on github.com). The buttons above post these same replies for you:
+**Or reply on GitHub** (in the GitHub app, on github.com, or **by replying to the notification email**). The buttons above post these same replies for you.
+How replies are read, so nothing happens by accident:
+- **Only the first line is read,** as a command. You can write notes on the lines below.
+- **When you reply by email,** only what you write above the quoted notification is read, so the options listed in
+  the quote don't count.
+- **A reply with words it doesn't recognise changes nothing.** The bot asks you to reply with just a command instead.
+  For example, *"Yes, she needs it for the public library"* won't change the public list.
+  Polite words are fine: *"Yes please"* and *"approve, thanks"* work.
+- **Only a plain `no` counts as a no.** *"No problem, go ahead"* doesn't deny the request.
+- **`block` only answers a request to block something.** On a request to open a site, it changes nothing and the bot explains.
+- **Replying to a request that's already been answered** changes nothing, and the bot says so.
+- **Approving a site that's already on the list without a tile** (e.g. one added as a pass-through) gives it a tile,
+  unless you reply `approve hidden`.
+- **Mobile and www. addresses count as the site itself:** asking from `m.youtube.com` or `www.youtube.com` adds `youtube.com`.
 
 | Reply | What happens |
 |---|---|
@@ -679,6 +692,20 @@ and **Save**. Saving checks every address and tidies it, so `https://www.bbc.co.
 Phones pick changes up within a few minutes. If something changed on GitHub in the meantime (say, a request was
 approved), saving says so: tap **Undo** to reload, then redo the edit. Answering requests is sent straight away,
 without the Save bar.
+
+### Inside the app (hidden)
+The same admin page is built into the app, so you can manage everything from the phone itself.
+- **To open it,** tap the name at the top of the browser (e.g. **Home**) **7 times quickly**.
+- **The first time,** paste your admin token. Tick **Remember with a PIN** and choose a PIN of 4 to 8 digits, and
+  next time you'll only type the PIN. The token is stored on the phone encrypted with the PIN, never as it is, and
+  **5 wrong PINs wipe it** (then just paste the token again). Untick it to paste the token every time.
+- **It works like the web page:** the same tabs, buttons and saving. Downloads and outside links aren't available
+  inside the app, so use a computer for those.
+- **To leave,** tap **Close** at the top or the phone's back button. The browser checks for your changes straight away.
+- **Screenshots are blocked** on the admin screen, and it doesn't appear in the recent-apps preview.
+- **"Clear cookies and site data → All sites"** in the browser also removes the saved PIN and token. Just paste the token again.
+- **It's the version of the page from when the app was built.** The web page updates as soon as you change
+  `docs/admin.html`, and the in-app one with the next **Build APK**.
 
 **Not needed?** You can manage everything through request replies (section 3) and by editing the files on github.com.
 
