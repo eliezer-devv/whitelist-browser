@@ -60,6 +60,18 @@ jobs:
           # terms that setup-gradle v6 applies to its caching component.
           cache-disabled: true
 
+      # The app's two fonts (Figtree and Bricolage Grotesque, SIL Open Font License), from Google's font
+      # collection. If a download fails, the build still works and the app uses the phone's own font.
+      - name: Download fonts
+        run: |
+          mkdir -p app/src/main/assets/fonts
+          base=https://raw.githubusercontent.com/google/fonts/main/ofl
+          curl -gfsSL --retry 3 "$base/figtree/Figtree[wght].ttf" -o app/src/main/assets/fonts/Figtree.ttf \
+            || echo "::warning::Couldn't download the Figtree font; the app will use the phone's own font."
+          curl -gfsSL --retry 3 "$base/bricolagegrotesque/BricolageGrotesque[opsz,wdth,wght].ttf" -o app/src/main/assets/fonts/BricolageGrotesque.ttf \
+            || echo "::warning::Couldn't download the Bricolage Grotesque font; the app will use the phone's own font."
+          ls -l app/src/main/assets/fonts
+
       # Pack a copy of the AdGuard ad list into the app, so ad blocking works from the first launch.
       - name: Download ad list
         run: |
@@ -115,4 +127,3 @@ jobs:
             gh release create "$VERSION" whitelist-browser.apk \
               --title "Version ${VERSION#v}" --notes "Built from ${GITHUB_SHA::7}." --latest
           fi
-          
