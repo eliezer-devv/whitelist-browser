@@ -34,6 +34,15 @@
         "policies.google.com/terms"
       ],
       "passThrough": true
+    },
+    {
+      "domain": "accounts.google.co.il",
+      "name": "accounts.google.co.il",
+      "home": false,
+      "pages": [
+        "accounts.google.co.il/accounts/SetSID"
+      ],
+      "passThrough": true
     }
   ],
   "block": [],
