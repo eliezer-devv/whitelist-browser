@@ -15,6 +15,11 @@
       "domain": "github.com",
       "home": true,
       "frames": true
+    },
+    {
+      "domain": "accounts.google.com",
+      "name": "accounts.google.com",
+      "home": true
     }
   ],
   "block": [],
