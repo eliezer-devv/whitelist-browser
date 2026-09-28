@@ -43,10 +43,30 @@
         "accounts.google.co.il/accounts/SetSID"
       ],
       "passThrough": true
+    },
+    {
+      "domain": "myaccount.google.com",
+      "name": "myaccount.google.com",
+      "home": false,
+      "pages": [
+        "myaccount.google.com/?authuser=0",
+        "myaccount.google.com/intro"
+      ],
+      "passThrough": true
     }
   ],
   "block": [],
   "noMedia": [
     "youtube.com"
+  ],
+  "temporary": [
+    {
+      "id": "tmulu67mfsxt",
+      "what": "site",
+      "entry": "google.com",
+      "mode": "clock",
+      "minutes": 5,
+      "from": "2026-09-28T22:45:48.183Z"
+    }
   ]
 }
