@@ -63,6 +63,17 @@ class MainActivity : Activity() {
     private var isResumedNow = false
     private val refreshTask = Runnable { refreshWhitelist() }
 
+    // Quick checking: after a request is sent (and when an approval arrives), the phone checks for the
+    // answer and the updated lists every 20 seconds for a while, instead of every few minutes, so an
+    // approval shows up within moments of being published.
+    @Volatile private var fastUntil = 0L
+    private val fast get() = System.currentTimeMillis() < fastUntil
+    private fun fastChecks(minutes: Int) {
+        fastUntil = maxOf(fastUntil, System.currentTimeMillis() + minutes * 60_000L)
+        main.removeCallbacks(refreshTask)
+        if (isResumedNow) main.postDelayed(refreshTask, 20_000L)
+    }
+
     // Small screens (under 360dp wide, e.g. 2.8-inch phones): Forward and Reload move into the menu,
     // dialogs get slimmer margins, and a few rows stack instead of sitting side by side.
     private val narrow get() = resources.configuration.screenWidthDp in 1 until 360
@@ -405,7 +416,7 @@ class MainActivity : Activity() {
                 if (HomePage.isHome(web.url) && !Whitelist.state.sameContent(before)) web.reload()
                 enforceCurrent()
                 updateUi()
-                if (isResumedNow) main.postDelayed(refreshTask, Whitelist.state.refreshMinutes * 60_000L)
+                if (isResumedNow) main.postDelayed(refreshTask, if (fast) 20_000L else Whitelist.state.refreshMinutes * 60_000L)
                 // Online: send anything waiting (a registration, requests made offline), and check in
                 // so the phone isn't archived as unused (every 12 hours at most).
                 if (error == null) {
@@ -791,9 +802,17 @@ class MainActivity : Activity() {
             setTextColor(0xFFD93025.toInt())
             setPadding(0, 0, 0, (8 * density).toInt())
             visibility = if (filteredNow.isNotEmpty()) android.view.View.VISIBLE else android.view.View.GONE
-            text = filterWarningText(siteDomain ?: "", filteredNow)
+            text = filterWarningText(siteDomain ?: "", filteredNow, pinNote = Whitelist.state.pinApproval)
         }
         box.addView(filterWarning)
+
+        // The "Approve here with a PIN" option (added to the screen further down, below the note).
+        val pinCheck = android.widget.CheckBox(this).apply { text = "Approve here with a PIN" }
+        val pinField = EditText(this).apply {
+            hint = "Approval PIN"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            visibility = android.view.View.GONE
+        }
 
         val siteField = EditText(this).apply {
             hint = "Website, e.g. scratch.mit.edu"
@@ -814,6 +833,7 @@ class MainActivity : Activity() {
                     askAnyway = null
                     siteField.error = null
                     filterWarning.visibility = android.view.View.GONE
+                    if (Whitelist.state.pinApproval) pinCheck.visibility = android.view.View.VISIBLE
                     (siteField.tag as? android.widget.Button)?.text = "Send"
                 }
             }
@@ -917,6 +937,17 @@ class MainActivity : Activity() {
         }
         box.addView(noteField)
 
+        // Approve here with a PIN: when whoever manages this browser is with them. Only offered if a PIN is
+        // set for this phone. The phone doesn't check it: GitHub does, then removes it from the request.
+        if (Whitelist.state.pinApproval && filteredNow.isEmpty()) {   // the PIN can't open filtered sites
+            box.addView(pinCheck)
+            box.addView(pinField)
+            pinCheck.setOnCheckedChangeListener { _, on ->
+                pinField.visibility = if (on) android.view.View.VISIBLE else android.view.View.GONE
+                if (on) pinField.requestFocus()
+            }
+        }
+
         val verb = if (action == Requests.Action.ALLOW) "open" else "block"
         val title = when {
             mediaBack -> "Ask for photos and videos"
@@ -954,7 +985,13 @@ class MainActivity : Activity() {
                     toast("Choose how long on the wheels, or pick Always") // the box stays open
                     return@setOnClickListener
                 }
-                if (Requests.recentlySent(this, action, "$subject|${media.word}")) {
+                val pin = if (pinCheck.isChecked && pinCheck.visibility == android.view.View.VISIBLE) pinField.text.toString().trim() else null
+                if (pin != null && !Regex("^\\d{4,8}$").matches(pin)) {
+                    pinField.error = "The PIN is 4 to 8 digits"
+                    pinField.requestFocus()
+                    return@setOnClickListener
+                }
+                if (pin == null && Requests.recentlySent(this, action, "$subject|${media.word}")) {
                     toast("You already asked about $subject. Wait for an answer.")
                     dialog.dismiss()
                     return@setOnClickListener
@@ -963,19 +1000,21 @@ class MainActivity : Activity() {
                 // "Send anyway" after the site couldn't be found: send it, marked as not found.
                 if (siteDomain == null && sendAnyway == domain) {
                     dialog.dismiss()
-                    sendRequest(action, scope, media, domain, null, note, hops, minutes, unverified = true)
+                    sendRequest(action, scope, media, domain, null, note, hops, minutes, unverified = true, pin = pin)
                     return@setOnClickListener
                 }
                 if (siteDomain != null) {
                     dialog.dismiss()
-                    sendRequest(action, scope, media, domain, pageUrl, note, hops, minutes)
+                    sendRequest(action, scope, media, domain, pageUrl, note, hops, minutes, pin = pin)
                     return@setOnClickListener
                 }
                 // A typed site on a content filter's list: say which, and ask them to confirm first.
                 val typedFiltered = if (action == Requests.Action.ALLOW) Whitelist.filteredAs(domain) else emptyList()
                 if (typedFiltered.isNotEmpty() && askAnyway != domain) {
-                    filterWarning.text = filterWarningText(domain, typedFiltered)
+                    filterWarning.text = filterWarningText(domain, typedFiltered, pinNote = Whitelist.state.pinApproval)
                     filterWarning.visibility = android.view.View.VISIBLE
+                    pinCheck.isChecked = false
+                    pinCheck.visibility = android.view.View.GONE
                     askAnyway = domain
                     dialog.getButton(AlertDialog.BUTTON_POSITIVE).text = "Ask anyway"
                     return@setOnClickListener
@@ -1001,7 +1040,7 @@ class MainActivity : Activity() {
                         } else {
                             // Found, or no internet to check with: the request is sent (or saved until online).
                             dialog.dismiss()
-                            sendRequest(action, scope, media, domain, null, note, hops, minutes)
+                            sendRequest(action, scope, media, domain, null, note, hops, minutes, pin = pin)
                         }
                     }
                 }
@@ -1045,11 +1084,12 @@ class MainActivity : Activity() {
     }
 
     /** "⚠️ example.com is on the gambling list, so it's blocked. You can still ask: …" */
-    private fun filterWarningText(domain: String, filters: List<String>): String {
+    private fun filterWarningText(domain: String, filters: List<String>, pinNote: Boolean = false): String {
         val names = filters.map { when (it) { "adult" -> "adult content"; "malware" -> "malware and scams"; else -> it } }
         val lists = names.joinToString(" and ") + if (names.size > 1) " lists" else " list"
         return "⚠️ $domain is on the $lists, so it's blocked. You can still ask: whoever manages this browser " +
-            "will see that it's on this list, and decide."
+            "will see that it's on this list, and decide." +
+            if (pinNote) " (The approval PIN can't open sites on this list.)" else ""
     }
 
     /**
@@ -1058,13 +1098,13 @@ class MainActivity : Activity() {
      */
     private fun sendRequest(action: Requests.Action, scope: Requests.Scope, media: Requests.Media,
                             domain: String, pageUrl: String?, note: String, hops: List<String> = emptyList(),
-                            minutes: Int = 0, unverified: Boolean = false) {
-        toast("Sending request")
+                            minutes: Int = 0, unverified: Boolean = false, pin: String? = null) {
+        toast(if (pin != null) "Checking the PIN" else "Sending request")
         updateIo.execute {
             val outcome = runCatching {
                 // Which content filters list it (so you see that before approving).
                 val filtered = if (action == Requests.Action.ALLOW) Whitelist.filteredAs(domain) else emptyList()
-                val id = Requests.queue(applicationContext, action, scope, media, domain, pageUrl, note, hops, minutes, unverified, filtered)
+                val id = Requests.queue(applicationContext, action, scope, media, domain, pageUrl, note, hops, minutes, unverified, filtered, pin)
                 val r = Outbox.flush(applicationContext)
                 when {
                     id in r.sent -> null
@@ -1073,9 +1113,11 @@ class MainActivity : Activity() {
                 }
             }
             main.post {
+                fastChecks(10) // watch for the answer (and the updated lists) for the next 10 minutes
                 if (isDestroyed) return@post
                 val problem = outcome.getOrElse { "Couldn't send the request: ${it.message}" }
                 toast(problem ?: when {
+                    pin != null -> "Checking the PIN. If it's right, this happens by itself within a minute or two."
                     action == Requests.Action.BLOCK -> "Request sent."
                     media == Requests.Media.ON -> "Request sent. If it's approved, photos and videos come back by themselves."
                     pageUrl != null -> "Request sent. If it's approved, it opens by itself."
@@ -1097,7 +1139,7 @@ class MainActivity : Activity() {
             runCatching { Outbox.flush(applicationContext) }
             if (checkIn) {
                 runCatching { Requests.checkIn(applicationContext) }
-                runCatching { MyRequests.check(applicationContext) } // answers to this phone's requests
+                runCatching { MyRequests.check(applicationContext, if (fast) 20_000L else 5 * 60_000L) } // answers to this phone's requests
             }
             main.post { if (!isDestroyed) showNewAnswers() }
         }
@@ -1120,6 +1162,8 @@ class MainActivity : Activity() {
     private fun showNewAnswers() {
         val fresh = MyRequests.takeNewAnswers(this)
         if (fresh.isEmpty()) return
+        // Approved: the updated list may still be on its way (a minute or two), so keep checking quickly.
+        if (fresh.any { it.status == "approved" }) fastChecks(5)
         val text = fresh.joinToString("\n\n") { "${statusIcon(it.status)} ${it.summary}\n${it.message}" }
         AlertDialog.Builder(this)
             .setTitle(if (fresh.size == 1) "Answer to your request" else "Answers to your requests")
@@ -1136,7 +1180,7 @@ class MainActivity : Activity() {
         }
         val sent = MyRequests.all(this).map {
             val when_ = if (it.status == "waiting") "Asked ${shortDate(it.asked)}." else "Answered ${shortDate(it.answered)}."
-            val msg = if (it.status == "waiting") "Waiting for an answer." else it.message
+            val msg = if (it.status == "waiting") it.message.ifEmpty { "Waiting for an answer." } else it.message
             "${statusIcon(it.status)} ${it.summary}\n$msg\n$when_"
         }
         val all = notSent + sent

@@ -419,6 +419,38 @@ The bot's reply lists these for each request, so you don't need to remember them
 You can also write `yes` or `ok` instead of `approve`, and `no` instead of `deny`.
 Any other reply is treated as an ordinary comment. Only your own replies count.
 
+### Approving on the spot with a PIN
+When you're with the person, you can approve their request on their phone, without answering it on GitHub or the
+admin page, and without signing in to the admin page on their phone.
+- **Set a PIN** on the admin page: **Settings** → **Approval PIN** → **PIN for all phones**, or per phone under
+  **Phones** → the phone → **Approval PIN**: **Usual** (the all-phones PIN), **Own PIN**, or **None**. Use 4 to 8
+  digits (6 is best).
+- **On the phone,** the request screen then shows **Approve here with a PIN**. Tick it, type the PIN and tap **Send**.
+  It approves exactly what was asked, including a time limit or "without photos", and the site opens by itself
+  within a minute or two. You still get the notification, marked *"Approved on the phone with the approval PIN"*.
+- **It can't open anything on the adult, gambling or malware lists.** The phone doesn't offer the PIN for those sites,
+  and if a PIN arrives with such a request anyway, it's ignored and the request waits for you. Only you can open those,
+  with **Approve anyway**.
+- **It only approves requests.** It can't open the admin page or change anything else.
+- **Safety:**
+  - **The phone never checks or keeps the PIN.** GitHub checks it, then deletes it from the request.
+  - **Only a scrambled version is stored,** in the private repository. Phones only learn whether a PIN is set.
+  - **A wrong PIN** turns the request into a normal one waiting for you, and the phone says *"Wrong PIN, so your request
+    was sent for approval instead"*.
+  - **After 5 wrong PINs,** PIN approvals lock on that phone for 24 hours, and you're told. Unlock it early under
+    **Phones** → the phone → **Unlock**.
+  - **Choose a PIN nobody can guess,** and don't type it where it can be watched.
+
+### How quickly changes reach the phone
+A change goes through a short relay: the private repository saves it (instantly), copies it to the public repository
+(**Publish lists**, about 30 to 60 seconds), and GitHub Pages publishes it (**Publish list**, another 30 to 60 seconds).
+So it's live about **1 to 2 minutes** after you save or reply. Then the phone has to check:
+- **After sending a request,** the phone checks every **20 seconds** for the next 10 minutes (and for a few more minutes
+  once an approval arrives), so an approved site opens within moments of being published.
+- **Otherwise,** it checks every few minutes while the app is open (**List settings** → **Phones check for changes
+  every**; the files are tiny, so 1 or 2 minutes is fine), and straight away whenever the app is opened.
+- **To check now,** tap the status line under the top bar.
+
 ### How the person who asked hears back
 Every request gets an answer on the phone, whether it's approved or not.
 - **How it gets there:** your final reply (or the bot's, on your behalf) includes a short, plain-language answer for the phone.

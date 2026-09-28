@@ -71,9 +71,9 @@ object MyRequests {
      * Asks GitHub about requests still waiting for an answer. Blocking; run off the main thread.
      * At most every 5 minutes. Stops at the first connection problem.
      */
-    fun check(ctx: Context) {
+    fun check(ctx: Context, minGapMs: Long = 5 * 60_000L) {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (System.currentTimeMillis() - p.getLong("lastCheck", 0L) < 5 * 60_000L) return
+        if (System.currentTimeMillis() - p.getLong("lastCheck", 0L) < minGapMs) return
         p.edit().putLong("lastCheck", System.currentTimeMillis()).apply()
         val waiting = synchronized(this) {
             val items = read(ctx)
@@ -83,6 +83,20 @@ object MyRequests {
         }
         for ((number, asked) in waiting) {
             val answer = runCatching { Requests.answerTo(number) }.getOrElse { return } // offline: try later
+            // A notice while it's still waiting: show it once, and keep waiting for the answer.
+            if (answer?.first == "notice") {
+                synchronized(this) {
+                    val items = read(ctx)
+                    for (i in 0 until items.length()) {
+                        val o = items.getJSONObject(i)
+                        if (o.optInt("number") == number && o.optString("message") != answer.second) {
+                            o.put("message", answer.second).put("answered", System.currentTimeMillis()).put("seen", false)
+                        }
+                    }
+                    write(ctx, items)
+                }
+                continue
+            }
             val status: String
             val message: String
             when {

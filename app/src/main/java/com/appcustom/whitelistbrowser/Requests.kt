@@ -40,7 +40,7 @@ object Requests {
      */
     fun queue(ctx: Context, action: Action, scope: Scope, media: Media, domain: String, pageUrl: String?, note: String,
               hops: List<String> = emptyList(), minutes: Int = 0, unverified: Boolean = false,
-              filtered: List<String> = emptyList()): String {
+              filtered: List<String> = emptyList(), pin: String? = null): String {
         if (!isSetUp()) throw IOException("Requests aren't set up for this app yet")
 
         val page = if (scope == Scope.PAGE) pageUrl?.let { Whitelist.pageKey(it) } else null
@@ -68,6 +68,7 @@ object Requests {
             .apply { if (minutes > 0) put("minutes", minutes) }
             .apply { if (unverified) put("unverified", true) } // the phone couldn't find this site
             .apply { if (filtered.isNotEmpty()) put("filtered", JSONArray(filtered)) } // on a content filter's list
+            .apply { if (pin != null) put("pin", pin) } // approval PIN: checked by GitHub, then removed from the request
             .apply { if (hops.isNotEmpty()) put("hops", JSONArray(hops.take(10))) }
             .apply { if (!pageUrl.isNullOrBlank()) put("url", pageUrl) }
             .toString()
@@ -108,7 +109,15 @@ object Requests {
      */
     fun answerTo(number: Int): Pair<String, String>? {
         val issue = get("issues/$number") ?: return Pair("closed", "This request was removed.")
-        if (JSONObject(issue).optString("state") != "closed") return null
+        if (JSONObject(issue).optString("state") != "closed") {
+            // Still waiting: a notice for the phone, if there is one (e.g. "Wrong PIN, so it was sent for approval").
+            val open = JSONArray(get("issues/$number/comments?per_page=100") ?: "[]")
+            for (i in open.length() - 1 downTo 0) {
+                val m = NOTICE.find(open.getJSONObject(i).optString("body")) ?: continue
+                return Pair("notice", JSONObject(m.groupValues[1]).optString("message"))
+            }
+            return null
+        }
         // The owner's final reply carries the answer for the phone in a hidden note.
         val comments = JSONArray(get("issues/$number/comments?per_page=100") ?: "[]")
         for (i in comments.length() - 1 downTo 0) {
@@ -123,6 +132,7 @@ object Requests {
             else Pair("closed", "Closed without an answer.")
     }
 
+    private val NOTICE = Regex("<!-- whitelist-notice\\s*([\\s\\S]*?)-->")
     private val RESPONSE = Regex("<!-- whitelist-response\\s*([\\s\\S]*?)-->")
 
     /** GET from the repo's API. Null if it doesn't exist (404/410). Throws on other problems. */

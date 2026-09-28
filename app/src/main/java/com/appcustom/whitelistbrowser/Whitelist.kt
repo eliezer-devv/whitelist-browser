@@ -64,6 +64,7 @@ object Whitelist {
         val registered: Boolean = false,            // this phone is in phones.json
         val adult: Boolean = true,                  // content filters (admin page: Settings → Filters)
         val gambling: Boolean = true,
+        val pinApproval: Boolean = false,           // an approval PIN is set for this phone (admin page)
         val malware: Boolean = true,
         val adblock: Boolean = true,                // block ads and trackers (set in the admin page)
         val adblockExceptions: List<String> = emptyList() // domains never blocked as ads
@@ -210,6 +211,7 @@ object Whitelist {
             adblock = b.optBoolean("adblock", true),
             adult = b.optBoolean("adult", true),
             gambling = b.optBoolean("gambling", true),
+            pinApproval = b.optBoolean("pin", false),
             malware = b.optBoolean("malware", true),
             adblockExceptions = b.optJSONArray("adblockExceptions")?.let { a ->
                 (0 until a.length()).mapNotNull { normalize(a.optString(it)) } } ?: emptyList()
@@ -282,6 +284,7 @@ object Whitelist {
         }
         val bundle = JSONObject().put("device", device ?: JSONObject.NULL).put("lists", lists)
             .put("adblock", adblock).put("adult", filter("adult")).put("gambling", filter("gambling")).put("malware", filter("malware"))
+            .put("pin", if (device?.has("pin") == true) device.optBoolean("pin") else devices?.optBoolean("pin", false) ?: false)
             .put("adblockExceptions", devices?.optJSONArray("adblockExceptions") ?: JSONArray())
             .toString()
         val now = System.currentTimeMillis()

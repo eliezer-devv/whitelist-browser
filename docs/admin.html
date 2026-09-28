@@ -794,7 +794,8 @@ function render() {
   if (!S.connected && INAPP && getLock() && !S.usePaste) node = unlockScreen();
   else if (!S.connected || (S.sub && S.sub.name === 'connect')) node = connectScreen();
   else if (S.sub) node = ({ site: siteScreen, temp: tempScreen, block: blockScreen, nomedia: noMediaScreen, import: importScreen,
-    listsettings: listSettingsScreen, phone: phoneScreen, archived: archivedScreen, neverblock: neverBlockScreen, pin: pinScreen })[S.sub.name]();
+    listsettings: listSettingsScreen, phone: phoneScreen, archived: archivedScreen, neverblock: neverBlockScreen, pin: pinScreen,
+    approvalpin: approvalPinScreen })[S.sub.name]();
   else node = ({ requests: requestsScreen, sites: sitesScreen, phones: phonesScreen, settings: settingsScreen })[S.tab]();
   view.replaceChildren(node);
   const key = S.connected ? (S.sub ? 'sub:' + S.sub.name : 'tab:' + S.tab) : 'connect';
@@ -881,6 +882,46 @@ function pinScreen() {
     screenTitle(had ? 'Change the PIN' : 'Remember with a PIN', had ? 'The old PIN stops working straight away.' : 'Keep the token on this phone, locked with a PIN.'),
     field('pinNew', 'New PIN'), field('pinAgain', 'The same PIN again'), saveBtn,
     h('p', { class: 'hint' }, 'After 5 wrong PINs, the token is wiped from this phone and needs pasting again.'));
+}
+
+// ---------- approval PIN (typed on a phone to approve a request on the spot) ----------
+// Stored in devices.json only as a salted PBKDF2-SHA256 hash, the same way GitHub's check computes it.
+async function hashApprovalPin(pin) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 150000, hash: 'SHA-256' }, base, 256);
+  return { salt: u8b64(salt), hash: u8b64(new Uint8Array(bits)), iter: 150000 };
+}
+function approvalPinScreen() {
+  const sub = S.sub, all = sub.scope === 'all';
+  const d = all ? null : S.D.devices[sub.scope];
+  const who = all ? 'all phones' : (d && (d.name || sub.scope));
+  const had = all ? !!S.D.approvalPin : !!(d && d.approvalPin && typeof d.approvalPin === 'object');
+  const done = () => all ? back() : open({ name: 'phone', id: sub.scope });   // back to where it was opened from
+  const field = (id, label) => h('div', { class: 'field' }, h('label', { for: id }, label),
+    h('input', { class: 'inp', id, type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '8', placeholder: '4 to 8 digits', style: 'max-width:12rem;font-size:20px;letter-spacing:.2em' }));
+  const saveBtn = h('button', { type: 'button', class: 'btn p wide', id: 'apSave' }, had ? 'Change the PIN' : 'Set the PIN');
+  saveBtn.onclick = async () => {
+    const a = $('apNew').value, b = $('apAgain').value;
+    if (!/^\d{4,8}$/.test(a)) return say('The PIN needs 4 to 8 digits.', true);
+    if (a !== b) { $('apAgain').value = ''; return say('The two PINs don\'t match. Type it again.', true); }
+    saveBtn.disabled = true;
+    const hashed = await hashApprovalPin(a);
+    if (all) S.D.approvalPin = hashed; else d.approvalPin = hashed;
+    markDevices(); done();
+    say(`Approval PIN ${had ? 'changed' : 'set'} for ${who}. Tap Save to apply it.`);
+  };
+  const remove = () => {
+    if (all) delete S.D.approvalPin; else delete d.approvalPin;
+    markDevices(); done(); say(`Approval PIN removed for ${who}. Tap Save to apply it.`);
+  };
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink(all ? 'Settings' : who, done),
+    screenTitle(had ? 'Change the approval PIN' : 'Set an approval PIN', `For ${who}`),
+    h('p', { class: 'hint' }, 'When you\'re with someone who wants a site, you can type this PIN on their phone to approve their request there and then, ' +
+      'instead of answering it here. It only approves requests: it doesn\'t open this admin page, and it can\'t open sites on the adult, gambling or malware lists (only you can, with Approve anyway). A 6-digit PIN is best.'),
+    field('apNew', 'New PIN'), field('apAgain', 'The same PIN again'), saveBtn,
+    had ? h('button', { type: 'button', class: 'btn d', id: 'apRemove', onclick: remove }, 'Remove this PIN') : null,
+    h('p', { class: 'hint' }, 'After 5 wrong PINs on a phone, PIN approvals lock on it for 24 hours (unlock it under Phones). Only a scrambled version of the PIN is stored.'));
 }
 
 function unlockScreen() {
@@ -1387,6 +1428,15 @@ function phoneScreen() {
     h('div', { class: 'seg', role: 'group', 'aria-label': title },
       [['', 'Usual'], ['on', 'On'], ['off', 'Off']].map(([v, t]) => h('button', { type: 'button', 'aria-pressed': String((d[key] || '') === v),
         onclick: () => { if (v) d[key] = v; else delete d[key]; markDevices(); render(); } }, t)))));
+  const pinMode = d.approvalPin === 'none' ? 'none' : (d.approvalPin && typeof d.approvalPin === 'object') ? 'own' : '';
+  const pinSeg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Approval PIN' },
+    [['', 'Usual'], ['own', 'Own PIN'], ['none', 'None']].map(([v, t]) => h('button', { type: 'button', 'aria-pressed': String(pinMode === v),
+      onclick: () => {
+        if (v === 'own') { if (pinMode !== 'own') open({ name: 'approvalpin', scope: id }); return; }
+        if (v === 'none') d.approvalPin = 'none'; else delete d.approvalPin;
+        markDevices(); render();
+      } }, t)));
+  const locked = d.pinLockedUntil && Date.parse(d.pinLockedUntil) > Date.now();
   const ads = h('div', { class: 'seg', role: 'group', 'aria-label': 'Ads' },
     [['', 'Usual'], ['on', 'Blocked'], ['off', 'Allowed']].map(([v, t]) => h('button', { type: 'button', 'aria-pressed': String((d.adblock || '') === v),
       onclick: () => { if (v) d.adblock = v; else delete d.adblock; markDevices(); render(); } }, t)));
@@ -1412,6 +1462,12 @@ function phoneScreen() {
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Lists it uses'), lists,
       h('p', { class: 'hint', style: 'margin:0' }, d.blocked ? 'Unblock it to change its lists.' : 'A site opens if any of these allows it, and is blocked if any of them blocks it.')),
     h('div', { class: 'field' }, h('label', { for: 'pReq' }, 'When you approve its requests, change'), req),
+    h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Approval PIN'), pinSeg,
+      h('p', { class: 'hint', style: 'margin:0' }, pinMode === 'own' ? 'This phone has its own PIN.' : pinMode === 'none' ? 'Requests from this phone can\'t be approved with a PIN.'
+        : S.D.approvalPin ? 'Uses the PIN for all phones (Settings).' : 'No PIN for all phones is set (Settings).'),
+      pinMode === 'own' ? h('button', { type: 'button', class: 'btn s sm', onclick: () => open({ name: 'approvalpin', scope: id }) }, 'Change its PIN') : null,
+      locked ? h('p', { class: 'warn' }, `Locked after 5 wrong PINs, until ${new Date(d.pinLockedUntil).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. `,
+        h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlock', onclick: () => { delete d.pinLockedUntil; delete d.pinFails; markDevices(); render(); say('Unlocked. Tap Save to apply it.'); } }, 'Unlock')) : null),
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Ads'), ads),
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Filters'), ...filterRows,
       h('p', { class: 'hint', style: 'margin:0' }, 'Usual follows Settings → Filters.')),
@@ -1589,6 +1645,11 @@ function settingsScreen() {
     section('Phones that stop being used', h('div', { class: 'group' }, h('div', { class: 'tg', style: 'cursor:default' },
       h('span', { class: 'grow' }, h('span', { class: 't' }, 'Archive after'), h('span', { class: 's' }, 'Days without the app being opened')),
       h('div', { class: 'stepper' }, h('button', { type: 'button', 'aria-label': 'Fewer days', onclick: () => step(-1) }, '−'), days, h('button', { type: 'button', 'aria-label': 'More days', onclick: () => step(1) }, '+'))))),
+    section('Approval PIN', h('div', { class: 'group' },
+      h('button', { type: 'button', class: 'row', id: 'openApprovalPin', onclick: () => open({ name: 'approvalpin', scope: 'all' }) }, h('span', { class: 'ic' }, icon('shield', 20)),
+        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'PIN for all phones'),
+          h('span', { class: 'dom' }, D.approvalPin ? 'Set: type it on a phone to approve a request there' : 'Not set')),
+        h('span', { class: 'chev' }, icon('chev', 18))))),
     section('Privacy', h('div', { class: 'group' },
       h('button', { type: 'button', class: 'row', id: 'hideNames', onclick: hideNamesInLists }, h('span', { class: 'ic' }, icon('shield', 20)),
         h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Hide names in list names'),
