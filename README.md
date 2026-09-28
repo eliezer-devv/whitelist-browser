@@ -981,7 +981,8 @@ The app, its dialogs, the home page, the blocked page and the admin page all wor
 2.8-inch screens (240 × 320 on Android's size scale).
 - **On screens narrower than a typical phone,** **Forward** and **Reload** move into the **⋮** menu, so the top bar
   has room for the site's name.
-- **Dialogs scroll** when they don't fit, and use slimmer margins.
+- **Dialogs scroll** when they don't fit, and their buttons (**Send**, **Cancel**, **OK**) always stay on screen, even with
+  the keyboard open. On small screens the dialog's title scrolls with its content, to leave room.
 - **The home page** fits three tiles per row, and the admin page's tabs, wheels and buttons shrink to fit.
 
 ## 11. Limits and tips
@@ -1063,6 +1064,7 @@ docs/                          Published by GitHub Pages
 app/                           The Android app
   src/main/java/.../Config.kt          Your settings
   src/main/java/.../PrivateRepo.kt     The private repository's name (the public one's + "-private")
+  src/main/java/.../MaxHeightScrollView.kt  Keeps dialogs' buttons on screen on small phones
   src/main/java/.../MainActivity.kt    Browser screen, blocking, menu, requests, permissions
   src/main/java/.../AdminActivity.kt   The admin page inside the app (7 taps on the name at the top)
   src/main/java/.../Whitelist.kt       Downloading and combining the phone's lists, checking addresses

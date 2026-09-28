@@ -777,6 +777,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(pad, pad / 2, pad, 0)
         }
+        box.addView(introText("Your request goes to whoever manages this browser."))
 
         val siteDomain = pageUrl?.let { siteScope(it) }          // "coolmathgames.com", "google.com" ...
         val pageKey = pageUrl?.let { Whitelist.pageKey(it) }     // "youtube.com/watch?v=abc"
@@ -924,12 +925,12 @@ class MainActivity : Activity() {
             else -> "Ask to $verb $siteDomain"
         }
         val dialog = AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMessage("Your request goes to whoever manages this browser.")
-            .setView(scrollable(box))           // scrolls on small screens
+            .titled(title, box)
+            .setView(scrollable(box))           // scrolls on small screens, buttons stay on screen
             .setPositiveButton("Send", null) // set below so bad input doesn't close the dialog
             .setNegativeButton("Cancel", null)
             .create()
+            .fitAboveKeyboard()
         dialog.setOnShowListener {
             siteField.tag = dialog.getButton(AlertDialog.BUTTON_POSITIVE) // so editing the address can reset "Send anyway"
             if (filteredNow.isNotEmpty()) dialog.getButton(AlertDialog.BUTTON_POSITIVE).text = "Ask anyway"
@@ -1009,10 +1010,38 @@ class MainActivity : Activity() {
         dialog.show()
     }
 
-    /** Wraps a dialog's content so it scrolls when the screen is too short for it (small phones, keyboard up). */
-    private fun scrollable(content: View) = android.widget.ScrollView(this).apply {
-        isFillViewport = true
-        addView(content)
+    /**
+     * Wraps a dialog's content so it scrolls when the screen is too short for it (small phones, keyboard
+     * up), without ever pushing the dialog's buttons off the screen.
+     */
+    private fun scrollable(content: View) = MaxHeightScrollView(this, reservedDp = if (narrow) 96 else 170).apply { addView(content) }
+
+    /**
+     * A dialog's title: in the usual title bar, or on small screens inside the scrolling content (so with
+     * the keyboard up there's still room for the content and the buttons).
+     */
+    private fun AlertDialog.Builder.titled(title: String, box: LinearLayout): AlertDialog.Builder {
+        if (!narrow) return setTitle(title)
+        box.addView(TextView(this@MainActivity).apply {
+            text = title
+            textSize = 17f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(0, (4 * resources.displayMetrics.density).toInt(), 0, (6 * resources.displayMetrics.density).toInt())
+        }, 0)
+        return this
+    }
+
+    /** A dialog's intro line, inside its scrolling content (one scroll area instead of two). */
+    private fun introText(text: String) = TextView(this).apply {
+        this.text = text
+        textSize = 14f
+        setPadding(0, 0, 0, (8 * resources.displayMetrics.density).toInt())
+    }
+
+    /** Keeps a dialog above the keyboard: it shrinks (and its content scrolls) instead of being covered. */
+    private fun AlertDialog.fitAboveKeyboard(): AlertDialog {
+        window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        return this
     }
 
     /** "⚠️ example.com is on the gambling list, so it's blocked. You can still ask: …" */
@@ -1305,14 +1334,19 @@ class MainActivity : Activity() {
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_WORDS
             setSingleLine()
         }
-        val box = LinearLayout(this).apply { setPadding(pad, pad / 2, pad, 0); addView(field, LinearLayout.LayoutParams(-1, -2)) }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad / 2, pad, 0)
+            addView(introText("So whoever manages this browser knows whose phone this is."))
+            addView(field, LinearLayout.LayoutParams(-1, -2))
+        }
         val dialog = AlertDialog.Builder(this)
-            .setTitle("What's your name?")
-            .setMessage("So whoever manages this browser knows whose phone this is.")
+            .titled("What's your name?", box)
             .setView(scrollable(box))
             .setCancelable(false)
             .setPositiveButton("OK", null)
             .create()
+            .fitAboveKeyboard()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val name = field.text.toString().trim()
