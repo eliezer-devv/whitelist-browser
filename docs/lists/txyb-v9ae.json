@@ -20,6 +20,20 @@
       "domain": "accounts.google.com",
       "name": "accounts.google.com",
       "home": true
+    },
+    {
+      "domain": "gds.google.com",
+      "name": "gds.google.com",
+      "home": true
+    },
+    {
+      "domain": "policies.google.com",
+      "name": "policies.google.com",
+      "home": false,
+      "pages": [
+        "policies.google.com/terms"
+      ],
+      "passThrough": true
     }
   ],
   "block": [],
