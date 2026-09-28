@@ -5,6 +5,11 @@
       "domain": "jtechforums.org",
       "home": true,
       "name": "jtechforums.org"
+    },
+    {
+      "domain": "jepqueens.com",
+      "name": "jepqueens.com",
+      "home": true
     }
   ],
   "block": [],
