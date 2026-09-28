@@ -153,7 +153,7 @@ object Ui {
             text = s
             setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
             setTextColor(color)
-            typeface = when (weight) { "bold" -> bold; "display" -> display; else -> body }
+            typeface = when (weight) { "bold" -> Ui.bold; "display" -> Ui.display; else -> Ui.body }
             setLineSpacing(0f, 1.15f)
         }
 
@@ -264,7 +264,7 @@ object Ui {
         layoutParams = LinearLayout.LayoutParams(Ui.dp(ctx, sizeDp), Ui.dp(ctx, sizeDp))
     }
 
-    enum class Kind { PRIMARY, SECONDARY, GHOST, Ui.DANGER }
+    enum class Kind { PRIMARY, SECONDARY, GHOST, DANGER }
 
     /**
      * A dialog in the app's look: a bottom sheet (longer screens) or a centred card (short questions).
@@ -350,7 +350,7 @@ object Ui {
             return this
         }
 
-        /** Adds a button at the bottom. PRIMARY and Ui.DANGER fill the remaining width. */
+        /** Adds a button at the bottom. PRIMARY and DANGER fill the remaining width. */
         fun button(label: String, kind: Kind, onClick: (AppDialog) -> Unit): Button {
             val b = Button(ctx).apply {
                 text = label
