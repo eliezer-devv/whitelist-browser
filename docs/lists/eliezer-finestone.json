@@ -1,6 +1,12 @@
 {
   "refreshMinutes": 5,
-  "sites": [],
+  "sites": [
+    {
+      "domain": "jtechforums.org",
+      "name": "jtechforums.org",
+      "home": true
+    }
+  ],
   "block": [],
   "temporary": [
     {
