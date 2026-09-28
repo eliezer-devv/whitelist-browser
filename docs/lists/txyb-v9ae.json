@@ -68,5 +68,10 @@
       "minutes": 5,
       "from": "2026-09-28T22:45:48.183Z"
     }
-  ]
+  ],
+  "embeds": {
+    "accounts.google.com": [
+      "accounts.youtube.com"
+    ]
+  }
 }
