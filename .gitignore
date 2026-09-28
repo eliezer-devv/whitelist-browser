@@ -9,3 +9,9 @@ local.properties
 # Downloaded during the build (see android.yml)
 app/src/main/assets/adblock-*.txt
 app/src/main/assets/initial-bundle.json
+app/src/main/assets/admin.html
+app/src/main/assets/adult-hagezi.txt
+app/src/main/assets/adult-oisd.txt
+app/src/main/assets/gambling-hagezi.txt
+app/src/main/assets/malware-hagezi.txt
+app/src/main/assets/fonts/
