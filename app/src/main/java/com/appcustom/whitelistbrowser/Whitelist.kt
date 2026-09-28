@@ -70,11 +70,17 @@ object Whitelist {
         val adblockExceptions: List<String> = emptyList(), // domains never blocked as ads
         // Embedded content allowed on a site: site -> sites whose content may show inside its pages
         // (a list's "embeds", approved from a request after the phone blocked it).
-        val embeds: Map<String, List<String>> = emptyMap()
+        val embeds: Map<String, List<String>> = emptyMap(),
+        // Just one of them off: "noPhotos" / "noVideos" (sites, and pages). "noMedia" above is both.
+        val noPhotos: List<String> = emptyList(),
+        val noPhotosPages: List<String> = emptyList(),
+        val noVideos: List<String> = emptyList(),
+        val noVideosPages: List<String> = emptyList()
     ) {
         val allow: List<String> get() = sites.map { it.domain }
         fun sameContent(o: State) = sites == o.sites && block == o.block && blockPages == o.blockPages &&
-            noMedia == o.noMedia && noMediaPages == o.noMediaPages && temps == o.temps && homepage == o.homepage && embeds == o.embeds
+            noMedia == o.noMedia && noMediaPages == o.noMediaPages && temps == o.temps && homepage == o.homepage && embeds == o.embeds &&
+            noPhotos == o.noPhotos && noPhotosPages == o.noPhotosPages && noVideos == o.noVideos && noVideosPages == o.noVideosPages
     }
 
     @Volatile var state = State()
@@ -169,13 +175,21 @@ object Whitelist {
         val nmRaw = (0 until nmArr.length()).map { nmArr.optString(it).trim() }.filter { it.isNotEmpty() }
         val noMedia = nmRaw.filterNot { isPage(it) }.mapNotNull { normalize(it) }.distinct()
         val noMediaPages = nmRaw.filter { isPage(it) }.mapNotNull { pageKey(it) }.distinct()
+        // "noPhotos" / "noVideos": just one of them off (same format).
+        fun sitesAndPages(name: String): Pair<List<String>, List<String>> {
+            val a = o.optJSONArray(name) ?: JSONArray()
+            val raw = (0 until a.length()).map { a.optString(it).trim() }.filter { it.isNotEmpty() }
+            return raw.filterNot { isPage(it) }.mapNotNull { normalize(it) }.distinct() to raw.filter { isPage(it) }.mapNotNull { pageKey(it) }.distinct()
+        }
+        val (noPhotos, noPhotosPages) = sitesAndPages("noPhotos")
+        val (noVideos, noVideosPages) = sitesAndPages("noVideos")
         val home = o.optString("homepage").takeIf { it.startsWith("http://") || it.startsWith("https://") }
         val tArr = o.optJSONArray("temporary") ?: JSONArray()
         val temps = (0 until tArr.length()).mapNotNull { i ->
             val t = tArr.optJSONObject(i) ?: return@mapNotNull null
             val raw = t.optString("entry")
             val entry = (if (isPage(raw)) pageKey(raw) else normalize(raw)) ?: return@mapNotNull null
-            val what = t.optString("what").takeIf { it == "site" || it == "page" || it == "media" } ?: return@mapNotNull null
+            val what = t.optString("what").takeIf { it == "site" || it == "page" || it in MEDIA_TEMPS } ?: return@mapNotNull null
             val from = parseTime(t.optString("from")) ?: return@mapNotNull null
             Temp(t.optString("id").ifEmpty { "$what|$entry|$from" }, what, entry,
                 if (t.optString("mode") == "use") "use" else "clock", t.optInt("minutes").coerceIn(1, 24 * 60 + 55), from,
@@ -190,7 +204,7 @@ object Whitelist {
             }
         }
         return State(sites, block, blockPages, noMedia, noMediaPages, temps, home, maxOf(1, o.optInt("refreshMinutes", 5)), fetchedAt,
-            embeds = embeds)
+            embeds = embeds, noPhotos = noPhotos, noPhotosPages = noPhotosPages, noVideos = noVideos, noVideosPages = noVideosPages)
     }
 
     /** Where a list lives: "public" is whitelist.json, others are lists/<name>.json. */
@@ -213,6 +227,10 @@ object Whitelist {
             blockPages = states.flatMap { it.blockPages }.distinct(),
             noMedia = states.flatMap { it.noMedia }.distinct(),
             noMediaPages = states.flatMap { it.noMediaPages }.distinct(),
+            noPhotos = states.flatMap { it.noPhotos }.distinct(),
+            noPhotosPages = states.flatMap { it.noPhotosPages }.distinct(),
+            noVideos = states.flatMap { it.noVideos }.distinct(),
+            noVideosPages = states.flatMap { it.noVideosPages }.distinct(),
             temps = states.flatMap { it.temps }.distinctBy { it.id },
             embeds = states.flatMap { it.embeds.entries }.groupBy({ it.key }, { it.value })
                 .mapValues { (_, v) -> v.flatten().distinct() },
@@ -349,7 +367,7 @@ object Whitelist {
     fun isUnfiltered(host: String): Boolean {
         val h = host.lowercase().trimEnd('.')
         if (state.sites.any { it.unfiltered && it.matches(h) }) return true
-        return state.temps.any { it.unfiltered && it.what != "media" && it.active() && it.covers(h, null) }
+        return state.temps.any { it.unfiltered && it.what !in MEDIA_TEMPS && it.active() && it.covers(h, null) }
     }
 
     /** Allowed by the lists themselves, ignoring temporary access. */
@@ -391,15 +409,33 @@ object Whitelist {
         }
     }
 
-    /** Should this page open without photos and videos? (If any of the phone's lists says so.) */
-    fun mediaBlocked(url: String?): Boolean {
+    // Temporary access that turns photos and/or videos back on for a while.
+    val MEDIA_TEMPS = setOf("media", "photos", "videos")
+
+    /** Should photos be off on this page? (If any of the phone's lists says so, and nothing turns them on for a while.) */
+    fun photosBlocked(url: String?): Boolean = kindBlocked(url, "photos")
+
+    /** Should videos be off on this page? */
+    fun videosBlocked(url: String?): Boolean = kindBlocked(url, "videos")
+
+    /** Photos or videos (or both) off on this page. */
+    fun mediaBlocked(url: String?): Boolean = photosBlocked(url) || videosBlocked(url)
+
+    private fun kindBlocked(url: String?, kind: String): Boolean {
         if (url.isNullOrEmpty() || !(url.startsWith("http://") || url.startsWith("https://"))) return false
-        val s = state
         val host = Uri.parse(url).host?.lowercase()?.trimEnd('.') ?: return false
-        if (tempsFor(url, host, "media").isNotEmpty()) return false // photos and videos on for a while
-        if (covers(s.noMedia, host)) return true
+        if (tempsFor(url, host, "media", kind).isNotEmpty()) return false  // on for a while
+        return kindBlockedForGood(url, host, kind)
+    }
+
+    /** [kind] ("photos" or "videos") off by the lists, ignoring temporary access. */
+    private fun kindBlockedForGood(url: String, host: String, kind: String): Boolean {
+        val s = state
+        val sites = s.noMedia + if (kind == "photos") s.noPhotos else s.noVideos
+        if (covers(sites, host)) return true
         val key = pageKey(url) ?: return false
-        return s.noMediaPages.any { pageMatches(key, it) }
+        val pages = s.noMediaPages + if (kind == "photos") s.noPhotosPages else s.noVideosPages
+        return pages.any { pageMatches(key, it) }
     }
 
     /** Active temporary access of these kinds that covers [url]. */
@@ -416,16 +452,12 @@ object Whitelist {
     fun usingNow(url: String?): List<Temp> {
         val host = hostOf(url) ?: return emptyList()
         val openFor = if (!allowedForGood(url!!, host, true)) tempsFor(url, host, "site", "page") else emptyList()
-        val mediaFor = if (mediaBlockedForGood(url, host)) tempsFor(url, host, "media") else emptyList()
+        val mediaFor = if (mediaBlockedForGood(url, host)) tempsFor(url, host, "media", "photos", "videos") else emptyList()
         return (openFor + mediaFor).filter { it.mode == "use" }
     }
 
-    private fun mediaBlockedForGood(url: String, host: String): Boolean {
-        val s = state
-        if (covers(s.noMedia, host)) return true
-        val key = pageKey(url) ?: return false
-        return s.noMediaPages.any { pageMatches(key, it) }
-    }
+    private fun mediaBlockedForGood(url: String, host: String): Boolean =
+        kindBlockedForGood(url, host, "photos") || kindBlockedForGood(url, host, "videos")
 
     /**
      * What to show about temporary access on [url], e.g. "Temporary: 23 min left", or null.
@@ -441,7 +473,10 @@ object Whitelist {
         if (!allowedForGood(url!!, host, true)) {
             tempsFor(url, host, "site", "page").maxByOrNull { it.left() }?.let { return "Temporary: ${fmt(it)}." }
         } else if (mediaBlockedForGood(url, host)) {
-            tempsFor(url, host, "media").maxByOrNull { it.left() }?.let { return "Photos and videos on: ${fmt(it)}." }
+            tempsFor(url, host, "media", "photos", "videos").maxByOrNull { it.left() }?.let {
+                val what = when (it.what) { "photos" -> "Photos"; "videos" -> "Videos"; else -> "Photos and videos" }
+                return "$what on: ${fmt(it)}."
+            }
         }
         return null
     }
@@ -449,14 +484,14 @@ object Whitelist {
     /** Minutes left of temporary access on [url] if it's about to run out (for a warning), else null. */
     fun endingSoon(url: String?): Temp? {
         val host = hostOf(url) ?: return null
-        return tempsFor(url!!, host, "site", "page", "media").firstOrNull { it.left() in 1..5 * 60_000L }
+        return tempsFor(url!!, host, "site", "page", "media", "photos", "videos").firstOrNull { it.left() in 1..5 * 60_000L }
     }
 
     /** True if [url] had temporary access that has run out (so the blocked page can say "Time's up"). */
     fun tempEnded(url: String?): Boolean {
         val host = hostOf(url) ?: return false
         val key = pageKey(url!!)
-        return state.temps.any { it.what != "media" && !it.active() && it.covers(host, key) }
+        return state.temps.any { it.what !in MEDIA_TEMPS && !it.active() && it.covers(host, key) }
     }
 
     /** True when the site is allowed but only some of its pages, and this isn't one of them. */

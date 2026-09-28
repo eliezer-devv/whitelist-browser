@@ -48,8 +48,6 @@ There are **two repositories**:
 Do these steps in order. On a phone, switching the browser to **desktop site** makes GitHub's settings pages
 easier to use.
 
-**Already using the one-repository version?** Follow [Moving to the private repository](#moving-to-the-private-repository-existing-setups) below instead.
-
 ### Step 1: Create the public repository
 1. On github.com, tap **+** → **New repository**.
 2. Name it **`whitelist-browser`** and set it to **Public**.
@@ -71,8 +69,9 @@ The app needs a digital signature so that only your updates can be installed on 
 ### Step 4: Create the private repository
 1. **+** → **New repository**. Name it **`whitelist-browser-private`**, exactly the public one's name with
    `-private` on the end, and set it to **Private**.
-2. Upload all the files from `whitelist-browser-private.zip`. Its files are all in the hidden `.github` folder, so
-   create them by hand as in step 1: `.github/scripts/handle-request.js` and the four files in `.github/workflows/`.
+2. Upload all the files from `whitelist-browser-private.zip`: **`devices.json`**, the **`docs`** folder (the starting
+   list) and `README.md` with **Add file** → **Upload files**. The rest are in the hidden `.github` folder, so create
+   them by hand as in step 1: `.github/scripts/handle-request.js` and the three files in `.github/workflows/`.
 
 ### Step 5: Make the tokens
 Make each as described in [section 6](#6-tokens-what-they-are-and-how-to-make-one). Expiration: as long as GitHub
@@ -88,8 +87,8 @@ The publishing token lets the private repository copy the lists to the public on
 into the app, and can only create and read requests. The admin token is for you.
 
 ### Step 6: Set up the lists
-In the private repo: **Actions** → **Move my data (run once)** → **Run workflow**. For a new setup this creates the
-starting list and publishes it. When it's green, check that this link opens:
+In the private repo: **Actions** → **Publish lists** → **Run workflow**. It publishes the starting list
+(`docs/whitelist.json`, from the private zip) for the phones. When it's green, check that this link opens:
 `https://YOUR_USERNAME.github.io/whitelist-browser/whitelist.json`
 
 Turn on notifications so you hear about requests: in the **GitHub** app's settings, turn on push notifications for
@@ -114,30 +113,6 @@ You'll also want to **watch** the private repo (**Watch** → **All activity**) 
    app for scanning, accept. See [Play Protect warnings](#play-protect-warnings) for why this happens.
 
 Setup is done.
-
-### Moving to the private repository (existing setups)
-If you set things up before the private repository existed, your lists, phone names and requests are in the public
-repository. To move them:
-1. **Create the private repository** (step 4 above).
-2. **Make the publishing token** and add it to the private repo as `PUBLIC_REPO_TOKEN` (step 5).
-3. **Replace the requests token:** make a new one for `whitelist-browser-private` (Issues: Read and write) and
-   paste it into the public repo's `REQUESTS_TOKEN` secret, replacing the old value.
-4. **Give your admin token access to the private repo:** Developer settings → Fine-grained tokens → your admin
-   token → **Edit** → **Repository access** → add `whitelist-browser-private`, with **Contents** and **Issues** set
-   to **Read and write** → **Update**.
-5. **Move the data:** in the private repo, **Actions** → **Move my data (run once)** → **Run workflow**. It copies
-   your lists and phones (with their names and archive) to the private repo, publishes the public parts, and
-   removes `devices.json` from the public repo. It never overwrites data already in the private repo.
-6. **Update the public repo** with the new files, and **delete** the files that moved: `.github/workflows/requests.yml`,
-   `.github/workflows/phones.yml` and `.github/scripts/handle-request.js` (open each → **⋯** → **Delete file**).
-7. **Let Build APK finish,** then update each phone from its green banner. Until a phone updates, its requests go to
-   the old place and won't be answered.
-8. **Old requests** are still visible in the public repo's Issues. You can delete them: open each → **Delete issue**
-   (at the bottom of the right-hand column).
-
-**Good to know:** GitHub keeps the history of every file. Old versions of `devices.json` stay visible in the public
-repo's history (**Commits**). To remove that completely, you'd have to delete the public repository and create it
-again, which means reinstalling the app on every phone. Most people don't need to.
 
 ---
 
@@ -201,17 +176,20 @@ You can keep something blocked but open it **for a while**: a whole site, a sing
   - **When time runs out,** the page is replaced by **"Time's up"**, with **Ask to open** to ask for more.
 - **Expired entries are removed from the lists** by the daily check.
 
-### No photos or videos
-Sites or pages can be set to open **without photos, pictures or videos**. The text, links and buttons work as usual,
-but pictures don't load and videos don't play. This is off by default. It can be turned on in three ways:
-- **For a whole site:** the **No photos or videos** tick box on the site's card on the admin page.
-- **For single pages** of a site that's otherwise shown normally: the **No photos or videos on specific pages** box on the admin page.
+### No photos, no videos
+Sites or pages can be set to open **without photos**, **without videos**, or without both. The text, links and buttons
+work as usual, but pictures don't load and/or videos (and sound) don't play. This is off by default. It can be turned on
+in three ways:
+- **For a whole site:** the **No photos** and **No videos** switches on the site's screen on the admin page.
+- **For single pages** of a site that's otherwise shown normally: admin page → **Sites** → **No photos or videos on
+  some pages**, which has one box for pages without photos and one for pages without videos (a page in both has both off).
 - **By approving a request** (section 3).
 
 - **On the phone:**
-  - **The status line** says *"Photos and videos are off on this page."*
+  - **The status line** says which: *"Photos are off on this page."*, *"Videos are off…"* or *"Photos and videos are off…"*
   - **Each blocked picture or video becomes a small placeholder,** *🖼️ Photo blocked · tap to ask* or *🎬 Video blocked · tap to ask*,
-    so it's clear something is there. Tapping one, or **⋮ → Ask for photos and videos**, asks for them.
+    so it's clear something is there. Tapping a photo placeholder asks for photos, and a video one for videos.
+    **⋮ → Ask for photos** (or videos, or both) does the same.
   - **Tiny images** like icons and logos are simply hidden rather than given placeholders.
 - **What's covered:**
   - photos and pictures, including background pictures
@@ -279,7 +257,9 @@ Pages often show things from other sites: an embedded YouTube or Vimeo video, a 
 Pictures, scripts and styles from other sites always load. **Embedded frames** only show if they're allowed on that
 page; otherwise their space shows *"Blocked: content from vimeo.com"*.
 - **On the phone,** a bar appears under the top bar: *"Parts of this page were blocked (from vimeo.com)"*, with **Ask**
-  and ✕. **Ask** opens a short sheet listing what was blocked, with an optional note (and the approval PIN, if set).
+  and ✕. ✕ hides it until the page loads again, and while a page has blocked parts, **⋮** → **Ask for blocked parts**
+  does the same as **Ask**. It opens a short sheet with a tick box for each blocked site (all ticked to start with),
+  an optional note, and the approval PIN if one is set. Only the ticked ones are asked for.
 - **The request** reads *"Embedded content on bbc.co.uk, from player.vimeo.com"*. Replying **`approve`** (or tapping
   **Approve** on the admin page) lets content from those sites show **inside bbc.co.uk's pages only**. The sites
   themselves still don't open, and the ad and content filters still apply. `approve public` does it for everyone.
@@ -314,14 +294,15 @@ page; otherwise their space shows *"Blocked: content from vimeo.com"*.
 | Home page, or ⋮ menu | **Ask for a new site** | open a site they type in |
 
 Every request uses the same single screen:
-- **For how long?** (asking to open, or for photos and videos back): **Always** (the default), or **Just for a while**,
+- **For how long?** (asking to open, or for photos or videos back): **Always** (the default), or **Just for a while**,
   which shows two scroll wheels, like the admin page: **hours** (0 to 24) and **minutes** (0 to 55, in steps of 5).
   Flick them up or down to choose. This is what they ask for. You decide the actual time when you answer.
-- **Photos and videos:**
-  - When asking to **open**, there's a **Without photos and videos** tick box.
-  - When asking to **block**, there's a choice between **Block it completely** (the default) and **Only block photos and videos**,
+- **Photos and videos, separately:**
+  - When asking to **open**, there are **Without photos** and **Without videos** switches.
+  - When asking to **block**: **Completely** (the default), **Only photos**, **Only videos**, or **Photos and videos**,
     where the page stays open.
-  - On a page where they're off, **⋮ → Ask for photos and videos** asks for them back.
+  - On a page where they're off, **⋮ → Ask for photos** (or videos) asks for them back. Where both are off, the request
+    screen asks which: **Photos**, **Videos** or **Both**.
 - **Just this page / Whole site:** the user picks one. **Just this page** is selected by default.
   The choice only appears when there's a specific page. On a site's front page it simply asks about the whole site.
 - **Why? (optional):** a note, like *"for homework"*.
@@ -406,8 +387,9 @@ How replies are read, so nothing happens by accident:
 | `approve` | Does exactly what was asked: opens or blocks that page, or the whole site |
 | `approve hidden` | For open requests: the same, but without a home page tile |
 | `approve no media` | For open requests: open it, but without photos and videos. For block requests: only block its photos and videos (the same as `approve media only`). |
-| `approve with media` | For a "without photos and videos" open request: open it with them |
-| `approve fully` | For an "only photos and videos" block request: block it completely |
+| `approve no photos` / `approve no videos` | The same, for just photos, or just videos. For block requests, `approve photos only` / `approve videos only` also work. |
+| `approve with media` | For a "without photos/videos" open request: open it with them |
+| `approve fully` | For an "only photos/videos" block request: block it completely |
 | `approve for 30m`, `approve for 1h30m`, `approve for 2h` | Open it only for that long, from now (or give that long instead of what they asked for) |
 | `approve for 1h use` | Open it for 1 hour of time actually spent on it, to use within 7 days |
 | `approve always` | When they asked for a while: make it permanent instead |
@@ -445,6 +427,15 @@ admin page, and without signing in to the admin page on their phone.
   - **After 5 wrong PINs,** PIN approvals lock on that phone for 24 hours, and you're told. Unlock it early under
     **Phones** → the phone → **Unlock**.
   - **Choose a PIN nobody can guess,** and don't type it where it can be watched.
+
+### My requests (on the phone)
+**⋮** → **My requests** lists the phone's requests: waiting, answered, and any not sent yet.
+- **Swipe an answered request sideways** to archive it, or tap it for **Archive** and **Delete**. Answered requests
+  also move to the archive by themselves after 30 days.
+- **Archived** (at the bottom) shows the archive. There, swipe one to delete it, or tap it for **Put back** and
+  **Delete**. **Delete all** empties it.
+- **Waiting and not-yet-sent requests always stay in the list.** Deleting only removes this phone's copy: the request
+  is still on GitHub. The phone keeps up to 100 requests.
 
 ### How quickly changes reach the phone
 A change goes through a short relay: the private repository saves it (instantly), copies it to the public repository
@@ -488,9 +479,9 @@ Every request gets an answer on the phone, whether it's approved or not.
 | Open just a page | Adds the page to the site's **Only these pages** (or adds the site with just that page). If the page was on **Always blocked**, it's taken off. |
 | Block a whole site | Removes it from the list. If it's part of a bigger allowed site, it goes on **Always blocked** instead. |
 | Block just a page | Adds the page to **Always blocked**. If the site only allowed a few pages, that page is taken off its list instead. |
-| Open without photos and videos | Opens it as above, and adds the site or page to **No photos or videos** |
-| Only block photos and videos | Adds the site or page to **No photos or videos**. It stays open. |
-| Photos and videos back | Takes matching entries off **No photos or videos**. If another of the phone's lists still turns them off, the bot says which. |
+| Open without photos and/or videos | Opens it as above, and adds the site or page to `noMedia` (both), `noPhotos` or `noVideos` |
+| Only block photos and/or videos | Adds the site or page to `noMedia`, `noPhotos` or `noVideos`. It stays open. |
+| Photos and/or videos back | Takes matching entries off. Turning just photos back on for something with both off leaves videos off (it moves to `noVideos`), and the other way round. If another of the phone's lists still turns them off, the bot says which. |
 
 Then GitHub publishes the list, replies *"Done"* and closes the request.
 The phone picks up the change within a few minutes, and if the user is on the blocked page for it, it opens by itself.
@@ -794,10 +785,10 @@ nothing without your token.
 
 **Sites.** The lists are chips at the top: **Everyone** is the public list, then one per person or group, and **+** makes a new one.
 - **Temporary access** shows first, in amber, with the time left and **End now**.
-- **Each site is one row,** with small tags: *On home page* / *No tile*, *1 page only*, *Exact address*, *No photos*, *Added automatically*.
+- **Each site is one row,** with small tags: *On home page* / *No tile*, *1 page only*, *Exact address*, *No photos*, *No videos* or *No photos or videos*, *Added automatically*.
 - **Tapping a site** opens it with:
   - its **Address** and **Name on the home page**
-  - switches for **Show on the home page**, **Include subdomains**, **No photos or videos** and **Only some pages**
+  - switches for **Show on the home page**, **Include subdomains**, **No photos**, **No videos** and **Only some pages**
     (which then lists its pages, with a box to add more)
   - **Allow content embedded from other sites** (see [Embedded content](#embedded-content-from-other-sites)), with a warning to use it only for sites you trust
   - **Open even if a filter lists it**, for a site a content filter blocks that you've checked yourself
@@ -808,9 +799,9 @@ nothing without your token.
 - **The rows at the bottom:**
   - **Open something for a while:** temporary access with the scroll wheels.
   - **Always blocked:** parts of allowed sites to keep blocked, one per line.
-  - **No photos on some pages:** single pages, one per line. For a whole site, use its switch instead.
+  - **No photos or videos on some pages:** single pages, one per line, in a box for photos and a box for videos. For a whole site, use its switches instead.
   - **Import from a spreadsheet:** paste cells or choose a `.csv`/`.xlsx` file. The columns are domain, name, home page,
-    tile opens, subdomains, only these pages, no photos or videos, and only the domain is needed. A header row is
+    tile opens, subdomains, only these pages, no photos, no videos (an older single "no photos or videos" column also works, for both), and only the domain is needed. A header row is
     optional. **Add to the list** updates sites already on it, and **Replace the list** removes the rest. You can also
     download the list as a spreadsheet, or a template.
   - **List settings:** the start page, how often phones check for changes, and **Delete** (not for Everyone).
@@ -946,7 +937,9 @@ updated by a version with the same seal. This stops anyone else from pushing a f
 | `sites` | The allowed sites (see section 4 for the fields of each). | none (everything blocked) |
 | `block` | Sites (`maps.google.com`) or pages (`en.wikipedia.org/wiki/Fortnite`) to always block, even inside allowed sites. | `[]` |
 | `noMedia` | Sites or pages that open without photos and videos. If any of a phone's lists includes a page, it applies on that phone. | `[]` |
-| `temporary` | Temporary access. `what`: `site`, `page` or `media` (photos and videos on). `mode`: `clock` (from `from`) or `use` (time on it, within 7 days). `minutes`: how long. Easiest to add on the admin page. | none |
+| `noPhotos` | Sites or pages that open without photos only (the same format). | `[]` |
+| `noVideos` | Sites or pages that open without videos (and sound) only. | `[]` |
+| `temporary` | Temporary access. `what`: `site`, `page`, `media` (photos and videos on), `photos` or `videos`. `mode`: `clock` (from `from`) or `use` (time on it, within 7 days). `minutes`: how long. Easiest to add on the admin page. | none |
 | `homepage` | A web address to start on instead of the home page with tiles. | the home page |
 | `refreshMinutes` | How often open apps check for changes (minimum 1). | `5` |
 
@@ -988,9 +981,6 @@ could dig it out.
 **What's still public, then:** the site lists themselves, and phone IDs. The IDs are random codes that don't say
 whose phone it is. List names are visible too. A phone's own list is named after its ID (e.g. `k7m4-q2xp`), so no
 names show there either. Lists you name yourself (like `year-5`) show as you named them.
-- **Set up before own lists used phone IDs?** Lists named after people (like `emma`) can be renamed in one go:
-  admin page → **Settings** → **Privacy** → **Hide names in list names**. The public copies with names are removed
-  at the next publish. (Their earlier versions stay in the public repository's history.)
 
 ---
 
@@ -1011,10 +1001,6 @@ Android identifies the app by its package name, `com.appcustom.whitelistbrowser`
 People never see it.
 - **Don't change it.** A different package name is a different app: phones can't update across it, and every
   phone would need uninstalling and installing again.
-- **Moving from the old `com.example.whitelistbrowser`** (versions before this one): on each phone, uninstall
-  the old app (**Settings** → **Apps** → **Whitelist Browser** → **Uninstall**), then install the new one from the
-  link in setup step 8. The phone keeps its ID, so it keeps its lists and name on the admin page. It asks for the
-  person's name again, and the in-app admin needs your token again.
 
 ### The app's look
 The app, its dialogs, the home page, the blocked page and the admin page share one look: a warm off-white background,
@@ -1032,8 +1018,8 @@ the app's deep green, rounded corners, and two fonts, **Figtree** for text and *
 ### Small screens
 The app, its dialogs, the home page, the blocked page and the admin page all work on small phones, down to about
 2.8-inch screens (240 × 320 on Android's size scale).
-- **On screens narrower than a typical phone,** **Forward** and **Reload** move into the **⋮** menu, so the top bar
-  has room for the site's name.
+- **On tiny screens** (under 300dp wide, e.g. 2.8-inch phones), **Forward** and **Reload** move into the **⋮** menu,
+  so the top bar has room for the site's name. Other phones keep all the buttons.
 - **Dialogs scroll** when they don't fit, and their buttons (**Send**, **Cancel**, **OK**) always stay on screen, even with
   the keyboard open. On small screens the dialog's title scrolls with its content, to leave room.
 - **The home page** fits three tiles per row, and the admin page's tabs, wheels and buttons shrink to fit.
@@ -1060,7 +1046,6 @@ The app, its dialogs, the home page, the blocked page and the admin page all wor
 | Build fails: *"Add a repository secret named KEYSTORE_PASSWORD"* | Do setup step 3 (20+ characters), then Actions → Build APK → Run workflow. |
 | Build fails at *Build signed APK* with a keystore or password error | The password secret doesn't match the key. Set `KEYSTORE_PASSWORD` back to the original. |
 | Play Protect warns or blocks the install | Tap **More details** → **Install anyway** (see [Play Protect warnings](#play-protect-warnings)). |
-| The update banner says the update failed, after the package name change | Expected once: old versions (`com.example.whitelistbrowser`) can't update to the new name. Uninstall and install the new one (see [The app's package name](#the-apps-package-name)). |
 | **Publish list** fails (public repo) | Settings → Pages → Source must be **GitHub Actions** (setup step 2). |
 | **Publish lists** fails (private repo) | Check the `PUBLIC_REPO_TOKEN` secret there: it needs Contents: Read and write on the public repo, and not to have expired (setup step 5). |
 | Any other build failure | Open the failed run, copy the red error text and ask for help with it. |
@@ -1068,7 +1053,7 @@ The app, its dialogs, the home page, the blocked page and the admin page all wor
 | A phone doesn't get a list's sites | Check its lists under **Phones** (tap the phone) and that you tapped **Save**. On the phone, **⋮ → About this phone** shows the lists it's using. |
 | An allowed site loads but looks broken, like missing videos, maps or buttons | Two common causes. **Embedded content** (videos, maps, sign-in boxes) from sites that aren't on your lists is blocked: to allow it on this site, turn on **Allow content embedded from other sites** on the site's screen (see [Embedded content](#embedded-content-from-other-sites)). Or a **filter** may be stopping something it needs: try turning **Ads** (or a content filter) off for that phone to confirm, then add the domain to **Never block these** and turn it back on. |
 | A temporary site closed early, or stayed open too long | **From now** runs on the clock. **Only while it's open on the phone** counts on-screen time, in steps of 15 seconds, within 7 days. Check which you chose under **Temporary access**. |
-| Pictures or videos are missing on a page | It's on a **No photos or videos** list (the status line says so). Take it off in the admin page, or ask from the phone with **⋮ → Ask for photos and videos**. |
+| Pictures or videos are missing on a page | Photos and/or videos are off there (the status line says which). Take it off in the admin page, or ask from the phone with **⋮ → Ask for photos and videos**. |
 | Something still shows on a "no photos or videos" page | A few sites draw pictures in unusual ways. Block the site completely if it matters. |
 | Ads still show on a site | The ads come from the site's own servers (like YouTube video ads), which a domain list can't block. |
 | A site allowed in a phone's list still won't open | Another of the phone's lists blocks it, and blocks win. Check the **Always blocked** section of each of its lists. |
@@ -1129,7 +1114,7 @@ app/                           The Android app
   src/main/java/.../SiteCheck.kt       Checks a typed site exists before asking for it
   src/main/java/.../ExternalLinks.kt   Sends tel:, mailto:, app links etc. to their own app
   src/main/java/.../AdBlock.kt         Ad and tracker blocking
-  src/main/java/.../MediaBlock.kt      "No photos or videos" mode
+  src/main/java/.../MediaBlock.kt      "No photos" and "no videos" modes
   src/main/java/.../Passthrough.kt     Finds where a stopped link really leads
   src/main/java/.../Outbox.kt          Keeps registration and requests on the phone until they can be sent
   src/main/java/.../MyRequests.kt      This phone's requests and the answers to them
@@ -1151,7 +1136,6 @@ devices.json                   Every phone: name, model, dates, lists, settings;
 .github/workflows/requests.yml Handles requests, new phones and your replies
 .github/workflows/phones.yml   Daily phone check: archives unused phones, restores returning ones
 .github/workflows/sync.yml     "Publish lists": copies the public parts to the public repo
-.github/workflows/migrate.yml  "Move my data (run once)"
 .github/last-check             Touched monthly by the daily check so GitHub keeps it running
-.github/scripts/handle-request.js    The logic behind all four
+.github/scripts/handle-request.js    The logic behind all three
 ```

@@ -13,12 +13,14 @@ import org.json.JSONObject
  */
 object MyRequests {
     private const val PREFS = "my_requests"
-    private const val KEEP = 50                          // remember the latest 50
+    private const val KEEP = 100                         // remember the latest 100 (archived ones included)
+    private const val AUTO_ARCHIVE_MS = 30L * 24 * 3_600_000 // answered ones move to the archive after 30 days
     private const val GIVE_UP_MS = 60L * 24 * 3_600_000  // stop checking after 60 days
 
-    /** One request. [status]: waiting, approved, denied, closed, failed. */
+    /** One request. [status]: waiting, approved, denied, closed, failed. [archived]: in the archive (by
+     *  hand, or answered more than 30 days ago). [asked] also identifies it. */
     class Item(val number: Int, val summary: String, val asked: Long, val status: String,
-               val message: String, val answered: Long, val seen: Boolean)
+               val message: String, val answered: Long, val seen: Boolean, val archived: Boolean = false)
 
     @Synchronized private fun read(ctx: Context): JSONArray =
         runCatching { JSONArray(ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("items", "[]")) }
@@ -31,8 +33,13 @@ object MyRequests {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("items", trimmed.toString()).apply()
     }
 
-    private fun toItem(o: JSONObject) = Item(o.optInt("number"), o.optString("summary"), o.optLong("asked"),
-        o.optString("status", "waiting"), o.optString("message"), o.optLong("answered"), o.optBoolean("seen", true))
+    private fun toItem(o: JSONObject): Item {
+        val status = o.optString("status", "waiting")
+        val answered = o.optLong("answered")
+        val old = status != "waiting" && answered > 0 && System.currentTimeMillis() - answered > AUTO_ARCHIVE_MS
+        return Item(o.optInt("number"), o.optString("summary"), o.optLong("asked"), status, o.optString("message"),
+            answered, o.optBoolean("seen", true), o.optBoolean("archived", false) || (old && !o.optBoolean("restored", false)))
+    }
 
     /** A request was sent (as GitHub issue [number]). */
     @Synchronized fun sent(ctx: Context, number: Int, summary: String, asked: Long) {
@@ -53,6 +60,34 @@ object MyRequests {
     fun all(ctx: Context): List<Item> {
         val items = read(ctx)
         return (0 until items.length()).map { toItem(items.getJSONObject(it)) }.reversed()
+    }
+
+    /** Moves an answered request to the archive, or back ([archive] = false). Waiting ones stay put. */
+    @Synchronized fun setArchived(ctx: Context, asked: Long, archive: Boolean) {
+        val items = read(ctx)
+        for (i in 0 until items.length()) {
+            val o = items.getJSONObject(i)
+            if (o.optLong("asked") == asked && o.optString("status", "waiting") != "waiting") {
+                o.put("archived", archive).put("restored", !archive)
+            }
+        }
+        write(ctx, items)
+    }
+
+    /** Deletes one request from this phone's history (it stays on GitHub). */
+    @Synchronized fun delete(ctx: Context, asked: Long) {
+        val items = read(ctx)
+        val kept = JSONArray()
+        for (i in 0 until items.length()) if (items.getJSONObject(i).optLong("asked") != asked) kept.put(items.get(i))
+        write(ctx, kept)
+    }
+
+    /** Deletes everything in the archive. */
+    @Synchronized fun deleteArchived(ctx: Context) {
+        val items = read(ctx)
+        val kept = JSONArray()
+        for (i in 0 until items.length()) if (!toItem(items.getJSONObject(i)).archived) kept.put(items.get(i))
+        write(ctx, kept)
     }
 
     /** Answers the user hasn't seen yet; marks them seen. */

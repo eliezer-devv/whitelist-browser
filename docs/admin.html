@@ -510,26 +510,30 @@ const S = {
 };
 
 // The open list, as an editable model. Unknown keys in the file are kept as they are.
-const KNOWN = ['sites', 'block', 'noMedia', 'temporary', 'homepage', 'refreshMinutes'];
+const KNOWN = ['sites', 'block', 'noMedia', 'noPhotos', 'noVideos', 'temporary', 'homepage', 'refreshMinutes'];
 function toModel(data) {
   const sites = (data.sites || []).map(s => ({ domain: s.domain || '', name: s.name || '', url: s.url || '',
     home: s.home !== false, subdomains: s.subdomains !== false, pages: Array.isArray(s.pages) ? [...s.pages] : [],
-    passThrough: !!s.passThrough, frames: !!s.frames, unfiltered: !!s.unfiltered, noMedia: false }));
+    passThrough: !!s.passThrough, frames: !!s.frames, unfiltered: !!s.unfiltered, noPhotos: false, noVideos: false }));
   // "No photos" entries for a whole site show as that site's switch. www./m. don't matter
   // (a request may have been approved as www.example.com for the site example.com).
   const bareOf = d => (normalize(d) || '').replace(/^(www|m|mobile)\./, '');
   const domains = new Set(sites.map(s => bareOf(s.domain)).filter(Boolean));
-  const nm = (data.noMedia || []).map(String);
+  // "noMedia": photos and videos both off; "noPhotos" / "noVideos": just one.
+  const nm = (data.noMedia || []).map(String), np = (data.noPhotos || []).map(String), nv = (data.noVideos || []).map(String);
   const isSiteEntry = e => !hasPath(e) && domains.has(bareOf(e));
-  sites.forEach(s => { s.noMedia = nm.some(e => !hasPath(e) && bareOf(e) === bareOf(s.domain)); });
+  const siteIn = (list, s) => list.some(e => !hasPath(e) && bareOf(e) === bareOf(s.domain));
+  sites.forEach(s => { s.noPhotos = siteIn(nm, s) || siteIn(np, s); s.noVideos = siteIn(nm, s) || siteIn(nv, s); });
   const extra = {}; Object.keys(data).forEach(k => { if (!KNOWN.includes(k)) extra[k] = data[k]; });
-  return { sites, block: [...(data.block || [])], noMediaPages: nm.filter(e => !isSiteEntry(e)),
+  return { sites, block: [...(data.block || [])],
+    noPhotoPages: [...new Set([...nm, ...np].filter(e => !isSiteEntry(e)))],
+    noVideoPages: [...new Set([...nm, ...nv].filter(e => !isSiteEntry(e)))],
     temporary: Array.isArray(data.temporary) ? data.temporary.map(t => ({ ...t })) : [],
     homepage: data.homepage || '', refreshMinutes: Number(data.refreshMinutes) || 5, extra };
 }
 // Back to the file format. Returns { data } or { error }.
 function fromModel(L) {
-  const sites = [], seen = new Set(), bad = [], mediaOff = [];
+  const sites = [], seen = new Set(), bad = [], mediaOff = [], photosOff = [], videosOff = [];
   for (const s of L.sites) {
     // The site itself: www.example.com and m.example.com are saved as example.com (which covers them).
     const domain = (normalize(s.domain) || '').replace(/^(www|m|mobile)\.(?=[^.]+\.[^.]+)/, '') || undefined;
@@ -553,16 +557,24 @@ function fromModel(L) {
     if (s.passThrough) site.passThrough = true;
     if (s.frames) site.frames = true;
     if (s.unfiltered) site.unfiltered = true;
-    if (s.noMedia) mediaOff.push(domain);
+    if (s.noPhotos && s.noVideos) mediaOff.push(domain);
+    else if (s.noPhotos) photosOff.push(domain);
+    else if (s.noVideos) videosOff.push(domain);
     sites.push(site);
   }
-  const badBlock = [...L.block, ...L.noMediaPages].filter(l => !blockEntry(l));
+  const badBlock = [...L.block, ...L.noPhotoPages, ...L.noVideoPages].filter(l => !blockEntry(l));
   if (bad.length || badBlock.length) return { error: `These don't look like website addresses: ${bad.concat(badBlock).join(', ')}` };
   let homepage = L.homepage.trim();
   if (homepage && !/^https?:\/\//i.test(homepage)) homepage = 'https://' + homepage;
   const data = { ...L.extra, refreshMinutes: Math.max(1, Math.round(L.refreshMinutes) || 5), sites, block: [...new Set(L.block.map(blockEntry))] };
-  const noMedia = [...new Set([...mediaOff, ...L.noMediaPages.map(blockEntry)])];
+  // Pages in both boxes: "noMedia"; in one: "noPhotos" or "noVideos".
+  const P = new Set(L.noPhotoPages.map(blockEntry)), V = new Set(L.noVideoPages.map(blockEntry));
+  const noMedia = [...new Set([...mediaOff, ...[...P].filter(x => V.has(x))])];
+  const noPhotos = [...new Set([...photosOff, ...[...P].filter(x => !V.has(x))])];
+  const noVideos = [...new Set([...videosOff, ...[...V].filter(x => !P.has(x))])];
   if (noMedia.length) data.noMedia = noMedia;
+  if (noPhotos.length) data.noPhotos = noPhotos;
+  if (noVideos.length) data.noVideos = noVideos;
   const live = L.temporary.filter(t => tempEnd(t) > Date.now());
   if (live.length) data.temporary = live;
   if (homepage) data.homepage = homepage;
@@ -774,11 +786,16 @@ function rowsToSites(rows) {
   if (d >= 0 && !normalize(rows[0][d])) {               // first row is a header
     const name = find(['name', 'title', 'label'], [d]);
     const subs = find(['subdomain', 'sub'], [d, name]);
-    const media = find(['photo', 'video', 'media'], [d, name, subs]);
-    const pages = find(['pages', 'page', 'only'], [d, name, subs, media]);
-    const home = find(['home', 'tile', 'show'], [d, name, subs, pages, media]);
-    const url = find(['opens', 'start', 'link', 'url'], [d, name, home, subs, pages, media]);
-    col = { domain: d, name, home, url, subs, pages, media };
+    // "no photos or videos" (or "media"): both; "no photos": photos only; "no videos": videos only.
+    const colWhere = test => head.findIndex((x, n) => test(x) && ![d, name, subs].includes(n));
+    const both = colWhere(x => (/photo/.test(x) && /video/.test(x)) || /media/.test(x));
+    const photoCol = colWhere(x => /photo/.test(x) && !/video/.test(x));
+    const videoCol = colWhere(x => /video/.test(x) && !/photo/.test(x));
+    const media = [both, photoCol, videoCol].find(n => n >= 0) ?? -1;
+    const pages = find(['pages', 'page', 'only'], [d, name, subs, both, photoCol, videoCol]);
+    const home = find(['home', 'tile', 'show'], [d, name, subs, pages, both, photoCol, videoCol]);
+    const url = find(['opens', 'start', 'link', 'url'], [d, name, home, subs, pages, both, photoCol, videoCol]);
+    col = { domain: d, name, home, url, subs, pages, both, photoCol, videoCol };
     rows = rows.slice(1);
   }
   const sites = [], bad = [];
@@ -792,9 +809,9 @@ function rowsToSites(rows) {
     if (!url && /^(https?:\/\/)?[^/\s]+\/[^\s]+/i.test(raw)) url = /^https?:\/\//i.test(raw) ? raw : 'https://' + raw;
     const subsCell = col.subs >= 0 ? (r[col.subs] || '').toLowerCase() : '';
     const pages = col.pages >= 0 ? (r[col.pages] || '').split(/\s+/).filter(Boolean) : [];
-    const mediaCell = col.media >= 0 ? (r[col.media] || '').toLowerCase() : '';
+    const yes = n => n !== undefined && n >= 0 && ['yes', 'y', 'true', '1', 'x', 'on'].includes((r[n] || '').toLowerCase().trim());
     sites.push({ domain, name: col.name >= 0 ? (r[col.name] || '') : '', url, home: !NO.includes(homeCell),
-      subdomains: !NO.includes(subsCell), pages, noMedia: ['yes', 'y', 'true', '1', 'x', 'on'].includes(mediaCell), passThrough: false });
+      subdomains: !NO.includes(subsCell), pages, noPhotos: yes(col.both) || yes(col.photoCol), noVideos: yes(col.both) || yes(col.videoCol), passThrough: false });
   });
   return { sites, bad };
 }
@@ -809,10 +826,11 @@ function loadSheetJs() {
 }
 function exportCsv() {
   const q = v => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
-  const lines = ['domain,name,home page,tile opens,subdomains,only these pages,no photos or videos'];
+  const lines = ['domain,name,home page,tile opens,subdomains,only these pages,no photos,no videos'];
   S.L.sites.forEach(s => {
     if (!s.domain.trim()) return;
-    lines.push([s.domain.trim(), s.name.trim(), s.home ? 'yes' : 'no', s.url.trim(), s.subdomains ? 'yes' : 'no', s.pages.join(' '), s.noMedia ? 'yes' : 'no'].map(q).join(','));
+    lines.push([s.domain.trim(), s.name.trim(), s.home ? 'yes' : 'no', s.url.trim(), s.subdomains ? 'yes' : 'no', s.pages.join(' '),
+      s.noPhotos ? 'yes' : 'no', s.noVideos ? 'yes' : 'no'].map(q).join(','));
   });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\r\n') + '\r\n'], { type: 'text/csv' }));
@@ -1020,15 +1038,19 @@ async function loadInbox() {
     S.focusRequest = null;
   }
 }
+// "photos and videos", "photos" or "videos" (a request's mediaKind; not given: both).
+const mediaWords = k => k === 'photos' ? 'photos' : k === 'videos' ? 'videos' : 'photos and videos';
+const capFirst = t => t.charAt(0).toUpperCase() + t.slice(1);
 function describe(req) {
   const site = req.domain || '?';
   if (Array.isArray(req.frames) && req.frames.length) return { title: `Embedded content on ${site}`, page: null };
   const page = req.scope === 'page' && req.url ? pageKey(req.url) : null;
   if (req.action === 'block') {
-    if (req.media === 'off') return { title: page ? `Turn off photos on one page of ${site}` : `Turn off photos on ${site}`, page };
+    if (req.media === 'off') return { title: page ? `Turn off ${mediaWords(req.mediaKind)} on one page of ${site}` : `Turn off ${mediaWords(req.mediaKind)} on ${site}`, page };
     return { title: page ? `Block one page on ${site}` : `Block ${site}`, page };
   }
-  if (req.media === 'on') return { title: page ? `Photos and videos on one page of ${site}` : `Photos and videos on ${site}`, page };
+  const mw = mediaWords(req.mediaKind);
+  if (req.media === 'on') return { title: page ? `${capFirst(mw)} on one page of ${site}` : `${capFirst(mw)} on ${site}`, page };
   return { title: page ? `Open one page on ${site}` : `Open ${site}`, page };
 }
 function requestsScreen() {
@@ -1129,10 +1151,11 @@ function requestCard(issue) {
   actions.append(h('button', { type: 'button', class: 'btn d deny', onclick: openDeny }, 'Deny'));
   card.append(...[
     h('div', { class: 'who' }, h('span', null, h('span', { class: 'av' }, phone[0].toUpperCase()), h('b', null, phone), h('span', { class: 'muted small' }, '· ' + ago(issue.created_at))),
-      asked ? chip(fmtMin(asked), 'amber', 'clock') : !allow ? chip(req.media === 'off' ? 'Photos' : 'Block', 'red', 'ban') : req.media === 'on' ? chip('Photos', 'teal', 'photooff') : null),
+      asked ? chip(fmtMin(asked), 'amber', 'clock') : !allow ? chip(req.media === 'off' ? capFirst(req.mediaKind === 'videos' ? 'videos' : req.mediaKind === 'photos' ? 'photos' : 'media') : 'Block', 'red', 'ban')
+        : req.media === 'on' ? chip(capFirst(req.mediaKind === 'videos' ? 'videos' : req.mediaKind === 'photos' ? 'photos' : 'media'), 'teal', 'photooff') : null),
     h('h3', null, title),
     page ? h('p', { class: 'mono muted', style: 'margin:0' }, page) : null,
-    allow && req.media === 'off' ? h('p', { class: 'line' }, icon('photooff', 16), 'Asked without photos and videos') : null,
+    allow && req.media === 'off' ? h('p', { class: 'line' }, icon('photooff', 16), `Asked without ${mediaWords(req.mediaKind)}`) : null,
     hops.length ? h('p', { class: 'line' }, icon('link', 16), `Goes through ${plural(hops.length, 'other address')} first, allowed too when you approve`) : null,
     frames.length ? h('p', { class: 'line', style: 'align-items:flex-start' }, icon('link', 16),
       h('span', null, 'Content from ', h('b', null, frames.join(', ')), ` (like a video or a map) was blocked on this site. Approving lets it show inside ${req.domain}'s pages only.`)) : null,
@@ -1173,7 +1196,7 @@ function siteChips(s) {
   c.push(s.home ? chip('On home page', 'teal') : chip('No tile'));
   if (s.pages.length) c.push(chip(s.pages.length === 1 ? '1 page only' : `${s.pages.length} pages only`));
   if (!s.subdomains) c.push(chip('Exact address'));
-  if (s.noMedia) c.push(chip('No photos', '', 'photooff'));
+  if (s.noPhotos || s.noVideos) c.push(chip(s.noPhotos && s.noVideos ? 'No photos or videos' : s.noPhotos ? 'No photos' : 'No videos', '', 'photooff'));
   if (s.passThrough) c.push(chip('Added automatically', '', 'link'));
   if (s.frames) c.push(chip('Embeds from anywhere', 'amber'));
   if (s.unfiltered) c.push(chip('Not filtered', 'red'));
@@ -1187,7 +1210,7 @@ function sitesScreen() {
     : users.length ? `${users.join(', ')}'s list. It adds to their other lists.` : 'Not given to any phone yet (see Phones).';
   const live = L.temporary.filter(t => tempEnd(t) > Date.now());
   const temps = live.map(t => h('div', { class: 'tempcard' }, icon('clock', 22),
-    h('span', { class: 'grow' }, h('b', null, t.entry), h('span', { class: 'small' }, `${t.what === 'media' ? 'Photos and videos on' : 'Open'} ${tempLeft(t)}${t.unfiltered ? ', despite a filter' : ''}`)),
+    h('span', { class: 'grow' }, h('b', null, t.entry), h('span', { class: 'small' }, `${t.what === 'media' ? 'Photos and videos on' : t.what === 'photos' ? 'Photos on' : t.what === 'videos' ? 'Videos on' : 'Open'} ${tempLeft(t)}${t.unfiltered ? ', despite a filter' : ''}`)),
     h('button', { type: 'button', onclick: () => { L.temporary = L.temporary.filter(x => x !== t); markList(); render(); say(`${t.entry} will close when you tap Save.`); } }, 'End now')));
   const rows = L.sites.map((s, i) => h('button', { type: 'button', class: 'row siterow', onclick: () => open({ name: 'site', index: i }) },
     h('span', { class: 'tile', style: `color:${tileColor(s.domain)}` }, (s.name || s.domain || '?').replace(/^www\./, '')[0].toUpperCase()),
@@ -1212,7 +1235,7 @@ function sitesScreen() {
     h('div', { class: 'group' },
       moreRow('clock', 'Open something for a while', null, () => open({ name: 'temp' }), 'openTemp'),
       moreRow('ban', 'Always blocked', L.block.length, () => open({ name: 'block' }), 'openBlock'),
-      moreRow('photooff', 'No photos on some pages', L.noMediaPages.length, () => open({ name: 'nomedia' }), 'openNoMedia'),
+      moreRow('photooff', 'No photos or videos on some pages', new Set([...L.noPhotoPages, ...L.noVideoPages]).size, () => open({ name: 'nomedia' }), 'openNoMedia'),
       moreRow('link', 'Embedded content allowed', Object.values((L.extra && L.extra.embeds) || {}).reduce((n, v) => n + (Array.isArray(v) ? v.length : 0), 0),
         () => open({ name: 'embeds' }), 'openEmbeds'),
       moreRow('table', 'Import from a spreadsheet', null, () => open({ name: 'import' }), 'openImport'),
@@ -1224,7 +1247,7 @@ function siteScreen() {
   const sub = S.sub;
   const isNew = sub.index < 0;
   if (!sub.draft) {
-    const s = isNew ? { domain: '', name: '', url: '', home: true, subdomains: true, pages: [], noMedia: false, passThrough: false, frames: false, unfiltered: false } : S.L.sites[sub.index];
+    const s = isNew ? { domain: '', name: '', url: '', home: true, subdomains: true, pages: [], noPhotos: false, noVideos: false, passThrough: false, frames: false, unfiltered: false } : S.L.sites[sub.index];
     sub.draft = { ...s, pages: [...s.pages], only: s.pages.length > 0 };
   }
   const d = sub.draft;
@@ -1257,7 +1280,7 @@ function siteScreen() {
     if (S.L.sites.some((s, i) => i !== sub.index && (normalize(s.domain) || '').replace(/^(www|m|mobile)\.(?=[^.]+\.[^.]+)/, '') === dom)) return say(`${dom} is already on this list.`, true);
     for (const p of d.pages) if (!pageOnSite(p, dom, d.subdomains)) return say(`The page ${p} isn't on ${dom}.`, true);
     const site = { domain: dom, name: d.name.trim(), url: d.url.trim(), home: d.home, subdomains: d.subdomains,
-      pages: d.only ? [...d.pages] : [], noMedia: d.noMedia, passThrough: d.passThrough, frames: d.frames, unfiltered: d.unfiltered };
+      pages: d.only ? [...d.pages] : [], noPhotos: d.noPhotos, noVideos: d.noVideos, passThrough: d.passThrough, frames: d.frames, unfiltered: d.unfiltered };
     if (isNew) S.L.sites.push(site); else S.L.sites[sub.index] = site;
     markList(); back();
     say(`${isNew ? 'Added' : 'Updated'} ${site.name || dom}. Tap Save to apply it.`);
@@ -1279,7 +1302,8 @@ function siteScreen() {
     h('div', { class: 'group' },
       toggle('sHome', 'Show on the home page', 'Gives it a tile', 'home'),
       toggle('sSubs', 'Include subdomains', `Also m.${bare}, and other addresses ending in ${bare}`, 'subdomains'),
-      toggle('sNoMedia', 'No photos or videos', 'The pages open, pictures and videos don\'t', 'noMedia'),
+      toggle('sNoPhotos', 'No photos', 'The pages open, pictures don\'t', 'noPhotos'),
+      toggle('sNoVideos', 'No videos', 'The pages open, videos and sound don\'t', 'noVideos'),
       toggle('sOnly', 'Only some pages', 'Everything else on the site stays blocked', 'only')),
     pages,
     h('div', { class: 'group' },
@@ -1298,6 +1322,7 @@ function siteScreen() {
 }
 
 // ---------- open something for a while ----------
+const MEDIA_T = ['media', 'photos', 'videos'];   // temporary access that turns photos and/or videos on
 function tempScreen() {
   const sub = S.sub;
   sub.what = sub.what || 'site'; sub.mode = sub.mode || 'clock';
@@ -1307,13 +1332,19 @@ function tempScreen() {
   const picker = makePicker(host, sub.minutes || 30, m => { sub.minutes = m; len.textContent = `How long: ${fmtMin(m)}`; });
   host._picker = picker;
   const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'What to open' },
-    [['site', 'Whole site'], ['page', 'One page'], ['media', 'Photos & videos']].map(([v, t]) =>
-      h('button', { type: 'button', 'aria-pressed': String(sub.what === v), onclick: () => { sub.what = v; render(); } }, t)));
+    [['site', 'Whole site'], ['page', 'One page'], ['media', 'Photos/videos']].map(([v, t]) => {
+      const on = v === 'media' ? MEDIA_T.includes(sub.what) : sub.what === v;
+      return h('button', { type: 'button', 'aria-pressed': String(on), onclick: () => { if (!(v === 'media' && on)) { sub.what = v; render(); } } }, t);
+    }));
+  // Photos and videos back on for a while: which of them.
+  const seg2 = MEDIA_T.includes(sub.what) ? h('div', { class: 'seg', role: 'group', 'aria-label': 'Which' },
+    [['photos', 'Photos'], ['videos', 'Videos'], ['media', 'Both']].map(([v, t]) =>
+      h('button', { type: 'button', 'aria-pressed': String(sub.what === v), onclick: () => { sub.what = v; render(); } }, t))) : null;
   const radio = (v, t, s) => h('label', { class: 'radio' }, h('input', { type: 'radio', name: 'tMode', value: v, checked: sub.mode === v, onchange: () => { sub.mode = v; } }),
     h('span', null, h('b', { style: 'font-weight:600' }, t), h('span', { class: 'small muted', style: 'display:block' }, s)));
   const add = () => {
     const raw = (sub.entry || '').trim();
-    const entry = sub.what === 'page' || (sub.what === 'media' && hasPath(raw)) ? pageKey(raw) : normalize(raw);
+    const entry = sub.what === 'page' || (MEDIA_T.includes(sub.what) && hasPath(raw)) ? pageKey(raw) : normalize(raw);
     if (!entry) return say(sub.what === 'page' ? 'Type the page address, e.g. youtube.com/watch?v=abc' : 'Type a website address.', true);
     if (sub.what === 'page' && !hasPath(raw)) return say('For One page, type the full page address.', true);
     const minutes = picker.get();
@@ -1328,7 +1359,7 @@ function tempScreen() {
     screenTitle('Open for a while', `In ${listLabel(S.current)}. Even if it's otherwise blocked, and it closes by itself.`),
     h('p', { class: 'hint' }, 'To answer a phone\'s request, use For a while on the request instead, so the phone is told.'),
     h('div', { class: 'field' }, h('label', { for: 'tAddr' }, sub.what === 'page' ? 'Page address' : 'Site or page'), addr),
-    h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'What to open'), seg),
+    h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'What to open'), seg, seg2),
     h('div', { class: 'card', style: 'padding:12px 16px 4px' }, len, host),
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Count the time'),
       h('div', { class: 'group' }, radio('clock', 'From now', 'Ends at a set time.'), radio('use', 'Only while it\'s open on the phone', 'Time on the site, to use within 7 days.'))),
@@ -1387,10 +1418,29 @@ const blockScreen = () => linesScreen({ backTo: 'Sites', title: 'Always blocked'
   hint: 'Parts of allowed sites to keep blocked, one per line: a site like maps.google.com, or a single page like en.wikipedia.org/wiki/Fortnite.',
   value: S.L.block.join('\n'), placeholder: 'maps.google.com', check: blockEntry,
   apply: lines => { if (lines.join('\n') !== S.L.block.join('\n')) { S.L.block = lines; markList(); } } });
-const noMediaScreen = () => linesScreen({ backTo: 'Sites', title: 'No photos on some pages', sub: `In ${listLabel(S.current)}`, id: 'noMediaText',
-  hint: 'Single pages of a site that\'s otherwise shown normally, one per line, e.g. en.wikipedia.org/wiki/Shark. For a whole site, use the No photos or videos switch on the site instead.',
-  value: S.L.noMediaPages.join('\n'), placeholder: 'en.wikipedia.org/wiki/Shark', check: blockEntry,
-  apply: lines => { if (lines.join('\n') !== S.L.noMediaPages.join('\n')) { S.L.noMediaPages = lines; markList(); } } });
+// Single pages without photos, and/or without videos: one box each (a page in both has both off).
+function noMediaScreen() {
+  const L = S.L;
+  const box = (id, label, value) => h('div', { class: 'field' }, h('label', { for: id }, label),
+    h('textarea', { class: 'inp', id, rows: 5, placeholder: 'en.wikipedia.org/wiki/Shark', autocapitalize: 'off', spellcheck: 'false',
+      style: 'min-height:120px;padding-top:12px;font-family:ui-monospace,Menlo,monospace;font-size:14px' }, value.join('\n')));
+  const apply = () => {
+    const read = id => [...new Set($(id).value.split('\n').map(x => x.trim()).filter(Boolean))];
+    const photos = read('npText'), videos = read('nvText');
+    const bad = [...photos, ...videos].filter(l => !blockEntry(l));
+    if (bad.length) return say(`These don't look like page addresses: ${bad.join(', ')}`, true);
+    if (photos.join('\n') !== L.noPhotoPages.join('\n') || videos.join('\n') !== L.noVideoPages.join('\n')) {
+      L.noPhotoPages = photos; L.noVideoPages = videos; markList();
+    }
+    back();
+  };
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Sites', apply),
+    screenTitle('No photos or videos on some pages', `In ${listLabel(S.current)}`),
+    h('p', { class: 'hint' }, 'Single pages of a site that\'s otherwise shown normally, one per line, e.g. en.wikipedia.org/wiki/Shark. ' +
+      'Put a page in both boxes to turn off both. For a whole site, use its No photos and No videos switches.'),
+    box('npText', 'No photos on these pages', L.noPhotoPages), box('nvText', 'No videos on these pages', L.noVideoPages),
+    h('button', { type: 'button', class: 'btn p wide', id: 'npDone', onclick: apply }, 'Done'));
+}
 const neverBlockScreen = () => linesScreen({ backTo: 'Settings', title: 'Never block these', sub: 'Exceptions to all the filters, for every phone', id: 'neverText',
   hint: 'If a site breaks because something it needs is blocked by a filter, add that address here, one per line.',
   value: (S.D.adblockExceptions || []).join('\n'), placeholder: 'googletagmanager.com', check: normalize,
@@ -1606,45 +1656,6 @@ async function archiveNow(id) {
   } catch (e) { say(e.message, true); }
 }
 
-// Lists named after people (from before own lists were named after the phone's ID): rename each to its
-// phone's ID, so no names show in the public copies. Only a phone's own list, used by no other phone.
-function namedOwnLists() {
-  const out = [];
-  const usedBy = l => Object.values(S.D.devices).filter(d => allListsOf(d).includes(l)).length;
-  for (const [id, d] of Object.entries(S.D.devices)) {
-    const byName = (d.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30);
-    if (!byName) continue;
-    const to = id.toLowerCase();
-    const own = allListsOf(d).find(l => (l === byName || new RegExp(`^${byName}-\\d+$`).test(l)) &&
-      l !== 'public' && !S.D.default.includes(l) && usedBy(l) === 1);
-    if (own && own !== to && !S.lists.includes(to)) out.push({ id, from: own, to, who: d.name });
-  }
-  return out;
-}
-async function hideNamesInLists() {
-  if (S.devDirty || S.listDirty) return say('Save or undo your changes first.', true);
-  const todo = namedOwnLists();
-  if (!todo.length) return say('No list names contain people\'s names.');
-  if (!confirm(`Rename ${plural(todo.length, 'list')} to their phone's ID?\n\n` + todo.map(t => `${t.from} → ${t.to} (${t.who})`).join('\n') +
-    '\n\nOn this page they still show as the person\'s name.')) return;
-  try {
-    for (const t of todo) {
-      if (!await moveFile(`docs/lists/${t.from}.json`, `docs/lists/${t.to}.json`, `Rename list ${t.from} to its phone's ID`)) continue;
-      const d = S.D.devices[t.id];
-      const swap = arr => (arr || []).map(l => l === t.from ? t.to : l);
-      d.lists = swap(d.lists);
-      if (d.blockedLists) d.blockedLists = swap(d.blockedLists);
-      if (d.requestsTo === t.from) d.requestsTo = t.to;
-      S.lists = [...S.lists.filter(l => l !== t.from), t.to].sort((a, b) => a === 'public' ? -1 : b === 'public' ? 1 : a.localeCompare(b));
-      if (S.current === t.from) S.current = t.to;
-    }
-    S.devicesSha = await putJson('devices.json', S.D, S.devicesSha, 'Rename own lists to phone IDs (no names in public list names)');
-    await openList(S.current);
-    render();
-    say(`Renamed ${plural(todo.length, 'list')}. The public copies with names are removed at the next publish, in a minute or two.`);
-  } catch (e) { say(e.message, true); }
-}
-
 async function bringBack(fromId, toId) {
   if (S.devDirty) return say('Save or undo your phone changes first.', true);
   const a = S.D.archived[fromId], to = S.D.devices[toId], who = a.name || fromId;
@@ -1733,11 +1744,6 @@ function settingsScreen() {
       h('button', { type: 'button', class: 'row', id: 'openApprovalPin', onclick: () => open({ name: 'approvalpin', scope: 'all' }) }, h('span', { class: 'ic' }, icon('shield', 20)),
         h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'PIN for all phones'),
           h('span', { class: 'dom' }, D.approvalPin ? 'Set: type it on a phone to approve a request there' : 'Not set')),
-        h('span', { class: 'chev' }, icon('chev', 18))))),
-    section('Privacy', h('div', { class: 'group' },
-      h('button', { type: 'button', class: 'row', id: 'hideNames', onclick: hideNamesInLists }, h('span', { class: 'ic' }, icon('shield', 20)),
-        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Hide names in list names'),
-          h('span', { class: 'dom' }, namedOwnLists().length ? `${plural(namedOwnLists().length, 'list')} named after people` : 'None left: own lists use phone IDs')),
         h('span', { class: 'chev' }, icon('chev', 18))))),
     section('GitHub', h('div', { class: 'group' },
       h('div', { class: 'row' }, h('span', { class: 'ic', style: 'color:#2E8B57' }, icon('check', 20, 2.2)),

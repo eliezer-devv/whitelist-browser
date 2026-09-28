@@ -38,27 +38,36 @@ object Requests {
      * Saves a request in the outbox (it's sent by [Outbox.flush], now or when there's internet).
      * Returns the outbox id. [scope] PAGE = just [pageUrl]; SITE = all of [domain].
      */
+    /** "photos and videos", "photos" or "videos". */
+    fun mediaWords(kind: String) = when (kind) { "photos" -> "photos"; "videos" -> "videos"; else -> "photos and videos" }
+
+    /** What "already asked about this" remembers a request by. */
+    fun sentKey(subject: String, media: Media, kind: String) =
+        "$subject|${media.word}" + if (media != Media.UNCHANGED && kind != "both") ":$kind" else ""
+
     fun queue(ctx: Context, action: Action, scope: Scope, media: Media, domain: String, pageUrl: String?, note: String,
               hops: List<String> = emptyList(), minutes: Int = 0, unverified: Boolean = false,
-              filtered: List<String> = emptyList(), pin: String? = null, frames: List<String> = emptyList()): String {
+              filtered: List<String> = emptyList(), pin: String? = null, frames: List<String> = emptyList(),
+              mediaKind: String = "both"): String {
         if (!isSetUp()) throw IOException("Requests aren't set up for this app yet")
 
         val page = if (scope == Scope.PAGE) pageUrl?.let { Whitelist.pageKey(it) } else null
         val subject = page ?: domain
         val what = if (page != null) "just this page" else "the whole site"
         val kind = if (page != null) "page" else "site"
+        val mw = mediaWords(mediaKind)
         val headline = when {
-            media == Media.ON -> "Turn photos and videos back on for $what"
-            action == Action.ALLOW && media == Media.OFF -> "Open $what, without photos and videos"
-            action == Action.BLOCK && media == Media.OFF -> "Block only the photos and videos on $what"
+            media == Media.ON -> "Turn $mw back on for $what"
+            action == Action.ALLOW && media == Media.OFF -> "Open $what, without $mw"
+            action == Action.BLOCK && media == Media.OFF -> "Block only the $mw on $what"
             action == Action.ALLOW -> "Open $what"
             else -> "Block $what"
         }.let { if (frames.isNotEmpty()) "Embedded content on $domain, from ${frames.joinToString(", ")}" else it } +
             if (minutes > 0) ", for ${duration(minutes)}" else ""
         val title = if (frames.isNotEmpty()) "Embedded content on $domain" else when {
-            media == Media.ON -> "Photos and videos back on: $subject"
-            action == Action.ALLOW && media == Media.OFF -> "Open $kind without photos and videos: $subject"
-            action == Action.BLOCK && media == Media.OFF -> "Block photos and videos: $subject"
+            media == Media.ON -> "${mw.replaceFirstChar { it.uppercase() }} back on: $subject"
+            action == Action.ALLOW && media == Media.OFF -> "Open $kind without $mw: $subject"
+            action == Action.BLOCK && media == Media.OFF -> "Block $mw: $subject"
             action == Action.ALLOW -> "Open $kind: $subject"
             else -> "Block $kind: $subject"
         }
@@ -66,6 +75,7 @@ object Requests {
             .put("domain", domain).put("device", Device.id(ctx)).put("model", Device.model())
             .apply { Device.name(ctx)?.let { put("name", it) } }
             .apply { if (media != Media.UNCHANGED) put("media", media.word) }
+            .apply { if (media != Media.UNCHANGED && mediaKind != "both") put("mediaKind", mediaKind) } // just photos, or just videos
             .apply { if (minutes > 0) put("minutes", minutes) }
             .apply { if (unverified) put("unverified", true) } // the phone couldn't find this site
             .apply { if (filtered.isNotEmpty()) put("filtered", JSONArray(filtered)) } // on a content filter's list
@@ -98,7 +108,7 @@ object Requests {
             .put("labels", JSONArray().put("site request"))
 
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putLong("${action.word}|$subject|${media.word}", System.currentTimeMillis()).apply()
+            .putLong("${action.word}|${sentKey(subject, media, mediaKind)}", System.currentTimeMillis()).apply()
         return Outbox.add(ctx, "issue", payload,
             summary = if (frames.isNotEmpty()) "Embedded content on $domain (from ${frames.joinToString(", ")})" else "$headline: $subject")
     }
