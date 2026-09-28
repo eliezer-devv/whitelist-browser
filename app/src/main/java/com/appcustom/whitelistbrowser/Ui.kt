@@ -31,29 +31,52 @@ import android.widget.TextView
 object Ui {
     // The colours, light or dark (set by applyTheme). ACCENT fills buttons and switches; ACCENT_TEXT is the
     // same green for text and icons (lighter in dark mode, so it stays readable).
-    var INK = 0; private set
-    var INK2 = 0; private set
-    var MUTED = 0; private set
-    var HINT = 0; private set
-    var LINE = 0; private set
-    var LINE2 = 0; private set
-    var FIELD_LINE = 0; private set
-    var PAPER = 0; private set
-    var PAGE = 0; private set
-    var CARD = 0; private set
-    var SEG = 0; private set
-    var ACCENT = 0; private set
-    var ACCENT_TEXT = 0; private set
-    var SOFT = 0; private set
-    var OUTLINE = 0; private set
-    var AMBER_BG = 0; private set
-    var AMBER_INK = 0; private set
-    var RED_BG = 0; private set
-    var RED_INK = 0; private set
-    var DANGER = 0; private set
-    var TRACK_OFF = 0; private set
-    var HANDLE = 0; private set
-    var dark = false; private set
+    var INK = 0
+        private set
+    var INK2 = 0
+        private set
+    var MUTED = 0
+        private set
+    var HINT = 0
+        private set
+    var LINE = 0
+        private set
+    var LINE2 = 0
+        private set
+    var FIELD_LINE = 0
+        private set
+    var PAPER = 0
+        private set
+    var PAGE = 0
+        private set
+    var CARD = 0
+        private set
+    var SEG = 0
+        private set
+    var ACCENT = 0
+        private set
+    var ACCENT_TEXT = 0
+        private set
+    var SOFT = 0
+        private set
+    var OUTLINE = 0
+        private set
+    var AMBER_BG = 0
+        private set
+    var AMBER_INK = 0
+        private set
+    var RED_BG = 0
+        private set
+    var RED_INK = 0
+        private set
+    var DANGER = 0
+        private set
+    var TRACK_OFF = 0
+        private set
+    var HANDLE = 0
+        private set
+    var dark = false
+        private set
 
     init { palette(false) }
 
