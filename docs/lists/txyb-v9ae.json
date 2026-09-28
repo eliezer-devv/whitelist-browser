@@ -1,4 +1,9 @@
 {
+  "embeds": {
+    "accounts.google.com": [
+      "accounts.youtube.com"
+    ]
+  },
   "refreshMinutes": 5,
   "sites": [
     {
@@ -7,71 +12,13 @@
       "name": "jtechforums.org"
     },
     {
-      "domain": "jepqueens.com",
-      "home": true,
-      "name": "jepqueens.com"
-    },
-    {
       "domain": "github.com",
       "home": true,
       "frames": true
-    },
-    {
-      "domain": "accounts.google.com",
-      "name": "accounts.google.com",
-      "home": true
-    },
-    {
-      "domain": "gds.google.com",
-      "name": "gds.google.com",
-      "home": true
-    },
-    {
-      "domain": "policies.google.com",
-      "name": "policies.google.com",
-      "home": false,
-      "pages": [
-        "policies.google.com/terms"
-      ],
-      "passThrough": true
-    },
-    {
-      "domain": "accounts.google.co.il",
-      "name": "accounts.google.co.il",
-      "home": false,
-      "pages": [
-        "accounts.google.co.il/accounts/SetSID"
-      ],
-      "passThrough": true
-    },
-    {
-      "domain": "myaccount.google.com",
-      "name": "myaccount.google.com",
-      "home": false,
-      "pages": [
-        "myaccount.google.com/?authuser=0",
-        "myaccount.google.com/intro"
-      ],
-      "passThrough": true
     }
   ],
   "block": [],
   "noMedia": [
     "youtube.com"
-  ],
-  "temporary": [
-    {
-      "id": "tmulu67mfsxt",
-      "what": "site",
-      "entry": "google.com",
-      "mode": "clock",
-      "minutes": 5,
-      "from": "2026-09-28T22:45:48.183Z"
-    }
-  ],
-  "embeds": {
-    "accounts.google.com": [
-      "accounts.youtube.com"
-    ]
-  }
+  ]
 }
