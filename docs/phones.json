@@ -2,6 +2,7 @@
   "default": [
     "public"
   ],
+  "pin": true,
   "devices": {
     "TXYB-V9AE": {
       "lists": [
