@@ -114,7 +114,11 @@
 
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field > label, .flabel { font-size: 14px; font-weight: 600; color: var(--ink2); }
-  .inp { width: 100%; min-height: 48px; padding: 0 14px; border: 1px solid var(--field); border-radius: 12px; background: #fff; font-size: 16px; }
+  .field, details.more, .stack > * { min-width: 0; }
+  /* Inside <details>, the page's box-sizing isn't inherited (the browser's own wrapper is in between). */
+  details *, details *::before, details *::after { box-sizing: border-box; }
+  input[type=file] { max-width: 100%; }
+  .inp { width: 100%; max-width: 100%; min-width: 0; min-height: 48px; padding: 0 14px; border: 1px solid var(--field); border-radius: 12px; background: #fff; font-size: 16px; }
   textarea.inp { min-height: 150px; padding: 12px 14px; font-family: var(--mono); font-size: 14px; line-height: 1.6; resize: vertical; }
   .inp.bad { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
   .inrow { display: flex; gap: 8px; }
@@ -142,6 +146,7 @@
   .stepper button { width: 38px; height: 38px; border: 1px solid var(--field); border-radius: 10px; background: #fff; font-size: 18px; }
   .stepper span { min-width: 72px; text-align: center; font-weight: 600; }
 
+  .frow { display: grid; grid-template-columns: 7.5rem 1fr; align-items: center; gap: 8px; }
   .panel { border-top: 1px solid var(--line2); margin-top: 4px; padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
 
   /* Scroll wheels: hours 0-24, minutes 0-55 */
@@ -178,6 +183,41 @@
   #toast.error { background: #7A2A1D; }
   .empty { text-align: center; padding: 28px 16px; color: var(--muted); }
   .empty b { display: block; color: var(--ink); font-size: 17px; margin-bottom: 4px; }
+  /* Small screens (e.g. 2.8-inch phones, about 240px wide) */
+  @media (max-width: 340px) {
+    body { font-size: 15px; }
+    main { padding: 0 8px; }
+    .top { padding-left: 12px; padding-right: 12px; }
+    .title { padding: 6px 2px 8px; }
+    .title h1 { font-size: 24px; }
+    h1[style] { font-size: 22px !important; }
+    .card { padding: 12px; border-radius: 14px; }
+    .card h3 { font-size: 16.5px; }
+    .btn { padding: 0 12px; font-size: 14px; }
+    .row { gap: 10px; padding: 10px 10px; }
+    .tile { width: 34px; height: 34px; font-size: 15px; }
+    .tile.big { width: 44px; height: 44px; font-size: 20px; }
+    .tg { padding: 10px; gap: 10px; }
+    .tg:has(.stepper) { flex-wrap: wrap; }          /* rows with − / + wrap; switches stay beside their text */
+    .who { flex-wrap: wrap; row-gap: 6px; }
+    .who > span { flex-wrap: wrap; column-gap: 6px; row-gap: 0; }
+    .who > span > .small { font-size: 12.5px; white-space: nowrap; }
+    .tg .t { font-size: 14.5px; }
+    .stepper span { min-width: 56px; }
+    .seg button { font-size: 12.5px; min-height: 38px; padding: 0 2px; }
+    .frow { grid-template-columns: 1fr; gap: 4px; }
+    .wheels { gap: .6rem; }
+    .wheel { width: 3rem; }
+    .wheel-col span { width: 1.9rem; font-size: .8rem; }
+    #tabs { padding: 6px 2px calc(6px + env(safe-area-inset-bottom, 0px)); }
+    #tabs button { flex: 1 1 0; width: auto; min-width: 0; font-size: 10.5px; }
+    #tabs .pill { width: 44px; height: 28px; }
+    #savebar { padding: 6px 6px 6px 10px; gap: 6px; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+    #savebar span { font-size: 12.5px; }
+    #savebar button { padding: 0 10px; }
+    body.unsaved #app { padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px)); }
+    #app { padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+  }
   details.more > summary { cursor: pointer; font-weight: 600; color: var(--accent); padding: 6px 4px; list-style: none; }
   details.more > summary::-webkit-details-marker { display: none; }
 </style>
@@ -251,7 +291,16 @@ const fmtMin = m => [Math.floor(m / 60) && `${Math.floor(m / 60)} h`, m % 60 && 
 const ago = iso => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
   return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
 const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
-const listLabel = n => n === 'public' ? 'Everyone' : cap(n);
+// A phone's own list is named after its ID ("k7m4-q2xp"), since list names are public: show the person's name.
+const ID_LIST = /^[2-9a-hj-np-z]{4}-[2-9a-hj-np-z]{4}$/;
+function listLabel(n) {
+  if (n === 'public') return 'Everyone';
+  if (ID_LIST.test(n) && typeof S !== 'undefined' && S.D) {
+    const id = n.toUpperCase(), d = S.D.devices[id] || (S.D.archived || {})[id];
+    if (d) return d.name || id;
+  }
+  return cap(n);
+}
 const tileColor = s => ['#3C3489', '#B4492F', '#6A4FB0', '#1F5F55', '#185FA5', '#854F0B', '#8E3322'][[...String(s)].reduce((a, c) => a + c.charCodeAt(0), 0) % 7];
 
 // ---------- messages ----------
@@ -423,7 +472,7 @@ const KNOWN = ['sites', 'block', 'noMedia', 'temporary', 'homepage', 'refreshMin
 function toModel(data) {
   const sites = (data.sites || []).map(s => ({ domain: s.domain || '', name: s.name || '', url: s.url || '',
     home: s.home !== false, subdomains: s.subdomains !== false, pages: Array.isArray(s.pages) ? [...s.pages] : [],
-    passThrough: !!s.passThrough, noMedia: false }));
+    passThrough: !!s.passThrough, frames: !!s.frames, unfiltered: !!s.unfiltered, noMedia: false }));
   // "No photos" entries for a whole site show as that site's switch. www./m. don't matter
   // (a request may have been approved as www.example.com for the site example.com).
   const bareOf = d => (normalize(d) || '').replace(/^(www|m|mobile)\./, '');
@@ -460,6 +509,8 @@ function fromModel(L) {
     }
     if (pages.length) site.pages = [...new Set(pages)];
     if (s.passThrough) site.passThrough = true;
+    if (s.frames) site.frames = true;
+    if (s.unfiltered) site.unfiltered = true;
     if (s.noMedia) mediaOff.push(domain);
     sites.push(site);
   }
@@ -562,7 +613,7 @@ async function switchList(name) {
 }
 function newList() {
   if (S.listDirty && !confirm(`Discard unsaved changes to ${listLabel(S.current)}?`)) return;
-  const raw = prompt('Name for the new list, e.g. year-5 or weekend', '');
+  const raw = prompt('Name for the new list, e.g. year-5 or weekend.\n(List names can be seen publicly, so don\'t use full names.)', '');
   if (raw === null) return;
   const name = raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30);
   if (!name) return say('Use letters and numbers for the list name.', true);
@@ -924,6 +975,13 @@ function requestCard(issue) {
   const note = field(issue.body, 'Note');
   const asked = Number(req.minutes) || 0;
   const allow = req.action !== 'block';
+  // On a content filter's list: approving needs a confirmation, and is sent as "… anyway".
+  const FNAMES = { adult: 'adult content', gambling: 'gambling', malware: 'malware and scams' };
+  const filtered = allow && req.media !== 'on' ? (Array.isArray(req.filtered) ? req.filtered : []).filter(f => FNAMES[f]) : [];
+  const filteredText = filtered.map(f => FNAMES[f]).join(' and ') + (filtered.length > 1 ? ' lists' : ' list');
+  const confirmFiltered = () => !filtered.length ||
+    confirm(`${req.domain} is on the ${filteredText}. It's blocked by that filter even if a list allows it.\n\nOpen it anyway?`);
+  const anyway = filtered.length ? ' anyway' : '';
   const hops = Array.isArray(req.hops) ? req.hops : [];
   const card = h('article', { class: 'card', 'data-n': issue.number });
   const everyone = h('input', { type: 'checkbox', class: 'everyone' });
@@ -960,7 +1018,8 @@ function requestCard(issue) {
     whilePanel._picker = picker;
     goBtn.onclick = () => {
       const m = picker.get(); if (!m) return;
-      send(`approve for ${Math.floor(m / 60) ? Math.floor(m / 60) + 'h' : ''}${m % 60 ? m % 60 + 'm' : ''}${use.checked ? ' use' : ''}`,
+      if (!confirmFiltered()) return;
+      send(`approve for ${Math.floor(m / 60) ? Math.floor(m / 60) + 'h' : ''}${m % 60 ? m % 60 + 'm' : ''}${use.checked ? ' use' : ''}${anyway}`,
         `Approved for ${fmtMin(m)}${use.checked ? ' of use' : ''}`);
     };
     picker.sync();
@@ -978,8 +1037,8 @@ function requestCard(issue) {
   if (!allow) {
     actions.append(h('button', { type: 'button', class: 'btn p grow approve', onclick: () => send('approve', req.media === 'off' ? 'Photos turned off' : 'Blocked') }, req.media === 'off' ? 'Turn them off' : 'Block it'));
   } else {
-    actions.append(h('button', { type: 'button', class: 'btn p grow approve', onclick: () => send('approve', asked ? `Approved for ${fmtMin(asked)}` : 'Approved') },
-      asked ? `Approve for ${fmtMin(asked)}` : 'Approve'));
+    actions.append(h('button', { type: 'button', class: 'btn p grow approve', onclick: () => { if (confirmFiltered()) send('approve' + anyway, asked ? `Approved for ${fmtMin(asked)}` : 'Approved'); } },
+      (asked ? `Approve for ${fmtMin(asked)}` : 'Approve') + (filtered.length ? ' anyway' : '')));
     actions.append(h('button', { type: 'button', class: 'btn s while', onclick: openWhile }, asked ? 'Other time' : 'For a while'));
   }
   actions.append(h('button', { type: 'button', class: 'btn d deny', onclick: openDeny }, 'Deny'));
@@ -991,6 +1050,8 @@ function requestCard(issue) {
     allow && req.media === 'off' ? h('p', { class: 'line' }, icon('photooff', 16), 'Asked without photos and videos') : null,
     hops.length ? h('p', { class: 'line' }, icon('link', 16), `Goes through ${plural(hops.length, 'other address')} first, allowed too when you approve`) : null,
     req.unverified ? h('p', { class: 'warn' }, 'The phone couldn\'t find this site when asking. It may be a typo: check it before approving.') : null,
+    filtered.length ? h('p', { class: 'warn', style: 'background:var(--red-soft);color:#7A2A1D' },
+      `⚠️ On the ${filteredText}. The phone blocks it even if a list allows it, unless you approve it anyway.`) : null,
     note ? h('p', { class: 'quote' }, `“${note}”`) : null,
     actions, panels,
     h('label', { class: 'check' }, everyone, 'Change it for every phone (the Everyone list)')].filter(Boolean)); // skip lines that don't apply
@@ -1027,6 +1088,8 @@ function siteChips(s) {
   if (!s.subdomains) c.push(chip('Exact address'));
   if (s.noMedia) c.push(chip('No photos', '', 'photooff'));
   if (s.passThrough) c.push(chip('Added automatically', '', 'link'));
+  if (s.frames) c.push(chip('Embeds from anywhere', 'amber'));
+  if (s.unfiltered) c.push(chip('Not filtered', 'red'));
   return c;
 }
 function sitesScreen() {
@@ -1037,7 +1100,7 @@ function sitesScreen() {
     : users.length ? `${users.join(', ')}'s list. It adds to their other lists.` : 'Not given to any phone yet (see Phones).';
   const live = L.temporary.filter(t => tempEnd(t) > Date.now());
   const temps = live.map(t => h('div', { class: 'tempcard' }, icon('clock', 22),
-    h('span', { class: 'grow' }, h('b', null, t.entry), h('span', { class: 'small' }, `${t.what === 'media' ? 'Photos and videos on' : 'Open'} ${tempLeft(t)}`)),
+    h('span', { class: 'grow' }, h('b', null, t.entry), h('span', { class: 'small' }, `${t.what === 'media' ? 'Photos and videos on' : 'Open'} ${tempLeft(t)}${t.unfiltered ? ', despite a filter' : ''}`)),
     h('button', { type: 'button', onclick: () => { L.temporary = L.temporary.filter(x => x !== t); markList(); render(); say(`${t.entry} will close when you tap Save.`); } }, 'End now')));
   const rows = L.sites.map((s, i) => h('button', { type: 'button', class: 'row siterow', onclick: () => open({ name: 'site', index: i }) },
     h('span', { class: 'tile', style: `color:${tileColor(s.domain)}` }, (s.name || s.domain || '?').replace(/^www\./, '')[0].toUpperCase()),
@@ -1072,7 +1135,7 @@ function siteScreen() {
   const sub = S.sub;
   const isNew = sub.index < 0;
   if (!sub.draft) {
-    const s = isNew ? { domain: '', name: '', url: '', home: true, subdomains: true, pages: [], noMedia: false, passThrough: false } : S.L.sites[sub.index];
+    const s = isNew ? { domain: '', name: '', url: '', home: true, subdomains: true, pages: [], noMedia: false, passThrough: false, frames: false, unfiltered: false } : S.L.sites[sub.index];
     sub.draft = { ...s, pages: [...s.pages], only: s.pages.length > 0 };
   }
   const d = sub.draft;
@@ -1082,7 +1145,7 @@ function siteScreen() {
   const url = h('input', { class: 'inp', id: 'sUrl', value: d.url, placeholder: 'e.g. https://www.bbc.co.uk/bitesize', autocapitalize: 'off', spellcheck: 'false', oninput: e => { d.url = e.target.value; } });
   const toggle = (id, title, hint, key) => h('label', { class: 'tg', for: id },
     h('span', { class: 'grow' }, h('span', { class: 't' }, title), hint ? h('span', { class: 's' }, hint) : null),
-    h('input', { type: 'checkbox', class: 'sw', id, checked: !!d[key], onchange: e => { d[key] = e.target.checked; if (key === 'only') render(); } }));
+    h('input', { type: 'checkbox', class: 'sw', id, checked: !!d[key], onchange: e => { d[key] = e.target.checked; if (key === 'only' || key === 'frames' || key === 'unfiltered') render(); } }));
   const bare = (normalize(d.domain) || 'the site').replace(/^www\./, '');
   const pageInput = h('input', { class: 'inp', id: 'sPageNew', placeholder: `e.g. ${bare}/some-page`, autocapitalize: 'off', spellcheck: 'false' });
   const addPage = () => {
@@ -1105,7 +1168,7 @@ function siteScreen() {
     if (S.L.sites.some((s, i) => i !== sub.index && (normalize(s.domain) || '').replace(/^(www|m|mobile)\.(?=[^.]+\.[^.]+)/, '') === dom)) return say(`${dom} is already on this list.`, true);
     for (const p of d.pages) if (!pageOnSite(p, dom, d.subdomains)) return say(`The page ${p} isn't on ${dom}.`, true);
     const site = { domain: dom, name: d.name.trim(), url: d.url.trim(), home: d.home, subdomains: d.subdomains,
-      pages: d.only ? [...d.pages] : [], noMedia: d.noMedia, passThrough: d.passThrough };
+      pages: d.only ? [...d.pages] : [], noMedia: d.noMedia, passThrough: d.passThrough, frames: d.frames, unfiltered: d.unfiltered };
     if (isNew) S.L.sites.push(site); else S.L.sites[sub.index] = site;
     markList(); back();
     say(`${isNew ? 'Added' : 'Updated'} ${site.name || dom}. Tap Save to apply it.`);
@@ -1119,7 +1182,7 @@ function siteScreen() {
     backLink('Sites'),
     h('div', { style: 'display:flex;align-items:center;gap:14px;padding:0 4px' },
       h('span', { class: 'tile big', style: `color:${tileColor(d.domain)}` }, letter.toUpperCase()),
-      h('div', null, h('h1', { style: 'margin:0;font:700 28px/1.15 var(--display)' }, isNew ? 'Add a site' : (d.name || d.domain)),
+      h('div', { style: 'min-width:0' }, h('h1', { style: 'margin:0;font:700 28px/1.15 var(--display);overflow-wrap:anywhere' }, isNew ? 'Add a site' : (d.name || d.domain)),
         h('span', { class: 'muted small' }, `In ${listLabel(S.current)}`))),
     d.passThrough ? h('p', { class: 'warn' }, 'Added automatically: a link passes through this address on its way to an approved site.') : null,
     h('div', { class: 'field' }, h('label', { for: 'sDomain' }, 'Address'), addr),
@@ -1130,6 +1193,12 @@ function siteScreen() {
       toggle('sNoMedia', 'No photos or videos', 'The pages open, pictures and videos don\'t', 'noMedia'),
       toggle('sOnly', 'Only some pages', 'Everything else on the site stays blocked', 'only')),
     pages,
+    h('div', { class: 'group' },
+      toggle('sFrames', 'Allow content embedded from other sites', 'Embedded videos, maps and sign-in boxes work, from any site. Leaving this site is still blocked, and the ad and adult filters still apply.', 'frames')),
+    d.frames ? h('p', { class: 'warn' }, 'Only for sites you trust: whatever this site chooses to embed will show, even from sites that aren\'t on your lists.') : null,
+    h('div', { class: 'group' },
+      toggle('sUnfiltered', 'Open even if a filter lists it', 'For a site the adult, gambling or malware filter blocks, that you\'ve checked and want to allow anyway.', 'unfiltered')),
+    d.unfiltered ? h('p', { class: 'warn', style: 'background:var(--red-soft);color:#7A2A1D' }, 'The adult, gambling and malware filters don\'t apply to this site. Only for sites you\'ve checked yourself.') : null,
     h('details', { class: 'more' }, h('summary', null, 'More options'),
       h('div', { class: 'field', style: 'margin-top:8px' }, h('label', { for: 'sUrl' }, 'Where the tile opens (optional)'), url,
         h('p', { class: 'hint', style: 'margin:0' }, 'Leave empty to open the site\'s front page.'))),
@@ -1197,8 +1266,8 @@ const noMediaScreen = () => linesScreen({ backTo: 'Sites', title: 'No photos on 
   hint: 'Single pages of a site that\'s otherwise shown normally, one per line, e.g. en.wikipedia.org/wiki/Shark. For a whole site, use the No photos or videos switch on the site instead.',
   value: S.L.noMediaPages.join('\n'), placeholder: 'en.wikipedia.org/wiki/Shark', check: blockEntry,
   apply: lines => { if (lines.join('\n') !== S.L.noMediaPages.join('\n')) { S.L.noMediaPages = lines; markList(); } } });
-const neverBlockScreen = () => linesScreen({ backTo: 'Settings', title: 'Never block these', sub: 'Ad blocking exceptions, for every phone', id: 'neverText',
-  hint: 'If a site breaks because something it needs is blocked as an ad, add that address here, one per line.',
+const neverBlockScreen = () => linesScreen({ backTo: 'Settings', title: 'Never block these', sub: 'Exceptions to all the filters, for every phone', id: 'neverText',
+  hint: 'If a site breaks because something it needs is blocked by a filter, add that address here, one per line.',
   value: (S.D.adblockExceptions || []).join('\n'), placeholder: 'googletagmanager.com', check: normalize,
   apply: lines => { S.D.adblockExceptions = [...new Set(lines.map(normalize))]; markDevices(); } });
 
@@ -1269,7 +1338,8 @@ function phonesScreen() {
     .sort(([, a], [, b]) => (!!a.name - !!b.name) || (a.name || '').localeCompare(b.name || ''));
   const archived = Object.keys(S.D.archived || {}).length;
   const cards = entries.map(([id, d]) => {
-    const adsChip = d.adblock === 'off' ? chip('Ads allowed') : d.adblock === 'on' ? chip('Ads blocked') : null;
+    const adsChip = [d.adblock === 'off' ? chip('Ads allowed') : d.adblock === 'on' ? chip('Ads blocked') : null,
+      ...FILTERS.map(([key, title]) => d[key] === 'off' ? chip(`${title.replace('Block ', '').replace(/ and scams$/, '').replace(/^./, c => c.toUpperCase())} filter off`, 'amber') : null)];
     return h('button', { type: 'button', class: 'card phonecard', 'data-id': id, style: 'text-align:left;width:100%', onclick: () => open({ name: 'phone', id }) },
       h('div', { style: 'display:flex;align-items:center;gap:12px' },
         h('span', { class: 'av big' }, (d.name || '?')[0].toUpperCase()),
@@ -1277,8 +1347,8 @@ function phonesScreen() {
           h('b', { style: 'font-size:17px' }, d.name || 'No name yet'),
           h('span', { class: 'muted small' }, [d.model || 'Phone', d.registered ? `added ${new Date(d.registered).toLocaleDateString([], { day: 'numeric', month: 'short' })}` : null].filter(Boolean).join(' · '))),
         h('span', { class: 'chev', style: 'color:var(--faint)' }, icon('chev', 18))),
-      h('div', { class: 'chips' }, !d.name ? chip('Needs a name', 'amber') : null,
-        (d.lists || []).length ? (d.lists || []).map(l => chip(listLabel(l), 'teal')) : chip('No lists'), adsChip));
+      h('div', { class: 'chips' }, d.blocked ? chip('Blocked', 'red', 'ban') : null, !d.name ? chip('Needs a name', 'amber') : null,
+        d.blocked ? null : (d.lists || []).length ? (d.lists || []).map(l => chip(listLabel(l), 'teal')) : chip('No lists'), adsChip));
   });
   const addPhone = () => {
     const raw = (prompt('The phone\'s ID, e.g. K7M4-Q2XP (on the phone: ⋮ → About this phone)', '') || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -1306,28 +1376,51 @@ function phoneScreen() {
   const name = h('input', { class: 'inp', id: 'pName', value: d.name || '', placeholder: 'e.g. Emma', oninput: e => { d.name = e.target.value.trim(); markDevices(); } });
   const lists = h('div', { class: 'chips', style: 'gap:8px' }, S.lists.map(l => {
     const on = (d.lists || []).includes(l);
-    return h('button', { type: 'button', class: 'lc pick', 'aria-pressed': String(on), onclick: () => {
+    return h('button', { type: 'button', class: 'lc pick', 'aria-pressed': String(on), disabled: !!d.blocked, onclick: () => {
       d.lists = on ? d.lists.filter(x => x !== l) : [...(d.lists || []), l]; markDevices(); render(); } }, on ? icon('check', 15, 2.4) : null, listLabel(l));
   }));
   const req = h('select', { class: 'inp', id: 'pReq', onchange: e => { if (e.target.value) d.requestsTo = e.target.value; else delete d.requestsTo; markDevices(); } },
     [['', 'The usual (see Settings)'], ['own', 'Its own list'], ...S.lists.map(n => [n, `The ${listLabel(n)} list`])].map(([v, t]) => h('option', { value: v }, t)));
   req.value = d.requestsTo === 'own' || S.lists.includes(d.requestsTo) ? d.requestsTo : '';
+  const filterRows = FILTERS.map(([key, title]) => h('div', { class: 'frow' },
+    h('span', { class: 'small', style: 'font-weight:600' }, title.replace('Block ', '').replace(/^./, c => c.toUpperCase())),
+    h('div', { class: 'seg', role: 'group', 'aria-label': title },
+      [['', 'Usual'], ['on', 'On'], ['off', 'Off']].map(([v, t]) => h('button', { type: 'button', 'aria-pressed': String((d[key] || '') === v),
+        onclick: () => { if (v) d[key] = v; else delete d[key]; markDevices(); render(); } }, t)))));
   const ads = h('div', { class: 'seg', role: 'group', 'aria-label': 'Ads' },
     [['', 'Usual'], ['on', 'Blocked'], ['off', 'Allowed']].map(([v, t]) => h('button', { type: 'button', 'aria-pressed': String((d.adblock || '') === v),
       onclick: () => { if (v) d.adblock = v; else delete d.adblock; markDevices(); render(); } }, t)));
-  const remove = () => {
-    if (!confirm(`Remove ${d.name || id}? It will use the lists for new phones until you add it again.`)) return;
-    delete S.D.devices[id]; markDevices(); back();
+  // Block: keep it listed but allow nothing. Its lists are set aside, and Unblock gives them back.
+  const block = () => {
+    if (!confirm(`Block ${d.name || id}? It won't be able to open any site until you unblock it.`)) return;
+    d.blockedLists = [...new Set([...(d.lists || []), ...(d.blockedLists || [])])];
+    d.lists = []; d.blocked = true;
+    markDevices(); render();
+    say(`${d.name || id} will be blocked when you tap Save.`);
+  };
+  const unblock = () => {
+    d.lists = [...new Set([...(d.lists || []), ...(d.blockedLists || []).filter(l => S.lists.includes(l))])];
+    delete d.blocked; delete d.blockedLists;
+    markDevices(); render();
+    say(`${d.name || id} will be unblocked when you tap Save.`);
   };
   return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Phones'),
     h('div', { style: 'display:flex;align-items:center;gap:14px;padding:0 4px' }, h('span', { class: 'av big' }, (d.name || '?')[0].toUpperCase()),
-      h('div', null, h('h1', { style: 'margin:0;font:700 28px/1.15 var(--display)' }, d.name || 'No name yet'), h('span', { class: 'muted small mono' }, `${id}${d.model ? ' · ' + d.model : ''}`))),
+      h('div', { style: 'min-width:0' }, h('h1', { style: 'margin:0;font:700 28px/1.15 var(--display);overflow-wrap:anywhere' }, d.name || 'No name yet'), h('span', { class: 'muted small mono' }, `${id}${d.model ? ' · ' + d.model : ''}`))),
     h('div', { class: 'field' }, h('label', { for: 'pName' }, 'Name'), name),
+    d.blocked ? h('p', { class: 'warn' }, `Blocked: it can't open any site. Its lists (${(d.blockedLists || []).map(listLabel).join(', ') || 'none'}) come back when you unblock it.`) : null,
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Lists it uses'), lists,
-      h('p', { class: 'hint', style: 'margin:0' }, 'A site opens if any of these allows it, and is blocked if any of them blocks it.')),
+      h('p', { class: 'hint', style: 'margin:0' }, d.blocked ? 'Unblock it to change its lists.' : 'A site opens if any of these allows it, and is blocked if any of them blocks it.')),
     h('div', { class: 'field' }, h('label', { for: 'pReq' }, 'When you approve its requests, change'), req),
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Ads'), ads),
-    h('button', { type: 'button', class: 'btn d', id: 'pRemove', onclick: remove }, 'Remove this phone'));
+    h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Filters'), ...filterRows,
+      h('p', { class: 'hint', style: 'margin:0' }, 'Usual follows Settings → Filters.')),
+    h('div', { class: 'stack', style: 'gap:8px;margin-top:8px' },
+      d.blocked ? h('button', { type: 'button', class: 'btn s wide', id: 'pUnblock', onclick: unblock }, 'Unblock this phone')
+        : h('button', { type: 'button', class: 'btn dline wide', id: 'pBlock', onclick: block }, 'Block this phone'),
+      h('button', { type: 'button', class: 'btn s wide', id: 'pArchive', onclick: () => archiveNow(id) }, 'Archive now'),
+      h('p', { class: 'hint' }, 'Block: it stays here but can\'t open any site, for a lost phone or one that shouldn\'t be used. ' +
+        'Archive: put it away, with its own list, until it\'s needed again (Phones → Archived phones → Restore). If it\'s still being used, it comes back by itself.')));
 }
 function archivedScreen() {
   const entries = Object.entries(S.D.archived || {});
@@ -1349,6 +1442,69 @@ function archivedScreen() {
     entries.length ? cards : h('div', { class: 'card empty' }, h('b', null, 'None'), 'Phones not seen for a while are archived here automatically.'),
     h('p', { class: 'hint' }, 'After a factory reset a phone gets a new ID and appears as a new phone. Use Give to another phone to hand it its old name and lists.'));
 }
+// Archive a phone now, the same way the daily check does after it's unused for a while: its own lists
+// (ones no other phone uses) move to docs/lists/archive/, and it moves to Archived phones.
+const allListsOf = d => [...new Set([...(d.lists || []), ...(d.blockedLists || [])])];
+async function archiveNow(id) {
+  if (S.devDirty || S.listDirty) return say('Save or undo your changes first.', true);
+  const d = S.D.devices[id], who = d.name || id;
+  const own = allListsOf(d).filter(l => l !== 'public' && !S.D.default.includes(l) &&
+    !Object.entries(S.D.devices).some(([other, o]) => other !== id && allListsOf(o).includes(l)));
+  if (!confirm(`Archive ${who} now?` + (own.length ? ` Its own list (${own.map(listLabel).join(', ')}) is archived with it.` : '') +
+    ' You can restore it from Archived phones.')) return;
+  try {
+    const moved = [];
+    for (const l of own) {
+      if (await moveFile(`docs/lists/${l}.json`, `docs/lists/archive/${l}.json`, `Archive list ${l} with phone ${who}`)) moved.push(l);
+    }
+    S.lists = S.lists.filter(l => !moved.includes(l));
+    S.D.archived[id] = { ...d, archivedOn: new Date().toISOString().slice(0, 10), archivedLists: moved };
+    delete S.D.devices[id];
+    S.devicesSha = await putJson('devices.json', S.D, S.devicesSha, `Archive phone ${who}`);
+    if (moved.includes(S.current)) await openList('public');
+    back(); say(`${who} archived.`);
+  } catch (e) { say(e.message, true); }
+}
+
+// Lists named after people (from before own lists were named after the phone's ID): rename each to its
+// phone's ID, so no names show in the public copies. Only a phone's own list, used by no other phone.
+function namedOwnLists() {
+  const out = [];
+  const usedBy = l => Object.values(S.D.devices).filter(d => allListsOf(d).includes(l)).length;
+  for (const [id, d] of Object.entries(S.D.devices)) {
+    const byName = (d.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30);
+    if (!byName) continue;
+    const to = id.toLowerCase();
+    const own = allListsOf(d).find(l => (l === byName || new RegExp(`^${byName}-\\d+$`).test(l)) &&
+      l !== 'public' && !S.D.default.includes(l) && usedBy(l) === 1);
+    if (own && own !== to && !S.lists.includes(to)) out.push({ id, from: own, to, who: d.name });
+  }
+  return out;
+}
+async function hideNamesInLists() {
+  if (S.devDirty || S.listDirty) return say('Save or undo your changes first.', true);
+  const todo = namedOwnLists();
+  if (!todo.length) return say('No list names contain people\'s names.');
+  if (!confirm(`Rename ${plural(todo.length, 'list')} to their phone's ID?\n\n` + todo.map(t => `${t.from} → ${t.to} (${t.who})`).join('\n') +
+    '\n\nOn this page they still show as the person\'s name.')) return;
+  try {
+    for (const t of todo) {
+      if (!await moveFile(`docs/lists/${t.from}.json`, `docs/lists/${t.to}.json`, `Rename list ${t.from} to its phone's ID`)) continue;
+      const d = S.D.devices[t.id];
+      const swap = arr => (arr || []).map(l => l === t.from ? t.to : l);
+      d.lists = swap(d.lists);
+      if (d.blockedLists) d.blockedLists = swap(d.blockedLists);
+      if (d.requestsTo === t.from) d.requestsTo = t.to;
+      S.lists = [...S.lists.filter(l => l !== t.from), t.to].sort((a, b) => a === 'public' ? -1 : b === 'public' ? 1 : a.localeCompare(b));
+      if (S.current === t.from) S.current = t.to;
+    }
+    S.devicesSha = await putJson('devices.json', S.D, S.devicesSha, 'Rename own lists to phone IDs (no names in public list names)');
+    await openList(S.current);
+    render();
+    say(`Renamed ${plural(todo.length, 'list')}. The public copies with names are removed at the next publish, in a minute or two.`);
+  } catch (e) { say(e.message, true); }
+}
+
 async function bringBack(fromId, toId) {
   if (S.devDirty) return say('Save or undo your phone changes first.', true);
   const a = S.D.archived[fromId], to = S.D.devices[toId], who = a.name || fromId;
@@ -1367,6 +1523,7 @@ async function bringBack(fromId, toId) {
       lists: [...new Set([...(target.lists || []), ...restoredLists])],
       ...(fromId !== toId ? { previousIds: [...(a.previousIds || []), fromId] } : {}) };
     if (!target.requestsTo && a.requestsTo) S.D.devices[toId].requestsTo = a.requestsTo;
+    if (Array.isArray(a.blockedLists) && fromId === toId) S.D.devices[toId].blockedLists = a.blockedLists.map(l => renamed[l] || l).filter(l => S.lists.includes(l));
     delete S.D.archived[fromId];
     S.devicesSha = await putJson('devices.json', S.D, S.devicesSha, `Restore phone ${who}`);
     render();
@@ -1389,6 +1546,14 @@ async function deleteArchived(id) {
   } catch (e) { say(e.message, true); }
 }
 
+// The content filters: [key in devices.json, switch title, description]. They win over your lists: a
+// listed site only opens if it was approved "anyway" (or has "Open even if a filter lists it").
+const FILTERS = [
+  ['adult', 'Block adult content', 'Adult sites, and anything from them. HaGeZi\'s and OISD\'s NSFW lists (the ones Mullvad used)'],
+  ['gambling', 'Block gambling', 'Gambling sites, and anything from them. HaGeZi\'s gambling list'],
+  ['malware', 'Block malware and scams', 'Sites known for malware, phishing and scams. HaGeZi\'s threat list'],
+];
+
 // ============================================================================================
 // Settings
 // ============================================================================================
@@ -1402,10 +1567,12 @@ function settingsScreen() {
   const status = `https://${C.owner.toLowerCase()}.github.io/${publicRepoName()}/`;
   return h('main', { class: 'stack' },
     screenTitle('Settings', 'For every phone'),
-    section('Ad blocking', h('div', { class: 'group' },
+    section('Filters', h('div', { class: 'group' },
       h('label', { class: 'tg', for: 'adblock' }, h('span', { class: 'grow' }, h('span', { class: 't' }, 'Block ads and trackers'), h('span', { class: 's' }, 'Uses AdGuard\'s list, updated weekly')),
         h('input', { type: 'checkbox', class: 'sw', id: 'adblock', checked: D.adblock !== false, onchange: e => { D.adblock = e.target.checked; markDevices(); } })),
-      row('shield', 'Never block these', (D.adblockExceptions || []).length || 'None', () => open({ name: 'neverblock' }), 'openNever'))),
+      ...FILTERS.map(([key, title, desc]) => h('label', { class: 'tg', for: key }, h('span', { class: 'grow' }, h('span', { class: 't' }, title), h('span', { class: 's' }, desc)),
+        h('input', { type: 'checkbox', class: 'sw', id: key, checked: D[key] !== false, onchange: e => { D[key] = e.target.checked; markDevices(); } }))),
+      row('shield', 'Never block these (all filters)', (D.adblockExceptions || []).length || 'None', () => open({ name: 'neverblock' }), 'openNever'))),
     section('New phones', h('div', { class: 'card', style: 'gap:8px' },
       h('span', { style: 'font-weight:600' }, 'Start with these lists'),
       h('div', { class: 'chips', style: 'gap:8px' }, S.lists.map(l => {
@@ -1422,6 +1589,11 @@ function settingsScreen() {
     section('Phones that stop being used', h('div', { class: 'group' }, h('div', { class: 'tg', style: 'cursor:default' },
       h('span', { class: 'grow' }, h('span', { class: 't' }, 'Archive after'), h('span', { class: 's' }, 'Days without the app being opened')),
       h('div', { class: 'stepper' }, h('button', { type: 'button', 'aria-label': 'Fewer days', onclick: () => step(-1) }, '−'), days, h('button', { type: 'button', 'aria-label': 'More days', onclick: () => step(1) }, '+'))))),
+    section('Privacy', h('div', { class: 'group' },
+      h('button', { type: 'button', class: 'row', id: 'hideNames', onclick: hideNamesInLists }, h('span', { class: 'ic' }, icon('shield', 20)),
+        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Hide names in list names'),
+          h('span', { class: 'dom' }, namedOwnLists().length ? `${plural(namedOwnLists().length, 'list')} named after people` : 'None left: own lists use phone IDs')),
+        h('span', { class: 'chev' }, icon('chev', 18))))),
     section('GitHub', h('div', { class: 'group' },
       h('div', { class: 'row' }, h('span', { class: 'ic', style: 'color:#2E8B57' }, icon('check', 20, 2.2)),
         h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, `Connected to ${C.owner}/${C.repo}`),

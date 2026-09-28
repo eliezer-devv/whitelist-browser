@@ -10,6 +10,7 @@ a few minutes.
 - **Home page:** shows a tile, with the site's icon, for each approved site.
 - **Requests:** users can ask for a site to be allowed or blocked. You're notified and approve with a one-word reply.
 - **Ad blocking:** ads and trackers are blocked using AdGuard's DNS filter list, and you can switch it on or off remotely.
+- **Content filters:** anything pages load from adult, gambling or malware sites is blocked, using the lists Mullvad's DNS used. On by default.
 - **Self-updating:** the app installs new versions of itself from this repository.
 
 Everything lives in this one repository. You don't need a computer or Android Studio. All the steps below
@@ -234,11 +235,55 @@ but pictures don't load and videos don't play. This is off by default. It can be
 - **What it can't do:**
   - It can't block ads a site serves from its own servers. YouTube's video ads are the main example.
   - Sometimes an empty space is left where an ad was.
-- **Controls** (admin page → **Phones** → **Ad blocking**):
-  - **Block ads and trackers on all phones:** on by default.
-  - **Each phone's Ads setting:** default, blocked or not blocked. It overrides the setting for all phones.
-  - **Never block these:** if a site stops working properly, something it needs may be on the ad list. Add that domain here.
+- **Controls** (admin page → **Settings** → **Filters**):
+  - **Block ads and trackers:** on by default, for all phones.
+  - **Each phone's Ads setting** (Phones → the phone): Usual, Blocked or Allowed. It overrides the setting for all phones.
+  - **Never block these (both filters):** if a site stops working properly, something it needs may be on a list. Add that domain here.
 - **Check it on the phone:** **⋮ → About this phone** shows whether ad blocking is on and how many requests it has blocked since the app opened.
+
+### Content filters: adult, gambling, malware
+Three filters, each **on by default**, block anything pages load from listed sites: pictures, videos, embedded frames,
+scripts. They matter most on sites that show content from elsewhere (search results, embeds, forums), since the whitelist
+already keeps phones off every site you haven't allowed.
+
+| Filter | Blocks | Lists (the same sources Mullvad's DNS used) |
+|---|---|---|
+| **Adult content** | Adult and shock sites | [HaGeZi NSFW](https://github.com/hagezi/dns-blocklists) and [OISD NSFW](https://oisd.nl). A site on either is blocked. |
+| **Gambling** | Gambling and betting sites | HaGeZi gambling |
+| **Malware and scams** | Sites known for malware, phishing and scams | HaGeZi threat intelligence (mini) |
+
+- **The filters win over your lists.** A site on a filter's list is blocked on the phone even if a list allows it,
+  and the phone says so: *"Blocked by a filter: example.com is on the gambling list"*.
+- **Asking for it anyway:** the request screen repeats which list it's on (*"⚠️ example.com is on the gambling list, so
+  it's blocked. You can still ask…"*), and the **Send** button becomes **Ask anyway**. For a site typed into **Ask for a
+  new site**, the warning appears on the first tap of **Send**. Changing the address clears it.
+- **To open a listed site anyway, you have to say so:**
+  - **Requests for it are marked:** GitHub's notification and the admin page show *"⚠️ On the gambling list"*.
+  - **A plain `approve` changes nothing,** and the bot explains which list it's on. Reply **`approve anyway`**
+    (or e.g. `approve for 30m anyway`). On the admin page, the button says **Approve anyway** and asks you to confirm.
+  - **The site is then marked as not filtered** (its row on the admin page shows **Not filtered**). You can switch that
+    on or off on the site's screen: **Open even if a filter lists it**.
+- **Keeping them current:** each list is packed into the app at every build (the **Build APK** log shows how many sites
+  each has), and phones download fresh copies about once a week. A filter's lists are only loaded while it's on, since
+  they're large.
+- **Controls** (admin page):
+  - **Settings** → **Filters:** a switch for each, for all phones.
+  - **Phones** → the phone → **Filters:** Usual, On or Off for each, overriding the switch for that phone.
+  - **Never block these (all filters):** if a site breaks because something it needs is filtered, add that address here.
+- **What they can't do:** they filter by site, not by looking at pictures, so they can't catch content on a site's own
+  servers, or on sites the lists don't know yet.
+- **Check it on the phone:** **⋮ → About this phone** shows each filter and how much it has blocked since the app opened.
+
+### Embedded content from other sites
+Pages often show things from other sites: an embedded YouTube video, a map, a "Sign in with Google" box. Pictures, scripts
+and styles from other sites always load. **Embedded frames** only load if their site is allowed too, so on some sites
+parts are missing.
+- **For a site you trust,** turn on **Allow content embedded from other sites** on its screen on the admin page (Sites →
+  the site). Then frames from any site work on its pages. Its row shows **Embeds from anywhere**.
+- **Leaving the site is still blocked:** links, redirects and pop-ups to other sites are stopped as usual. The ad and adult
+  filters still apply to what's embedded.
+- **Only for sites you trust:** whatever the site chooses to embed will show, even from sites that aren't on your lists.
+- **For a site limited to some pages,** it applies on those pages.
 
 ### What's allowed
 - **Downloads.** Files are saved to the phone's **Downloads** folder, with a notification when they finish.
@@ -361,6 +406,7 @@ How replies are read, so nothing happens by accident:
 | `approve for 30m`, `approve for 1h30m`, `approve for 2h` | Open it only for that long, from now (or give that long instead of what they asked for) |
 | `approve for 1h use` | Open it for 1 hour of time actually spent on it, to use within 7 days |
 | `approve always` | When they asked for a while: make it permanent instead |
+| `approve anyway` | For a site on the adult, gambling or malware filter's list: open it despite that. A plain `approve` changes nothing for such a site. Combines with the others, e.g. `approve for 30m anyway`. |
 | `approve without pass-throughs` | For a link that passes through other addresses: allow only the destination, not the addresses on the way |
 | `deny` | Nothing changes |
 | `deny` + a reason, e.g. `deny too distracting in class` | Nothing changes, and the phone is told why |
@@ -527,8 +573,10 @@ Android doesn't tell an app it's being uninstalled, so this works by **check-ins
     Untick them all to start new phones with only their own, empty, list: nothing allowed until you add sites or approve requests. Unregistered phones use these lists too.
   - **The app comes with a built-in copy of exactly these lists,** for before it's first online. The copy is taken when the app is
     built, so after changing the ticks, run **Actions → Build APK** if new installs should start with the new choice.
-  - **Every new phone also gets its own private list** as soon as it registers, named after the person (e.g. `emma`,
-    or `emma-2` if there's already one). It starts empty, so you can add sites to it before they ask for anything.
+  - **Every new phone also gets its own private list** as soon as it registers. It's named after the phone's ID
+    (e.g. `k7m4-q2xp`), not the person, because list names are public. The admin page shows it as the person's name.
+    It starts empty, so you can add sites to it before they ask for anything. A phone that registers again gets its
+    old list back.
 - **Saving:** tap **Save** in the bar at the bottom after changing anything. Phones pick up changes within a few minutes.
 
 ### Requests from phones with their own lists
@@ -623,6 +671,8 @@ Each site in `sites` has:
 | `url` | The page the tile opens. If left out, it's `https://` + domain. | No |
 | `subdomains` | `true` also allows every subdomain (`mail.`, `maps.`, `en.` ...). `false` allows only this exact site and its `www.` version. | No (default `true`) |
 | `pages` | Allow **only these pages** of the site, instead of all of it. Each also allows the pages below it. The first one is where the tile opens. | No (default: the whole site) |
+| `frames` | `true`: content embedded from any site (videos, maps, sign-in boxes) works on this site's pages. Leaving the site is still blocked. Only for sites you trust. | `false` |
+| `unfiltered` | `true`: the adult, gambling and malware filters don't apply to this site (set by `approve anyway`, or the site's switch on the admin page). | `false` |
 
 **Common edits:**
 
@@ -709,6 +759,8 @@ nothing without your token.
   - its **Address** and **Name on the home page**
   - switches for **Show on the home page**, **Include subdomains**, **No photos or videos** and **Only some pages**
     (which then lists its pages, with a box to add more)
+  - **Allow content embedded from other sites** (see [Embedded content](#embedded-content-from-other-sites)), with a warning to use it only for sites you trust
+  - **Open even if a filter lists it**, for a site a content filter blocks that you've checked yourself
   - **More options** → where the tile opens
   - **Open it just for a while instead**
   - **Remove this site**
@@ -725,12 +777,18 @@ nothing without your token.
 
 **Phones.** One card per phone: its name, model, lists and ad setting. Phones without a name are listed first.
 - **Tapping a phone** lets you change its **Name**, the **Lists it uses** (tap to switch each on or off), where its
-  approved requests go, **Ads** (Usual / Blocked / Allowed), or **Remove** it.
+  approved requests go, and **Ads** (Usual / Blocked / Allowed). At the bottom:
+  - **Block this phone:** it stays listed but can't open any site, for a lost phone or one that shouldn't be used.
+    Its lists are set aside, and **Unblock this phone** gives exactly those back. Its card shows **Blocked**.
+    While it's blocked, approving its requests changes nothing (the bot says it's blocked).
+  - **Archive now:** does straight away what the daily check does after a phone is unused for a while. The phone moves
+    to **Archived phones** with its name and settings, and its own list goes into the archive with it. **Restore**
+    brings both back. If it's still being used, it's restored by itself the next day.
 - **Archived phones:** **Restore**, **Give to another phone** (after a factory reset), or **Delete for good**.
 - **Add a phone by its ID:** found on the phone under ⋮ → About this phone.
 
 **Settings.**
-- **Ad blocking:** the on/off switch, and **Never block these**.
+- **Filters:** **Block ads and trackers**, **Block adult content**, **Block gambling**, **Block malware and scams**, and **Never block these** (for all of them).
 - **New phones:** the lists they start with.
 - **When you approve a request:** change the list of **Just that phone** or **Every phone**.
 - **Archive after** a number of days.
@@ -888,8 +946,11 @@ without logging in: doing that from a private repository would need a password b
 could dig it out.
 
 **What's still public, then:** the site lists themselves, and phone IDs. The IDs are random codes that don't say
-whose phone it is. List names are visible too, and a phone's own list is named after the person (e.g. `emma`),
-so if even first names shouldn't be public, rename those lists on the admin page (e.g. to `phone-1`).
+whose phone it is. List names are visible too. A phone's own list is named after its ID (e.g. `k7m4-q2xp`), so no
+names show there either. Lists you name yourself (like `year-5`) show as you named them.
+- **Set up before own lists used phone IDs?** Lists named after people (like `emma`) can be renamed in one go:
+  admin page → **Settings** → **Privacy** → **Hide names in list names**. The public copies with names are removed
+  at the next publish. (Their earlier versions stay in the public repository's history.)
 
 ---
 
@@ -914,6 +975,14 @@ People never see it.
   the old app (**Settings** → **Apps** → **Whitelist Browser** → **Uninstall**), then install the new one from the
   link in setup step 8. The phone keeps its ID, so it keeps its lists and name on the admin page. It asks for the
   person's name again, and the in-app admin needs your token again.
+
+### Small screens
+The app, its dialogs, the home page, the blocked page and the admin page all work on small phones, down to about
+2.8-inch screens (240 × 320 on Android's size scale).
+- **On screens narrower than a typical phone,** **Forward** and **Reload** move into the **⋮** menu, so the top bar
+  has room for the site's name.
+- **Dialogs scroll** when they don't fit, and use slimmer margins.
+- **The home page** fits three tiles per row, and the admin page's tabs, wheels and buttons shrink to fit.
 
 ## 11. Limits and tips
 
@@ -943,7 +1012,7 @@ People never see it.
 | Any other build failure | Open the failed run, copy the red error text and ask for help with it. |
 | A phone isn't in the **Phones** section | Requests must be set up for phones to register themselves, so check `REQUESTS_TOKEN`. Otherwise add it by ID (⋮ → About this phone). |
 | A phone doesn't get a list's sites | Check its lists under **Phones** (tap the phone) and that you tapped **Save**. On the phone, **⋮ → About this phone** shows the lists it's using. |
-| An allowed site loads but looks broken, like missing videos, maps or buttons | Ad blocking may be stopping something the site needs. Try turning **Ads** off for that phone to confirm, then add the domain to **Never block these** and turn it back on. |
+| An allowed site loads but looks broken, like missing videos, maps or buttons | Two common causes. **Embedded content** (videos, maps, sign-in boxes) from sites that aren't on your lists is blocked: to allow it on this site, turn on **Allow content embedded from other sites** on the site's screen (see [Embedded content](#embedded-content-from-other-sites)). Or a **filter** may be stopping something it needs: try turning **Ads** (or a content filter) off for that phone to confirm, then add the domain to **Never block these** and turn it back on. |
 | A temporary site closed early, or stayed open too long | **From now** runs on the clock. **Only while it's open on the phone** counts on-screen time, in steps of 15 seconds, within 7 days. Check which you chose under **Temporary access**. |
 | Pictures or videos are missing on a page | It's on a **No photos or videos** list (the status line says so). Take it off in the admin page, or ask from the phone with **⋮ → Ask for photos and videos**. |
 | Something still shows on a "no photos or videos" page | A few sites draw pictures in unusual ways. Block the site completely if it matters. |

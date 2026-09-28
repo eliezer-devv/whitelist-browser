@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sizes for small screens (under 360dp wide, e.g. 2.8-inch phones). Normal phones: values-w360dp. -->
+<resources>
+    <dimen name="toolbar_height">44dp</dimen>
+    <dimen name="tool_button">38dp</dimen>
+    <dimen name="title_size">14sp</dimen>
+    <dimen name="edge">8dp</dimen>
+</resources>

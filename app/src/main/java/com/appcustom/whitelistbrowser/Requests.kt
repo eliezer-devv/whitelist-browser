@@ -39,7 +39,8 @@ object Requests {
      * Returns the outbox id. [scope] PAGE = just [pageUrl]; SITE = all of [domain].
      */
     fun queue(ctx: Context, action: Action, scope: Scope, media: Media, domain: String, pageUrl: String?, note: String,
-              hops: List<String> = emptyList(), minutes: Int = 0, unverified: Boolean = false): String {
+              hops: List<String> = emptyList(), minutes: Int = 0, unverified: Boolean = false,
+              filtered: List<String> = emptyList()): String {
         if (!isSetUp()) throw IOException("Requests aren't set up for this app yet")
 
         val page = if (scope == Scope.PAGE) pageUrl?.let { Whitelist.pageKey(it) } else null
@@ -66,6 +67,7 @@ object Requests {
             .apply { if (media != Media.UNCHANGED) put("media", media.word) }
             .apply { if (minutes > 0) put("minutes", minutes) }
             .apply { if (unverified) put("unverified", true) } // the phone couldn't find this site
+            .apply { if (filtered.isNotEmpty()) put("filtered", JSONArray(filtered)) } // on a content filter's list
             .apply { if (hops.isNotEmpty()) put("hops", JSONArray(hops.take(10))) }
             .apply { if (!pageUrl.isNullOrBlank()) put("url", pageUrl) }
             .toString()
@@ -78,6 +80,7 @@ object Requests {
             }
             if (note.isNotBlank()) appendLine("**Note:** ${note.replace("-->", "")}")
             if (unverified) appendLine("**⚠️ The phone couldn't find this site when asking.** It may be a typo.")
+            if (filtered.isNotEmpty()) appendLine("**⚠️ On the ${filtered.joinToString(" and ") { if (it == "adult") "adult content" else it }} list.**")
             val name = Whitelist.state.deviceName ?: Device.name(ctx)
             appendLine("**Phone:** ${name ?: Device.model()} (`${Device.id(ctx)}`)")
             appendLine("**Asked:** ${utcNow().replace('T', ' ').removeSuffix("Z")} UTC")

@@ -10,6 +10,13 @@
   @media (prefers-color-scheme: dark) { body { background: #162a2c; color: #e8f1ef; } code { background: #2b4c50 !important; } }
   main { max-width: 32rem; padding: 1.75rem; }
   h1 { font-size: 1.7rem; line-height: 1.2; margin: 0 0 .6rem; }
+  /* Small screens (e.g. 2.8-inch phones): smaller text, so the buttons are on screen sooner. */
+  @media (max-width: 340px) {
+    main { padding: 1rem .8rem; }
+    h1 { font-size: 1.25rem; }
+    body { font-size: .9rem; }
+    button, .button { padding: .55rem .9rem; }
+  }
   p { margin: 0 0 1rem; }
   code { background: #d9e6e3; padding: .1rem .4rem; border-radius: 6px; word-break: break-all; }
   .actions { display: flex; flex-wrap: wrap; gap: .6rem; }
@@ -28,12 +35,22 @@
   </p>
 </main>
 <script>
+  // Going from one blocked page straight to another only changes the part after "#": reload to show the new one.
+  window.addEventListener('hashchange', () => location.reload());
   const q = new URLSearchParams(location.hash.slice(1));
   const target = q.get('url') || '';
   let host = target;
   try { host = new URL(target).hostname; } catch (e) {}
   const msg = document.getElementById('msg');
-  if (q.get('reason') === 'expired') {
+  // Blocked by a content filter: say which list it's on.
+  const FILTER_NAMES = { adult: 'adult content', gambling: 'gambling', malware: 'malware' };
+  if (q.get('reason') === 'filtered') {
+    const names = (q.get('filters') || '').split(',').filter(Boolean).map(f => FILTER_NAMES[f] || f);
+    document.getElementById('title').textContent = 'Blocked by a filter';
+    const c = document.createElement('code'); c.textContent = host || 'this site'; msg.append(c);
+    msg.append(` is on the ${names.join(' and ') || 'filter'} list${names.length > 1 ? 's' : ''}, so it's blocked. ` +
+      'If you think that\'s a mistake, tap Ask to open: whoever manages this browser will see which list it\'s on.');
+  } else if (q.get('reason') === 'expired') {
     document.getElementById('title').textContent = 'Time\'s up';
     msg.append('Temporary access to ');
     const c = document.createElement('code'); c.textContent = host || 'this site'; msg.append(c);

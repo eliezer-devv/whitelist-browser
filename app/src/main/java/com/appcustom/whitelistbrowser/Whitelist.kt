@@ -16,7 +16,9 @@ object Whitelist {
      */
     data class Site(val domain: String, val name: String, val url: String, val home: Boolean,
                     val subdomains: Boolean = true,
-                    val pages: List<String> = emptyList()) {  // empty = the whole site; else only these pages
+                    val pages: List<String> = emptyList(),   // empty = the whole site; else only these pages
+                    val frames: Boolean = false,             // content embedded from any site works on its pages
+                    val unfiltered: Boolean = false) {       // approved "anyway": the content filters don't apply to it
         fun matches(host: String): Boolean {
             // "www.example.com" means the site itself, example.com, as does "example.com".
             val base = domain.removePrefix("www.")
@@ -29,7 +31,8 @@ object Whitelist {
      * Temporary access from a list's "temporary" section. [what]: site, page or media.
      * [mode] clock = open for [minutes] from [from]; use = [minutes] of time spent on it, within 7 days.
      */
-    data class Temp(val id: String, val what: String, val entry: String, val mode: String, val minutes: Int, val from: Long) {
+    data class Temp(val id: String, val what: String, val entry: String, val mode: String, val minutes: Int, val from: Long,
+                    val unfiltered: Boolean = false) {
         private val isPage get() = '/' in entry
         val end: Long get() = from + (if (mode == "use") 7L * 24 * 60 else minutes.toLong()) * 60_000L
         /** Milliseconds left: of clock time, or of use. */
@@ -59,6 +62,9 @@ object Whitelist {
         val listNames: List<String> = emptyList(),  // lists this phone uses, e.g. [public, emma]
         val deviceName: String? = null,             // (names are private now: the phone uses the one typed on it)
         val registered: Boolean = false,            // this phone is in phones.json
+        val adult: Boolean = true,                  // content filters (admin page: Settings → Filters)
+        val gambling: Boolean = true,
+        val malware: Boolean = true,
         val adblock: Boolean = true,                // block ads and trackers (set in the admin page)
         val adblockExceptions: List<String> = emptyList() // domains never blocked as ads
     ) {
@@ -129,7 +135,8 @@ object Whitelist {
                 val pages = rawPages.mapNotNull { pageKey(it) }.distinct()
                 // A page-only site's tile opens its first page unless "url" says otherwise.
                 val tileUrl = if (item.optString("url").isBlank() && pages.isNotEmpty()) "https://${pages[0]}" else url
-                Site(domain, name, tileUrl, item.optBoolean("home", true), item.optBoolean("subdomains", true), pages)
+                Site(domain, name, tileUrl, item.optBoolean("home", true), item.optBoolean("subdomains", true), pages,
+                    item.optBoolean("frames", false), item.optBoolean("unfiltered", false))
             }
             else -> null
         }
@@ -167,7 +174,8 @@ object Whitelist {
             val what = t.optString("what").takeIf { it == "site" || it == "page" || it == "media" } ?: return@mapNotNull null
             val from = parseTime(t.optString("from")) ?: return@mapNotNull null
             Temp(t.optString("id").ifEmpty { "$what|$entry|$from" }, what, entry,
-                if (t.optString("mode") == "use") "use" else "clock", t.optInt("minutes").coerceIn(1, 24 * 60 + 55), from)
+                if (t.optString("mode") == "use") "use" else "clock", t.optInt("minutes").coerceIn(1, 24 * 60 + 55), from,
+                t.optBoolean("unfiltered", false))
         }
         return State(sites, block, blockPages, noMedia, noMediaPages, temps, home, maxOf(1, o.optInt("refreshMinutes", 5)), fetchedAt)
     }
@@ -200,6 +208,9 @@ object Whitelist {
             deviceName = device?.optString("name")?.takeIf { it.isNotBlank() },
             registered = device != null,
             adblock = b.optBoolean("adblock", true),
+            adult = b.optBoolean("adult", true),
+            gambling = b.optBoolean("gambling", true),
+            malware = b.optBoolean("malware", true),
             adblockExceptions = b.optJSONArray("adblockExceptions")?.let { a ->
                 (0 until a.length()).mapNotNull { normalize(a.optString(it)) } } ?: emptyList()
         )
@@ -263,8 +274,14 @@ object Whitelist {
             "off" -> false
             else -> devices?.optBoolean("adblock", true) ?: true
         }
+        // The content filters, the same way: on unless the admin page turns them off.
+        fun filter(name: String) = when (device?.optString(name)) {
+            "on" -> true
+            "off" -> false
+            else -> devices?.optBoolean(name, true) ?: true
+        }
         val bundle = JSONObject().put("device", device ?: JSONObject.NULL).put("lists", lists)
-            .put("adblock", adblock)
+            .put("adblock", adblock).put("adult", filter("adult")).put("gambling", filter("gambling")).put("malware", filter("malware"))
             .put("adblockExceptions", devices?.optJSONArray("adblockExceptions") ?: JSONArray())
             .toString()
         val now = System.currentTimeMillis()
@@ -292,8 +309,30 @@ object Whitelist {
         if (scheme != "http" && scheme != "https") return false
         val host = uri.host?.lowercase()?.trimEnd('.') ?: return false
         if (host == HomePage.HOST) return true
+        // The content filters win over the lists (and temporary access), unless the site was approved "anyway".
+        if (filteredAs(host).isNotEmpty() && !isUnfiltered(host)) return false
         if (tempsFor(url, host, "site", "page").isNotEmpty()) return true // temporary access wins, even over blocks
         return allowedForGood(url, host, mainFrame)
+    }
+
+    /**
+     * The content filters that list [host] and are on for this phone (e.g. ["adult"]). Empty if none.
+     * Used to block it, and to say which list it's on (blocked page, requests).
+     */
+    fun filteredAs(host: String): List<String> {
+        val s = state
+        val ex = s.adblockExceptions
+        return listOfNotNull(
+            "adult".takeIf { s.adult && Filters.adult.blocks(host, ex) },
+            "gambling".takeIf { s.gambling && Filters.gambling.blocks(host, ex) },
+            "malware".takeIf { s.malware && Filters.malware.blocks(host, ex) })
+    }
+
+    /** Was [host] approved "anyway" (in spite of a filter)? Then the filters don't apply to it. */
+    fun isUnfiltered(host: String): Boolean {
+        val h = host.lowercase().trimEnd('.')
+        if (state.sites.any { it.unfiltered && it.matches(h) }) return true
+        return state.temps.any { it.unfiltered && it.what != "media" && it.active() && it.covers(h, null) }
     }
 
     /** Allowed by the lists themselves, ignoring temporary access. */
@@ -306,6 +345,20 @@ object Whitelist {
         if (s.blockPages.any { pageMatches(key, it) }) return false
         if (sites.any { it.pages.isEmpty() }) return true
         return sites.any { site -> site.pages.any { pageMatches(key, it) } }
+    }
+
+    /**
+     * Does the page [topUrl] allow content embedded from any site (videos, maps, sign-in boxes)?
+     * Yes if it's on a site with "Allow content embedded from other sites" (for a site limited to some
+     * pages: on one of those pages). Leaving the page is still checked as usual.
+     */
+    fun framesAllowedOn(topUrl: String?): Boolean {
+        val host = hostOf(topUrl) ?: return false
+        val key = pageKey(topUrl!!)
+        return state.sites.any { site ->
+            site.frames && site.matches(host) &&
+                (site.pages.isEmpty() || (key != null && site.pages.any { pageMatches(key, it) }))
+        }
     }
 
     /** Should this page open without photos and videos? (If any of the phone's lists says so.) */
