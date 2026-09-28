@@ -18,12 +18,15 @@
     },
     {
       "domain": "torahanytime.com",
-      "name": "torahanytime.com",
-      "home": true
+      "home": true,
+      "name": "torahanytime.com"
     }
   ],
   "block": [],
   "noMedia": [
     "youtube.com"
+  ],
+  "noVideos": [
+    "torahanytime.com"
   ]
 }
