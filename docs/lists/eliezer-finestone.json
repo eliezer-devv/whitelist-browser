@@ -10,5 +10,15 @@
   "block": [],
   "noMedia": [
     "youtube.com"
+  ],
+  "temporary": [
+    {
+      "id": "tmuktcvs53ke",
+      "what": "site",
+      "entry": "github.com",
+      "mode": "clock",
+      "minutes": 1470,
+      "from": "2026-09-28T05:35:13.637Z"
+    }
   ]
 }
