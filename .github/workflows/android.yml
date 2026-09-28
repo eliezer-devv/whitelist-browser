@@ -115,3 +115,4 @@ jobs:
             gh release create "$VERSION" whitelist-browser.apk \
               --title "Version ${VERSION#v}" --notes "Built from ${GITHUB_SHA::7}." --latest
           fi
+          
