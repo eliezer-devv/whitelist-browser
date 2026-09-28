@@ -95,8 +95,7 @@ jobs:
         run: |
           node -e '
             const fs = require("fs");
-            const f = ["docs/phones.json", "docs/devices.json"].find(p => fs.existsSync(p));
-            const devices = f ? JSON.parse(fs.readFileSync(f, "utf8")) : {};
+            const devices = fs.existsSync("docs/phones.json") ? JSON.parse(fs.readFileSync("docs/phones.json", "utf8")) : {};
             const names = Array.isArray(devices.default) ? devices.default : ["public"];
             const lists = names.map(n => ({ name: n, path: n === "public" ? "docs/whitelist.json" : `docs/lists/${n}.json` }))
               .filter(l => /^[a-z0-9_-]+$/.test(l.name) && fs.existsSync(l.path))
