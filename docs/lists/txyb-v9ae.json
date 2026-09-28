@@ -8,38 +8,17 @@
     },
     {
       "domain": "jepqueens.com",
-      "name": "jepqueens.com",
-      "home": true
+      "home": true,
+      "name": "jepqueens.com"
+    },
+    {
+      "domain": "github.com",
+      "home": true,
+      "frames": true
     }
   ],
   "block": [],
   "noMedia": [
     "youtube.com"
-  ],
-  "temporary": [
-    {
-      "id": "tmuktcvs53ke",
-      "what": "site",
-      "entry": "github.com",
-      "mode": "clock",
-      "minutes": 1470,
-      "from": "2026-09-28T05:35:13.637Z"
-    },
-    {
-      "id": "tmulcsv1x0fr",
-      "what": "site",
-      "entry": "youtube.com",
-      "mode": "clock",
-      "minutes": 10,
-      "from": "2026-09-28T14:39:31.893Z"
-    },
-    {
-      "id": "tmulcytyvxzj",
-      "what": "media",
-      "entry": "youtube.com",
-      "mode": "clock",
-      "minutes": 30,
-      "from": "2026-09-28T14:44:10.423Z"
-    }
   ]
 }
