@@ -17,8 +17,17 @@ object HomePage {
     fun respond(ctx: Context, path: String): WebResourceResponse {
         val headers = mapOf("Cache-Control" to "no-store")
         return when (path) {
-            "/home/", "/home/index.html" -> WebResourceResponse(
-                "text/html", "utf-8", 200, "OK", headers, ctx.assets.open("home.html"))
+            // In the app's look, light or dark, from the first moment it's drawn.
+            "/home/", "/home/index.html" -> {
+                val html = ctx.assets.open("home.html").bufferedReader().use { it.readText() }
+                    .replaceFirst("<html lang=\"en\">", "<html lang=\"en\" data-theme=\"${if (Ui.dark) "dark" else "light"}\">")
+                WebResourceResponse("text/html", "utf-8", 200, "OK", headers, ByteArrayInputStream(html.toByteArray()))
+            }
+            // The app's fonts (packed in at build time), so the home page matches the rest of the app.
+            "/home/fonts/Figtree.ttf", "/home/fonts/BricolageGrotesque.ttf" -> runCatching {
+                WebResourceResponse("font/ttf", null, 200, "OK", mapOf("Cache-Control" to "max-age=86400"),
+                    ctx.assets.open("fonts/" + path.substringAfterLast('/')))
+            }.getOrElse { WebResourceResponse("text/plain", "utf-8", 404, "Not Found", headers, ByteArrayInputStream(ByteArray(0))) }
             "/home/sites.json" -> WebResourceResponse(
                 "application/json", "utf-8", 200, "OK", headers,
                 ByteArrayInputStream(Whitelist.homeJson().toByteArray()))

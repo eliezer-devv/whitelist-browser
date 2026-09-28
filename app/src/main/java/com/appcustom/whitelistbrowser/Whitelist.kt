@@ -67,11 +67,14 @@ object Whitelist {
         val pinApproval: Boolean = false,           // an approval PIN is set for this phone (admin page)
         val malware: Boolean = true,
         val adblock: Boolean = true,                // block ads and trackers (set in the admin page)
-        val adblockExceptions: List<String> = emptyList() // domains never blocked as ads
+        val adblockExceptions: List<String> = emptyList(), // domains never blocked as ads
+        // Embedded content allowed on a site: site -> sites whose content may show inside its pages
+        // (a list's "embeds", approved from a request after the phone blocked it).
+        val embeds: Map<String, List<String>> = emptyMap()
     ) {
         val allow: List<String> get() = sites.map { it.domain }
         fun sameContent(o: State) = sites == o.sites && block == o.block && blockPages == o.blockPages &&
-            noMedia == o.noMedia && noMediaPages == o.noMediaPages && temps == o.temps && homepage == o.homepage
+            noMedia == o.noMedia && noMediaPages == o.noMediaPages && temps == o.temps && homepage == o.homepage && embeds == o.embeds
     }
 
     @Volatile var state = State()
@@ -178,7 +181,16 @@ object Whitelist {
                 if (t.optString("mode") == "use") "use" else "clock", t.optInt("minutes").coerceIn(1, 24 * 60 + 55), from,
                 t.optBoolean("unfiltered", false))
         }
-        return State(sites, block, blockPages, noMedia, noMediaPages, temps, home, maxOf(1, o.optInt("refreshMinutes", 5)), fetchedAt)
+        val embeds = mutableMapOf<String, List<String>>()
+        o.optJSONObject("embeds")?.let { e ->
+            for (key in e.keys()) {
+                val site = normalize(key) ?: continue
+                val from = e.optJSONArray(key) ?: continue
+                embeds[site] = (0 until from.length()).mapNotNull { normalize(from.optString(it)) }
+            }
+        }
+        return State(sites, block, blockPages, noMedia, noMediaPages, temps, home, maxOf(1, o.optInt("refreshMinutes", 5)), fetchedAt,
+            embeds = embeds)
     }
 
     /** Where a list lives: "public" is whitelist.json, others are lists/<name>.json. */
@@ -202,6 +214,8 @@ object Whitelist {
             noMedia = states.flatMap { it.noMedia }.distinct(),
             noMediaPages = states.flatMap { it.noMediaPages }.distinct(),
             temps = states.flatMap { it.temps }.distinctBy { it.id },
+            embeds = states.flatMap { it.embeds.entries }.groupBy({ it.key }, { it.value })
+                .mapValues { (_, v) -> v.flatten().distinct() },
             homepage = states.firstNotNullOfOrNull { it.homepage },
             refreshMinutes = states.minOfOrNull { it.refreshMinutes } ?: 5,
             updatedAt = fetchedAt,
@@ -361,6 +375,19 @@ object Whitelist {
         return state.sites.any { site ->
             site.frames && site.matches(host) &&
                 (site.pages.isEmpty() || (key != null && site.pages.any { pageMatches(key, it) }))
+        }
+    }
+
+    /**
+     * May a frame from [frameHost] show inside the page [topUrl]? Yes if one of the phone's lists allows
+     * content from that site on the page's site (a list's "embeds"). The site itself still doesn't open.
+     */
+    fun embedAllowed(topUrl: String?, frameHost: String): Boolean {
+        val top = hostOf(topUrl)?.removePrefix("www.") ?: return false
+        val from = frameHost.lowercase().trimEnd('.').removePrefix("www.")
+        return state.embeds.any { (site, sources) ->
+            val s = site.removePrefix("www.")
+            (top == s || top.endsWith(".$s")) && sources.any { val e = it.removePrefix("www."); from == e || from.endsWith(".$e") }
         }
     }
 

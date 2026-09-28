@@ -275,15 +275,20 @@ already keeps phones off every site you haven't allowed.
 - **Check it on the phone:** **⋮ → About this phone** shows each filter and how much it has blocked since the app opened.
 
 ### Embedded content from other sites
-Pages often show things from other sites: an embedded YouTube video, a map, a "Sign in with Google" box. Pictures, scripts
-and styles from other sites always load. **Embedded frames** only load if their site is allowed too, so on some sites
-parts are missing.
-- **For a site you trust,** turn on **Allow content embedded from other sites** on its screen on the admin page (Sites →
-  the site). Then frames from any site work on its pages. Its row shows **Embeds from anywhere**.
-- **Leaving the site is still blocked:** links, redirects and pop-ups to other sites are stopped as usual. The ad and adult
-  filters still apply to what's embedded.
-- **Only for sites you trust:** whatever the site chooses to embed will show, even from sites that aren't on your lists.
-- **For a site limited to some pages,** it applies on those pages.
+Pages often show things from other sites: an embedded YouTube or Vimeo video, a map, a "Sign in with Google" box.
+Pictures, scripts and styles from other sites always load. **Embedded frames** only show if they're allowed on that
+page; otherwise their space shows *"Blocked: content from vimeo.com"*.
+- **On the phone,** a bar appears under the top bar: *"Parts of this page were blocked (from vimeo.com)"*, with **Ask**
+  and ✕. **Ask** opens a short sheet listing what was blocked, with an optional note (and the approval PIN, if set).
+- **The request** reads *"Embedded content on bbc.co.uk, from player.vimeo.com"*. Replying **`approve`** (or tapping
+  **Approve** on the admin page) lets content from those sites show **inside bbc.co.uk's pages only**. The sites
+  themselves still don't open, and the ad and content filters still apply. `approve public` does it for everyone.
+  Once it's approved, reloading the page shows the blocked parts.
+- **To see or change what's allowed,** admin page → **Sites** → **Embedded content allowed**. You can remove any, or
+  add one yourself (a site, and the site whose content may show inside it). They're stored in the list's `embeds`.
+- **For a site you trust completely,** turn on **Allow content embedded from other sites** on its screen instead:
+  then frames from any site work on its pages. Its row shows **Embeds from anywhere**. Leaving the site is still
+  blocked either way.
 
 ### What's allowed
 - **Downloads.** Files are saved to the phone's **Downloads** folder, with a notification when they finish.
@@ -706,6 +711,9 @@ Each site in `sites` has:
 | `frames` | `true`: content embedded from any site (videos, maps, sign-in boxes) works on this site's pages. Leaving the site is still blocked. Only for sites you trust. | `false` |
 | `unfiltered` | `true`: the adult, gambling and malware filters don't apply to this site (set by `approve anyway`, or the site's switch on the admin page). | `false` |
 
+A list can also have an **`embeds`** section: for a site, the sites whose embedded content may show inside its pages,
+e.g. `"embeds": {"bbc.co.uk": ["player.vimeo.com"]}`. It's filled in by approving a request for blocked parts of a page.
+
 **Common edits:**
 
 | To... | Do this |
@@ -1008,6 +1016,19 @@ People never see it.
   link in setup step 8. The phone keeps its ID, so it keeps its lists and name on the admin page. It asks for the
   person's name again, and the in-app admin needs your token again.
 
+### The app's look
+The app, its dialogs, the home page, the blocked page and the admin page share one look: a warm off-white background,
+the app's deep green, rounded corners, and two fonts, **Figtree** for text and **Bricolage Grotesque** for headings.
+- **Longer screens** (asking for a site, My requests, About this phone) slide up from the bottom. Short questions
+  (camera access, opening another app, clear cookies, answers) are small cards in the middle.
+- **Light or dark:** the app follows the phone's own setting, and switches when the phone does. Anyone can change it
+  on the phone: **⋮** → **Appearance** → **Phone's setting**, **Light** or **Dark** (remembered on that phone). It covers
+  the dialogs, menus, home page, blocked page and the in-app admin. The admin page on the web follows the setting of
+  the device it's opened on.
+- **The fonts** are free (SIL Open Font License), and each **Build APK** downloads them from Google's font collection
+  and packs them into the app (the log shows **Download fonts**). If a download fails, the build still works and the
+  app uses the phone's own font. On Android 7 phones the fonts show in their default style.
+
 ### Small screens
 The app, its dialogs, the home page, the blocked page and the admin page all work on small phones, down to about
 2.8-inch screens (240 × 320 on Android's size scale).
@@ -1097,6 +1118,8 @@ app/                           The Android app
   src/main/java/.../Config.kt          Your settings
   src/main/java/.../PrivateRepo.kt     The private repository's name (the public one's + "-private")
   src/main/java/.../MaxHeightScrollView.kt  Keeps dialogs' buttons on screen on small phones
+  src/main/java/.../Ui.kt              The app's look: colours, fonts, dialogs, buttons, switches
+  src/main/res/drawable/ic_d_*.xml     The dialogs' icons
   src/main/java/.../MainActivity.kt    Browser screen, blocking, menu, requests, permissions
   src/main/java/.../AdminActivity.kt   The admin page inside the app (7 taps on the name at the top)
   src/main/java/.../Whitelist.kt       Downloading and combining the phone's lists, checking addresses

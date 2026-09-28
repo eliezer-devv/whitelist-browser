@@ -3,7 +3,6 @@ package com.appcustom.whitelistbrowser
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.app.AlertDialog
 import android.app.DownloadManager
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -19,6 +18,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.KeyEvent
 import android.view.View
+import android.widget.Button
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
@@ -62,6 +62,11 @@ class MainActivity : Activity() {
     private var updating = false
     private var isResumedNow = false
     private val refreshTask = Runnable { refreshWhitelist() }
+
+    // Embedded content blocked on the open page: the sites it came from (for the "parts were blocked" bar).
+    @Volatile private var topUrl: String? = null
+    private val blockedFrames: MutableSet<String> = java.util.Collections.synchronizedSet(LinkedHashSet())
+    private var frameNoteClosedFor: String? = null     // the page whose bar was closed (don't show it again there)
 
     // Quick checking: after a request is sent (and when an approval arrives), the phone checks for the
     // answer and the updated lists every 20 seconds for a while, instead of every few minutes, so an
@@ -107,10 +112,19 @@ class MainActivity : Activity() {
     private val siteChoices = mutableMapOf<String, Boolean>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Light or dark: the phone's own setting, unless chosen in ⋮ → Appearance.
+        Ui.applyTheme(this)
+        setTheme(if (Ui.dark) R.style.AppThemeDark else R.style.AppTheme)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         web = findViewById(R.id.web)
+        web.setBackgroundColor(Ui.PAGE)            // no white flash between pages in dark mode
         pageTitle = findViewById(R.id.pageTitle)
+        // The app's fonts (packed in at build time; the phone's own font if they're missing).
+        Ui.init(this)
+        pageTitle.typeface = Ui.boldFace
+        findViewById<TextView>(R.id.status).typeface = Ui.bodyFace
+        findViewById<TextView>(R.id.updateBanner).typeface = Ui.boldFace
         // Hidden way into the admin page: tap the name at the top 7 times within 4 seconds.
         var taps = 0
         var firstTap = 0L
@@ -246,8 +260,8 @@ class MainActivity : Activity() {
                 if (Whitelist.isAllowed(url, request.isForMainFrame)) return false
                 // Frames inside a page on a site with "Allow content embedded from other sites" may come
                 // from anywhere (the ad and adult filters still apply). Leaving the page is still checked.
-                if (!request.isForMainFrame && Whitelist.framesAllowedOn(view?.url)) return false
-                if (request.isForMainFrame) showBlocked(url)
+                if (!request.isForMainFrame && frameOk(url, request.url.host ?: "", view?.url)) return false
+                if (request.isForMainFrame) showBlocked(url) else request.url.host?.let { noteBlockedFrame(it) }
                 return true
             }
 
@@ -278,6 +292,17 @@ class MainActivity : Activity() {
                         if (st.gambling && Filters.gambling.blocks(host, exceptions)) return Filters.gambling.blockedResponse()
                     }
                 }
+                // Embedded frames (a video, a map, a sign-in box) from sites that aren't allowed on this page:
+                // a small note in their place, and the "parts were blocked" bar. Allowed if the frame's site is
+                // on the lists, or this page's site allows it (its embeds, or "content from other sites").
+                if (request != null && !request.isForMainFrame && isFrameDocument(request)) {
+                    val u = request.url.toString()
+                    val host = request.url.host
+                    if (host != null && (u.startsWith("https://") || u.startsWith("http://")) && !frameOk(u, host, topUrl)) {
+                        noteBlockedFrame(host)
+                        return frameBlockedResponse(host)
+                    }
+                }
                 if (request != null && request.isForMainFrame && !Whitelist.isAllowed(request.url.toString())) {
                     return WebResourceResponse("text/plain", "utf-8", 403, "Blocked", emptyMap(),
                         ByteArrayInputStream(ByteArray(0)))
@@ -286,6 +311,9 @@ class MainActivity : Activity() {
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                topUrl = url
+                blockedFrames.clear()
+                hideFrameNote()
                 setMediaMode(url)
                 if (url != null && !url.startsWith(BLOCKED_PAGE) && !HomePage.isHome(url) && trail.lastOrNull() != url) trail += url
                 if (url != null && !Whitelist.isAllowed(url)) {
@@ -306,6 +334,7 @@ class MainActivity : Activity() {
 
             // Sites like YouTube change pages without reloading. Check those page changes too.
             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                topUrl = url
                 if (url != null && !Whitelist.isAllowed(url)) showBlocked(url)
                 // Sites that change pages without reloading: a new page may have a different media setting.
                 val before = mediaOffHere
@@ -371,7 +400,8 @@ class MainActivity : Activity() {
             else -> "not-listed"
         }
         val cats = if (reason == "filtered") "&filters=${filtered.joinToString(",")}" else ""
-        main.post { web.loadUrl("$BLOCKED_PAGE#reason=$reason&url=${Uri.encode(url)}$cats") }
+        val look = if (Ui.dark) "&theme=dark" else ""
+        main.post { web.loadUrl("$BLOCKED_PAGE#reason=$reason&url=${Uri.encode(url)}$cats$look") }
     }
 
     /** The site the blocked page is standing in for, or null if we're not on the blocked page. */
@@ -433,6 +463,13 @@ class MainActivity : Activity() {
         backBtn.setOnClickListener { goBackSkippingBlocked() }
         forwardBtn.setOnClickListener { if (web.canGoForward()) web.goForward() }
         findViewById<View>(R.id.reload).setOnClickListener { web.reload() }
+        // The "parts were blocked" bar, in the app's colours (light or dark).
+        findViewById<View>(R.id.frameNote).setBackgroundColor(Ui.AMBER_BG)
+        findViewById<TextView>(R.id.frameNoteText).apply { setTextColor(Ui.AMBER_INK); typeface = Ui.bodyFace }
+        findViewById<TextView>(R.id.frameNoteAsk).apply { setTextColor(Ui.AMBER_INK); typeface = Ui.boldFace }
+        findViewById<android.widget.ImageButton>(R.id.frameNoteClose).imageTintList = android.content.res.ColorStateList.valueOf(Ui.AMBER_INK)
+        findViewById<View>(R.id.frameNoteAsk).setOnClickListener { showFramesRequest() }
+        findViewById<View>(R.id.frameNoteClose).setOnClickListener { frameNoteClosedFor = web.url; hideFrameNote() }
         if (narrow) {                              // room for the site's name: these two go in the ⋮ menu
             forwardBtn.visibility = View.GONE
             findViewById<View>(R.id.reload).visibility = View.GONE
@@ -501,6 +538,7 @@ class MainActivity : Activity() {
             menu.add(0, 7, 3, "Clear cookies and site data")
             menu.add(0, 1, 4, "Check for app update")
             menu.add(0, 2, 5, "Check list now")
+            menu.add(0, 12, 6, "Appearance")
             menu.add(0, 3, 6, "About this phone")
             setOnMenuItemClickListener {
                 when (it.itemId) {
@@ -510,6 +548,7 @@ class MainActivity : Activity() {
                     11 -> web.reload()
                     6 -> clearCache()
                     3 -> showAbout()
+                    12 -> showAppearance()
                     7 -> confirmClearCookies()
                     5 -> showRequestDialog(Requests.Action.BLOCK, cur)
                     8 -> showRequestDialog(Requests.Action.ALLOW, cur, mediaBack = true)
@@ -606,11 +645,11 @@ class MainActivity : Activity() {
                 }
                 // A page opening another app without a tap has to be confirmed.
                 if (userTapped) launch()
-                else AlertDialog.Builder(this)
-                    .setMessage("This page wants to open ${r.appName ?: "another app"}.")
-                    .setPositiveButton("Open") { _, _ -> launch() }
-                    .setNegativeButton("Cancel", null)
-                    .show()
+                else Ui.AppDialog(this, sheet = false).apply {
+                    title("Open ${r.appName ?: "another app"}?", sub = "This page wants to open it.", icon = R.drawable.ic_d_app)
+                    button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
+                    button("Open", Ui.Kind.PRIMARY) { it.dismiss(); launch() }
+                }.show()
             }
         }
     }
@@ -696,12 +735,14 @@ class MainActivity : Activity() {
         val answer = { ok: Boolean ->
             if (!answered) { answered = true; siteChoices[key] = ok; onResult(ok) }
         }
-        AlertDialog.Builder(this)
-            .setTitle("$host wants to use your $what")
-            .setPositiveButton("Allow") { _, _ -> answer(true) }
-            .setNegativeButton("Block") { _, _ -> answer(false) }
-            .setOnDismissListener { answer(false) }
-            .show()
+        Ui.AppDialog(this, sheet = false).apply {
+            title("Use your $what?", sub = host,
+                icon = if ("location" in what) R.drawable.ic_d_pin else R.drawable.ic_d_cam, iconBg = Ui.AMBER_BG, iconFg = Ui.AMBER_INK)
+            add(Ui.text(this@MainActivity, "This site wants to use it. Your answer is remembered until the app is closed.", 14.5f, Ui.MUTED))
+            button("Block", Ui.Kind.SECONDARY) { answer(false); it.dismiss() }
+            button("Allow", Ui.Kind.PRIMARY) { answer(true); it.dismiss() }
+            onDismiss { answer(false) }
+        }.show()
     }
 
     /** Asks Android for any missing permissions, then reports which of [perms] are granted. */
@@ -782,44 +823,39 @@ class MainActivity : Activity() {
             toast("Requests aren't set up for this app yet")
             return
         }
-        val density = resources.displayMetrics.density
-        val pad = ((if (narrow) 12 else 20) * density).toInt()
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad / 2, pad, 0)
-        }
-        box.addView(introText("Your request goes to whoever manages this browser."))
-
         val siteDomain = pageUrl?.let { siteScope(it) }          // "coolmathgames.com", "google.com" ...
         val pageKey = pageUrl?.let { Whitelist.pageKey(it) }     // "youtube.com/watch?v=abc"
         // A site's front page is the same as "whole site", so only offer the choice for deeper pages.
         val canChoose = siteDomain != null && pageKey != null && pageKey.substringAfter('/').isNotEmpty()
-
         // On a content filter's list? Say which, and make the button "Ask anyway" (the owner sees the list too).
         val filteredNow = if (action == Requests.Action.ALLOW && !mediaBack && siteDomain != null) Whitelist.filteredAs(siteDomain) else emptyList()
-        val filterWarning = TextView(this).apply {
-            textSize = 14f
-            setTextColor(0xFFD93025.toInt())
-            setPadding(0, 0, 0, (8 * density).toInt())
-            visibility = if (filteredNow.isNotEmpty()) android.view.View.VISIBLE else android.view.View.GONE
-            text = filterWarningText(siteDomain ?: "", filteredNow, pinNote = Whitelist.state.pinApproval)
-        }
-        box.addView(filterWarning)
 
-        // The "Approve here with a PIN" option (added to the screen further down, below the note).
-        val pinCheck = android.widget.CheckBox(this).apply { text = "Approve here with a PIN" }
-        val pinField = EditText(this).apply {
-            hint = "Approval PIN"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            visibility = android.view.View.GONE
+        val verb = if (action == Requests.Action.ALLOW) "open" else "block"
+        val title = when {
+            mediaBack -> "Ask for photos and videos"
+            siteDomain == null -> "Ask for a new site"
+            else -> "Ask to $verb"
+        }
+        val d = Ui.AppDialog(this, sheet = true)
+        d.title(title, sub = siteDomain)
+        d.add(Ui.text(this, "Your request goes to whoever manages this browser.", 14.5f, Ui.MUTED), 6)
+
+        val filterWarning = Ui.box(this, filterWarningText(siteDomain ?: "", filteredNow, pinNote = Whitelist.state.pinApproval), "red").apply {
+            visibility = if (filteredNow.isNotEmpty()) View.VISIBLE else View.GONE
+        }
+        d.add(filterWarning)
+
+        // The "Approve here with a PIN" option (added further down, below the note).
+        val (pinRow, pinSwitch) = Ui.switchRow(this, "Approve here with a PIN", "If whoever manages this browser is with you")
+        val pinField = Ui.field(this, "Approval PIN",
+            type = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD).apply {
+            visibility = View.GONE
         }
 
-        val siteField = EditText(this).apply {
-            hint = "Website, e.g. scratch.mit.edu"
-            inputType = android.text.InputType.TYPE_TEXT_VARIATION_URI or android.text.InputType.TYPE_CLASS_TEXT
-            setSingleLine()
-        }
-        if (siteDomain == null) box.addView(siteField)
+        val siteField = Ui.field(this, "Website, e.g. scratch.mit.edu",
+            type = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI)
+        if (siteDomain == null) { d.add(Ui.label(this, "Website")); d.add(siteField, 6) }
+        lateinit var sendButton: Button
         // After a site couldn't be found: the address that "Send anyway" would send. Editing it resets this.
         var sendAnyway: String? = null
         // A typed site on a filter's list: the address "Ask anyway" confirmed. Editing it resets this too.
@@ -832,53 +868,38 @@ class MainActivity : Activity() {
                     sendAnyway = null
                     askAnyway = null
                     siteField.error = null
-                    filterWarning.visibility = android.view.View.GONE
-                    if (Whitelist.state.pinApproval) pinCheck.visibility = android.view.View.VISIBLE
-                    (siteField.tag as? android.widget.Button)?.text = "Send"
+                    filterWarning.visibility = View.GONE
+                    if (Whitelist.state.pinApproval) pinRow.visibility = View.VISIBLE
+                    sendButton.text = "Send"
                 }
             }
         })
         // "Checking scratch.mit.edu…" while a typed site is being checked.
-        val checking = TextView(this).apply { textSize = 13f; visibility = android.view.View.GONE }
-        if (siteDomain == null) box.addView(checking)
+        val checking = Ui.text(this, "", 13.5f, Ui.MUTED).apply { visibility = View.GONE }
+        if (siteDomain == null) d.add(checking, 6)
 
         // The addresses the link passes through on the way, so it's clear what else must be opened.
         val hops = route?.hops.orEmpty().filter { it != pageUrl }
         if (hops.isNotEmpty()) {
-            box.addView(TextView(this).apply {
-                text = "This link passes through:\n" + hops.joinToString("\n") { "→ " + (Whitelist.pageKey(it)?.substringBefore('?') ?: it) } +
-                    "\n\nThose are included in your request."
-                textSize = 13f
-                setPadding(0, 0, 0, (8 * density).toInt())
-            })
+            d.add(Ui.box(this, "This link passes through:\n" +
+                hops.joinToString("\n") { "→ " + (Whitelist.pageKey(it)?.substringBefore('?') ?: it) } +
+                "\nThose are included in your request.", "info"))
         }
 
-        val pageOption = android.widget.RadioButton(this).apply {
-            id = android.view.View.generateViewId()
-            text = "Just this page\n$pageKey"
-            isChecked = true
-        }
-        val siteOption = android.widget.RadioButton(this).apply {
-            id = android.view.View.generateViewId()
-            text = "Whole site\n$siteDomain"
-        }
+        // Just this page, or the whole site.
+        var pageScope = canChoose
         if (canChoose) {
-            val group = android.widget.RadioGroup(this)
-            listOf(pageOption, siteOption).forEach { rb ->
-                rb.setPadding(rb.paddingLeft, (6 * density).toInt(), rb.paddingRight, (6 * density).toInt())
-                group.addView(rb)
-            }
-            box.addView(group)
+            val which = Ui.text(this, pageKey ?: "", 13f, Ui.MUTED)
+            d.add(Ui.label(this, "What"))
+            d.add(Ui.Segmented(this, listOf("Just this page", "Whole site"), 0, narrow) {
+                pageScope = it == 0
+                which.text = if (pageScope) pageKey else siteDomain
+            }.view, 6)
+            d.add(which, 4)
         }
 
-        // "For how long?": always, or just for a while, chosen on two scroll wheels (hours and minutes),
-        // like the admin page. For opening, and for asking for photos and videos back.
-        val always = android.widget.RadioButton(this).apply {
-            id = android.view.View.generateViewId(); text = "Always"; isChecked = true
-        }
-        val forAWhile = android.widget.RadioButton(this).apply {
-            id = android.view.View.generateViewId(); text = "Just for a while"
-        }
+        // "For how long?": always, or just for a while, chosen on two scroll wheels (hours and minutes).
+        var forAWhile = false
         val hoursWheel = android.widget.NumberPicker(this).apply {
             minValue = 0; maxValue = 24; value = 0
             wrapSelectorWheel = false
@@ -894,194 +915,138 @@ class MainActivity : Activity() {
         val wheels = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER
-            val gap = ((if (narrow) 6 else 10) * density).toInt()
+            background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 14).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
+            val gap = Ui.dp(this@MainActivity, if (narrow) 6 else 10)
             addView(hoursWheel)
-            addView(TextView(this@MainActivity).apply { text = if (narrow) "h" else "hours"; setPadding(gap / 2, 0, gap * 2, 0) })
+            addView(Ui.text(this@MainActivity, if (narrow) "h" else "hours", 13f, Ui.MUTED).apply { setPadding(gap / 2, 0, gap * 2, 0) })
             addView(minutesWheel)
-            addView(TextView(this@MainActivity).apply { text = "min"; setPadding(gap / 2, 0, 0, 0) })
-            visibility = android.view.View.GONE
+            addView(Ui.text(this@MainActivity, "min", 13f, Ui.MUTED).apply { setPadding(gap / 2, 0, 0, 0) })
+            visibility = View.GONE
         }
         if (action == Requests.Action.ALLOW) {
-            box.addView(TextView(this).apply { text = "For how long?"; setPadding(0, (8 * density).toInt(), 0, 0) })
-            box.addView(android.widget.RadioGroup(this).apply {
-                orientation = if (narrow) android.widget.RadioGroup.VERTICAL else android.widget.RadioGroup.HORIZONTAL
-                addView(always); addView(forAWhile)
-                setOnCheckedChangeListener { _, checked ->
-                    wheels.visibility = if (checked == forAWhile.id) android.view.View.VISIBLE else android.view.View.GONE
-                }
-            })
-            box.addView(wheels)
+            d.add(Ui.label(this, "For how long?"))
+            d.add(Ui.Segmented(this, listOf("Always", "For a while"), 0, false) {
+                forAWhile = it == 1
+                wheels.visibility = if (forAWhile) View.VISIBLE else View.GONE
+            }.view, 6)
+            d.add(wheels, 8)
         }
 
         // Photos and videos: opening "without photos and videos", or blocking "only photos and videos".
-        val withoutMedia = android.widget.CheckBox(this).apply { text = "Without photos and videos" }
-        val blockAll = android.widget.RadioButton(this).apply {
-            id = android.view.View.generateViewId(); text = "Block it completely"; isChecked = true
-        }
-        val blockMediaOnly = android.widget.RadioButton(this).apply {
-            id = android.view.View.generateViewId(); text = "Only block photos and videos"
-        }
+        val (noMediaRow, noMediaSwitch) = Ui.switchRow(this, "Without photos and videos")
+        var blockMediaOnly = false
         if (!mediaBack) {
             if (action == Requests.Action.ALLOW) {
-                box.addView(withoutMedia)
+                d.add(noMediaRow)
             } else {
-                val group = android.widget.RadioGroup(this)
-                listOf(blockAll, blockMediaOnly).forEach { group.addView(it) }
-                box.addView(group)
+                d.add(Ui.label(this, "Block"))
+                d.add(Ui.Segmented(this, listOf("Completely", "Only photos and videos"), 0, narrow) { blockMediaOnly = it == 1 }.view, 6)
             }
         }
 
-        val noteField = EditText(this).apply {
-            hint = "Why? (optional)"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-        }
-        box.addView(noteField)
+        val noteField = Ui.field(this, "e.g. for maths homework",
+            type = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
+        d.add(Ui.label(this, "Why? (optional)"))
+        d.add(noteField, 6)
 
         // Approve here with a PIN: when whoever manages this browser is with them. Only offered if a PIN is
         // set for this phone. The phone doesn't check it: GitHub does, then removes it from the request.
         if (Whitelist.state.pinApproval && filteredNow.isEmpty()) {   // the PIN can't open filtered sites
-            box.addView(pinCheck)
-            box.addView(pinField)
-            pinCheck.setOnCheckedChangeListener { _, on ->
-                pinField.visibility = if (on) android.view.View.VISIBLE else android.view.View.GONE
+            d.add(pinRow)
+            d.add(pinField, 8)
+            pinSwitch.setOnCheckedChangeListener { _, on ->
+                pinField.visibility = if (on) View.VISIBLE else View.GONE
                 if (on) pinField.requestFocus()
             }
         }
 
-        val verb = if (action == Requests.Action.ALLOW) "open" else "block"
-        val title = when {
-            mediaBack -> "Ask for photos and videos"
-            siteDomain == null -> "Ask for a new site"
-            canChoose -> "Ask to $verb"
-            else -> "Ask to $verb $siteDomain"
-        }
-        val dialog = AlertDialog.Builder(this)
-            .titled(title, box)
-            .setView(scrollable(box))           // scrolls on small screens, buttons stay on screen
-            .setPositiveButton("Send", null) // set below so bad input doesn't close the dialog
-            .setNegativeButton("Cancel", null)
-            .create()
-            .fitAboveKeyboard()
-        dialog.setOnShowListener {
-            siteField.tag = dialog.getButton(AlertDialog.BUTTON_POSITIVE) // so editing the address can reset "Send anyway"
-            if (filteredNow.isNotEmpty()) dialog.getButton(AlertDialog.BUTTON_POSITIVE).text = "Ask anyway"
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val domain = siteDomain ?: Whitelist.normalize(siteField.text.toString())
-                if (domain == null) {
-                    siteField.error = "Type a website address"
-                    return@setOnClickListener
-                }
-                val scope = if (canChoose && pageOption.isChecked) Requests.Scope.PAGE else Requests.Scope.SITE
-                val subject = if (scope == Requests.Scope.PAGE) pageKey!! else domain
-                val media = when {
-                    mediaBack -> Requests.Media.ON
-                    action == Requests.Action.ALLOW && withoutMedia.isChecked -> Requests.Media.OFF
-                    action == Requests.Action.BLOCK && blockMediaOnly.isChecked -> Requests.Media.OFF
-                    else -> Requests.Media.UNCHANGED
-                }
-                val minutes = if (action == Requests.Action.ALLOW && forAWhile.isChecked)
-                    hoursWheel.value * 60 + minutesWheel.value * 5 else 0
-                if (action == Requests.Action.ALLOW && forAWhile.isChecked && minutes == 0) {
-                    toast("Choose how long on the wheels, or pick Always") // the box stays open
-                    return@setOnClickListener
-                }
-                val pin = if (pinCheck.isChecked && pinCheck.visibility == android.view.View.VISIBLE) pinField.text.toString().trim() else null
-                if (pin != null && !Regex("^\\d{4,8}$").matches(pin)) {
-                    pinField.error = "The PIN is 4 to 8 digits"
-                    pinField.requestFocus()
-                    return@setOnClickListener
-                }
-                if (pin == null && Requests.recentlySent(this, action, "$subject|${media.word}")) {
-                    toast("You already asked about $subject. Wait for an answer.")
-                    dialog.dismiss()
-                    return@setOnClickListener
-                }
-                val note = noteField.text.toString().trim()
-                // "Send anyway" after the site couldn't be found: send it, marked as not found.
-                if (siteDomain == null && sendAnyway == domain) {
-                    dialog.dismiss()
-                    sendRequest(action, scope, media, domain, null, note, hops, minutes, unverified = true, pin = pin)
-                    return@setOnClickListener
-                }
-                if (siteDomain != null) {
-                    dialog.dismiss()
-                    sendRequest(action, scope, media, domain, pageUrl, note, hops, minutes, pin = pin)
-                    return@setOnClickListener
-                }
-                // A typed site on a content filter's list: say which, and ask them to confirm first.
-                val typedFiltered = if (action == Requests.Action.ALLOW) Whitelist.filteredAs(domain) else emptyList()
-                if (typedFiltered.isNotEmpty() && askAnyway != domain) {
-                    filterWarning.text = filterWarningText(domain, typedFiltered, pinNote = Whitelist.state.pinApproval)
-                    filterWarning.visibility = android.view.View.VISIBLE
-                    pinCheck.isChecked = false
-                    pinCheck.visibility = android.view.View.GONE
-                    askAnyway = domain
-                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).text = "Ask anyway"
-                    return@setOnClickListener
-                }
-                // A typed site: check it exists before sending. The box stays open while checking.
-                val send = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
-                send.isEnabled = false
-                checking.text = "Checking $domain…"
-                checking.visibility = android.view.View.VISIBLE
-                traceIo.execute {
-                    val result = SiteCheck.check(applicationContext, domain)
-                    main.post {
-                        if (isDestroyed || !dialog.isShowing) return@post
-                        send.isEnabled = true
-                        checking.visibility = android.view.View.GONE
-                        if (result == SiteCheck.Result.NOT_FOUND) {
-                            // Real sites can look missing too (a Wi-Fi filter, a school-only site),
-                            // so offer to send it anyway.
-                            siteField.error = "Couldn't find $domain. Check the spelling, or tap Send anyway if you're sure it's right."
-                            siteField.requestFocus()
-                            sendAnyway = domain
-                            send.text = "Send anyway"
-                        } else {
-                            // Found, or no internet to check with: the request is sent (or saved until online).
-                            dialog.dismiss()
-                            sendRequest(action, scope, media, domain, null, note, hops, minutes, pin = pin)
-                        }
+        d.button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
+        sendButton = d.button(if (filteredNow.isNotEmpty()) "Ask anyway" else "Send", Ui.Kind.PRIMARY) {
+            val domain = siteDomain ?: Whitelist.normalize(siteField.text.toString())
+            if (domain == null) {
+                siteField.error = "Type a website address"
+                return@button
+            }
+            val scope = if (canChoose && pageScope) Requests.Scope.PAGE else Requests.Scope.SITE
+            val subject = if (scope == Requests.Scope.PAGE) pageKey!! else domain
+            val media = when {
+                mediaBack -> Requests.Media.ON
+                action == Requests.Action.ALLOW && noMediaSwitch.isChecked -> Requests.Media.OFF
+                action == Requests.Action.BLOCK && blockMediaOnly -> Requests.Media.OFF
+                else -> Requests.Media.UNCHANGED
+            }
+            val minutes = if (action == Requests.Action.ALLOW && forAWhile)
+                hoursWheel.value * 60 + minutesWheel.value * 5 else 0
+            if (action == Requests.Action.ALLOW && forAWhile && minutes == 0) {
+                toast("Choose how long on the wheels, or pick Always") // the sheet stays open
+                return@button
+            }
+            val pinOffered = pinRow.parent != null && pinRow.visibility == View.VISIBLE
+            val pin = if (pinOffered && pinSwitch.isChecked) pinField.text.toString().trim() else null
+            if (pin != null && !Regex("^\\d{4,8}$").matches(pin)) {
+                pinField.error = "The PIN is 4 to 8 digits"
+                pinField.requestFocus()
+                return@button
+            }
+            if (pin == null && Requests.recentlySent(this, action, "$subject|${media.word}")) {
+                toast("You already asked about $subject. Wait for an answer.")
+                d.dismiss()
+                return@button
+            }
+            val note = noteField.text.toString().trim()
+            // "Send anyway" after the site couldn't be found: send it, marked as not found.
+            if (siteDomain == null && sendAnyway == domain) {
+                d.dismiss()
+                sendRequest(action, scope, media, domain, null, note, hops, minutes, unverified = true, pin = pin)
+                return@button
+            }
+            if (siteDomain != null) {
+                d.dismiss()
+                sendRequest(action, scope, media, domain, pageUrl, note, hops, minutes, pin = pin)
+                return@button
+            }
+            // A typed site on a content filter's list: say which, and ask them to confirm first.
+            val typedFiltered = if (action == Requests.Action.ALLOW) Whitelist.filteredAs(domain) else emptyList()
+            if (typedFiltered.isNotEmpty() && askAnyway != domain) {
+                filterWarning.text = filterWarningText(domain, typedFiltered, pinNote = Whitelist.state.pinApproval)
+                filterWarning.visibility = View.VISIBLE
+                pinSwitch.isChecked = false
+                pinRow.visibility = View.GONE
+                askAnyway = domain
+                sendButton.text = "Ask anyway"
+                return@button
+            }
+            // A typed site: check it exists before sending. The sheet stays open while checking.
+            sendButton.isEnabled = false
+            checking.text = "Checking $domain…"
+            checking.visibility = View.VISIBLE
+            traceIo.execute {
+                val result = SiteCheck.check(applicationContext, domain)
+                main.post {
+                    if (isDestroyed || !d.isShowing) return@post
+                    sendButton.isEnabled = true
+                    checking.visibility = View.GONE
+                    if (result == SiteCheck.Result.NOT_FOUND) {
+                        // Real sites can look missing too (a Wi-Fi filter, a school-only site),
+                        // so offer to send it anyway.
+                        siteField.error = "Couldn't find $domain. Check the spelling, or tap Send anyway if you're sure it's right."
+                        siteField.requestFocus()
+                        sendAnyway = domain
+                        sendButton.text = "Send anyway"
+                    } else {
+                        // Found, or no internet to check with: the request is sent (or saved until online).
+                        d.dismiss()
+                        sendRequest(action, scope, media, domain, null, note, hops, minutes, pin = pin)
                     }
                 }
             }
         }
-        dialog.show()
+        d.show()
     }
 
-    /**
-     * Wraps a dialog's content so it scrolls when the screen is too short for it (small phones, keyboard
-     * up), without ever pushing the dialog's buttons off the screen.
-     */
-    private fun scrollable(content: View) = MaxHeightScrollView(this, reservedDp = if (narrow) 96 else 170).apply { addView(content) }
 
-    /**
-     * A dialog's title: in the usual title bar, or on small screens inside the scrolling content (so with
-     * the keyboard up there's still room for the content and the buttons).
-     */
-    private fun AlertDialog.Builder.titled(title: String, box: LinearLayout): AlertDialog.Builder {
-        if (!narrow) return setTitle(title)
-        box.addView(TextView(this@MainActivity).apply {
-            text = title
-            textSize = 17f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(0, (4 * resources.displayMetrics.density).toInt(), 0, (6 * resources.displayMetrics.density).toInt())
-        }, 0)
-        return this
-    }
 
-    /** A dialog's intro line, inside its scrolling content (one scroll area instead of two). */
-    private fun introText(text: String) = TextView(this).apply {
-        this.text = text
-        textSize = 14f
-        setPadding(0, 0, 0, (8 * resources.displayMetrics.density).toInt())
-    }
 
-    /** Keeps a dialog above the keyboard: it shrinks (and its content scrolls) instead of being covered. */
-    private fun AlertDialog.fitAboveKeyboard(): AlertDialog {
-        window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-        return this
-    }
 
     /** "⚠️ example.com is on the gambling list, so it's blocked. You can still ask: …" */
     private fun filterWarningText(domain: String, filters: List<String>, pinNote: Boolean = false): String {
@@ -1098,13 +1063,15 @@ class MainActivity : Activity() {
      */
     private fun sendRequest(action: Requests.Action, scope: Requests.Scope, media: Requests.Media,
                             domain: String, pageUrl: String?, note: String, hops: List<String> = emptyList(),
-                            minutes: Int = 0, unverified: Boolean = false, pin: String? = null) {
+                            minutes: Int = 0, unverified: Boolean = false, pin: String? = null,
+                            frames: List<String> = emptyList()) {
         toast(if (pin != null) "Checking the PIN" else "Sending request")
         updateIo.execute {
             val outcome = runCatching {
                 // Which content filters list it (so you see that before approving).
                 val filtered = if (action == Requests.Action.ALLOW) Whitelist.filteredAs(domain) else emptyList()
-                val id = Requests.queue(applicationContext, action, scope, media, domain, pageUrl, note, hops, minutes, unverified, filtered, pin)
+                val id = Requests.queue(applicationContext, action, scope, media, domain, pageUrl, note, hops, minutes, unverified,
+                    if (frames.isEmpty()) filtered else emptyList(), pin, frames)
                 val r = Outbox.flush(applicationContext)
                 when {
                     id in r.sent -> null
@@ -1118,6 +1085,7 @@ class MainActivity : Activity() {
                 val problem = outcome.getOrElse { "Couldn't send the request: ${it.message}" }
                 toast(problem ?: when {
                     pin != null -> "Checking the PIN. If it's right, this happens by itself within a minute or two."
+                    frames.isNotEmpty() -> "Request sent. If it's approved, reload the page to see the blocked parts."
                     action == Requests.Action.BLOCK -> "Request sent."
                     media == Requests.Media.ON -> "Request sent. If it's approved, photos and videos come back by themselves."
                     pageUrl != null -> "Request sent. If it's approved, it opens by itself."
@@ -1147,14 +1115,6 @@ class MainActivity : Activity() {
 
     // ---------- answers to this phone's requests ----------
 
-    private fun statusIcon(status: String) = when (status) {
-        "approved" -> "✅"
-        "denied" -> "❌"
-        "waiting" -> "⏳"
-        "failed" -> "⚠️"
-        else -> "•"
-    }
-
     private fun shortDate(t: Long): String =
         java.text.SimpleDateFormat("d MMM, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(t))
 
@@ -1164,31 +1124,79 @@ class MainActivity : Activity() {
         if (fresh.isEmpty()) return
         // Approved: the updated list may still be on its way (a minute or two), so keep checking quickly.
         if (fresh.any { it.status == "approved" }) fastChecks(5)
-        val text = fresh.joinToString("\n\n") { "${statusIcon(it.status)} ${it.summary}\n${it.message}" }
-        AlertDialog.Builder(this)
-            .setTitle(if (fresh.size == 1) "Answer to your request" else "Answers to your requests")
-            .setMessage(text)
-            .setPositiveButton("OK", null)
-            .setNeutralButton("My requests") { _, _ -> showMyRequests() }
-            .show()
+        Ui.AppDialog(this, sheet = false).apply {
+            title(if (fresh.size == 1) "Answer to your request" else "Answers to your requests")
+            val list = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+            fresh.forEachIndexed { i, answer ->
+                list.addView(requestRow(answer.status, answer.summary, answer.message, null, card = true), LinearLayout.LayoutParams(-1, -2).apply {
+                    if (i > 0) topMargin = Ui.dp(this@MainActivity, 10)
+                })
+            }
+            add(list)
+            button("My requests", Ui.Kind.SECONDARY) { it.dismiss(); showMyRequests() }
+            button("OK", Ui.Kind.PRIMARY) { it.dismiss() }
+        }.show()
     }
+
+    /**
+     * One request in a list: a coloured badge (✓ approved, ✕ not approved, clock waiting, ⚠ not sent or
+     * failed), what it was for, the answer, and when. [card]: its own white card (answers pop-up).
+     */
+    private fun requestRow(status: String, summary: String, message: String, time: String?, card: Boolean = false): LinearLayout {
+        val (icon, bg, fg, label) = when (status) {
+            "approved" -> RowLook(R.drawable.ic_d_check, Ui.SOFT, Ui.ACCENT_TEXT, "Approved")
+            "denied" -> RowLook(R.drawable.ic_d_x, Ui.RED_BG, Ui.RED_INK, "Not approved")
+            "notsent" -> RowLook(R.drawable.ic_d_send, Ui.AMBER_BG, Ui.AMBER_INK, "Not sent yet")
+            "failed" -> RowLook(R.drawable.ic_d_warn, Ui.AMBER_BG, Ui.AMBER_INK, "Couldn't be sent")
+            "waiting" -> RowLook(R.drawable.ic_d_clock, Ui.SEG, Ui.INK2, "Waiting for an answer")
+            else -> RowLook(R.drawable.ic_d_clock, Ui.SEG, Ui.INK2, "Closed")
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            val p = Ui.dp(this@MainActivity, 14)
+            setPadding(p, Ui.dp(this@MainActivity, 12), p, Ui.dp(this@MainActivity, 12))
+            if (card) background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 16).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
+            addView(Ui.badge(this@MainActivity, icon, bg, fg, 34, 17).apply {
+                (layoutParams as LinearLayout.LayoutParams).marginEnd = Ui.dp(this@MainActivity, 12)
+            })
+            val words = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+            words.addView(Ui.text(this@MainActivity, label, 12.5f, fg, "bold"))
+            words.addView(Ui.text(this@MainActivity, summary, 15f, Ui.INK, "bold"))
+            if (message.isNotEmpty()) words.addView(Ui.text(this@MainActivity, message, 13.5f, Ui.MUTED))
+            if (time != null) words.addView(Ui.text(this@MainActivity, time, 12f, Ui.MUTED))
+            addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+        }
+    }
+
+    private data class RowLook(val icon: Int, val bg: Int, val fg: Int, val label: String)
 
     /** Every request from this phone: not sent yet, waiting, and answered (newest first). */
     private fun showMyRequests() {
         val notSent = Outbox.waitingRequests(this).reversed().map {
-            "📤 ${it.first}\nNot sent yet (no connection).\nAsked ${shortDate(it.second)}."
+            requestRow("notsent", it.first, "No connection: it's sent when the phone is online.", "Asked ${shortDate(it.second)}")
         }
         val sent = MyRequests.all(this).map {
-            val when_ = if (it.status == "waiting") "Asked ${shortDate(it.asked)}." else "Answered ${shortDate(it.answered)}."
-            val msg = if (it.status == "waiting") it.message.ifEmpty { "Waiting for an answer." } else it.message
-            "${statusIcon(it.status)} ${it.summary}\n$msg\n$when_"
+            val time = if (it.status == "waiting") "Asked ${shortDate(it.asked)}" else "Answered ${shortDate(it.answered)}"
+            requestRow(it.status, it.summary, it.message, time)
         }
-        val all = notSent + sent
-        AlertDialog.Builder(this)
-            .setTitle("My requests")
-            .setMessage(if (all.isEmpty()) "You haven't asked for anything yet." else all.joinToString("\n\n"))
-            .setPositiveButton("Close", null)
-            .show()
+        val rows = notSent + sent
+        Ui.AppDialog(this, sheet = true).apply {
+            title("My requests", sub = if (rows.isEmpty()) null else if (rows.size == 1) "1 request" else "${rows.size} requests")
+            if (rows.isEmpty()) {
+                add(Ui.text(this@MainActivity, "You haven't asked for anything yet.", 15f, Ui.MUTED))
+            } else {
+                val list = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 16).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
+                }
+                rows.forEachIndexed { i, row ->
+                    if (i > 0) list.addView(View(this@MainActivity).apply { setBackgroundColor(Ui.LINE2) }, LinearLayout.LayoutParams(-1, Ui.dp(this@MainActivity, 1)))
+                    list.addView(row)
+                }
+                add(list)
+            }
+            button("Close", Ui.Kind.PRIMARY) { it.dismiss() }
+        }.show()
     }
 
     /** When the phone gets a connection: send what's waiting and fetch the latest lists. */
@@ -1213,24 +1221,29 @@ class MainActivity : Activity() {
 
     private fun confirmClearCookies() {
         val scope = siteScope(web.url)
-        val builder = AlertDialog.Builder(this).setTitle("Clear cookies and site data?")
-        if (scope == null) {
-            // Home page or blocked page: there's no "this site", so it's everything.
-            builder.setMessage("You'll be signed out of all websites, and sites forget saved settings. " +
-                "Camera, microphone and location answers are reset too.")
-                .setPositiveButton("Clear") { _, _ -> clearCookiesAndSiteData() }
-        } else {
+        Ui.AppDialog(this, sheet = false).apply {
+            title("Clear cookies and site data?", icon = R.drawable.ic_d_trash, iconBg = Ui.RED_BG, iconFg = Ui.RED_INK)
             var choice = 0
-            val options = arrayOf<CharSequence>(
-                "Just $scope\nSigns you out of this site only",
-                "All sites\nSigns you out everywhere and resets camera, microphone and location answers"
-            )
-            builder.setSingleChoiceItems(options, 0) { _, which -> choice = which }
-                .setPositiveButton("Clear") { _, _ ->
-                    if (choice == 0) clearSiteData(scope) else clearCookiesAndSiteData()
-                }
-        }
-        builder.setNegativeButton("Cancel", null).show()
+            if (scope == null) {
+                // Home page or blocked page: there's no "this site", so it's everything.
+                add(Ui.text(this@MainActivity, "You'll be signed out of all websites, and sites forget saved settings. " +
+                    "Camera, microphone and location answers are reset too.", 14.5f, Ui.MUTED))
+                choice = 1
+            } else {
+                val explain = Ui.text(this@MainActivity, "Signs you out of this site only.", 13.5f, Ui.MUTED)
+                add(Ui.Segmented(this@MainActivity, listOf("Just $scope", "All sites"), 0, true) {
+                    choice = it
+                    explain.text = if (it == 0) "Signs you out of this site only."
+                        else "Signs you out everywhere, and resets camera, microphone and location answers."
+                }.view)
+                add(explain, 8)
+            }
+            button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
+            button("Clear", Ui.Kind.DANGER) {
+                it.dismiss()
+                if (scope != null && choice == 0) clearSiteData(scope) else clearCookiesAndSiteData()
+            }
+        }.show()
     }
 
     /**
@@ -1316,6 +1329,126 @@ class MainActivity : Activity() {
         toast("Cookies and site data cleared")
     }
 
+    // ---------- embedded content ----------
+
+    /** Is this request a frame's page (not a picture, script or style)? Frames ask for a web page. */
+    private fun isFrameDocument(r: WebResourceRequest): Boolean {
+        val h = r.requestHeaders ?: return false
+        val dest = h.entries.firstOrNull { it.key.equals("Sec-Fetch-Dest", true) }?.value
+        if (dest != null) return dest == "iframe" || dest == "frame"
+        return h.entries.firstOrNull { it.key.equals("Accept", true) }?.value?.contains("text/html") == true
+    }
+
+    /** May a frame from [host] show inside the page [top]? */
+    private fun frameOk(url: String, host: String, top: String?): Boolean =
+        Whitelist.isAllowed(url, false) || Whitelist.framesAllowedOn(top) || Whitelist.embedAllowed(top, host)
+
+    /** What shows in a blocked frame's place: a small note, in the app's look. */
+    private fun frameBlockedResponse(host: String): WebResourceResponse {
+        fun hex(c: Int) = String.format("#%06X", c and 0xFFFFFF)
+        val site = host.removePrefix("www.").replace("<", "")
+        val html = "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>" +
+            "<body style='margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;" +
+            "background:${hex(Ui.SEG)};color:${hex(Ui.MUTED)};font:600 14px/1.4 sans-serif;text-align:center;padding:8px;box-sizing:border-box'>" +
+            "<div>Blocked: content from $site</div></body>"
+        return WebResourceResponse("text/html", "utf-8", 200, "OK", emptyMap(), java.io.ByteArrayInputStream(html.toByteArray()))
+    }
+
+    /** Records a blocked frame's site, and shows the "parts were blocked" bar. (Any thread.) */
+    private fun noteBlockedFrame(host: String) {
+        val site = host.lowercase().removePrefix("www.")
+        if (blockedFrames.add(site)) main.post { showFrameNote() }
+    }
+
+    private fun showFrameNote() {
+        val top = web.url
+        val note = findViewById<View>(R.id.frameNote)
+        if (top == null || HomePage.isHome(top) || top.startsWith(BLOCKED_PAGE) || blockedFrames.isEmpty() || top == frameNoteClosedFor) return
+        val sites = blockedFrames.toList()
+        findViewById<TextView>(R.id.frameNoteText).text = "Parts of this page were blocked (from ${sites.first()}" +
+            (if (sites.size > 1) " and ${sites.size - 1} more)" else ")")
+        findViewById<View>(R.id.frameNoteAsk).visibility = if (Requests.isSetUp()) View.VISIBLE else View.GONE
+        note.visibility = View.VISIBLE
+    }
+
+    private fun hideFrameNote() {
+        findViewById<View>(R.id.frameNote)?.visibility = View.GONE
+    }
+
+    /** "Ask" on the bar: a request for the blocked parts, to show inside this site's pages. */
+    private fun showFramesRequest() {
+        val top = web.url ?: return
+        val site = siteScope(top) ?: return
+        val sites = blockedFrames.toList().filter { it != site && !it.endsWith(".$site") }
+        if (sites.isEmpty()) { hideFrameNote(); return }
+        if (!Requests.isSetUp()) { toast("Requests aren't set up for this app yet"); return }
+        val d = Ui.AppDialog(this, sheet = true)
+        d.title("Ask for the blocked parts", sub = site)
+        d.add(Ui.text(this, "Parts of this page, like a video or a map, come from other sites and were blocked. " +
+            "If they're approved, they show inside $site's pages only.", 14.5f, Ui.MUTED), 6)
+        d.add(Ui.label(this, if (sites.size == 1) "Blocked content from" else "Blocked content from these sites"))
+        d.add(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 14).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
+            sites.forEachIndexed { i, h ->
+                if (i > 0) addView(View(this@MainActivity).apply { setBackgroundColor(Ui.LINE2) }, LinearLayout.LayoutParams(-1, Ui.dp(this@MainActivity, 1)))
+                addView(Ui.text(this@MainActivity, h, 15f, Ui.INK, "bold").apply {
+                    setPadding(Ui.dp(this@MainActivity, 14), Ui.dp(this@MainActivity, 11), Ui.dp(this@MainActivity, 14), Ui.dp(this@MainActivity, 11))
+                })
+            }
+        }, 6)
+        val noteField = Ui.field(this, "e.g. the video for my homework",
+            type = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
+        d.add(Ui.label(this, "Why? (optional)"))
+        d.add(noteField, 6)
+        val (pinRow, pinSwitch) = Ui.switchRow(this, "Approve here with a PIN", "If whoever manages this browser is with you")
+        val pinField = Ui.field(this, "Approval PIN",
+            type = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD).apply { visibility = View.GONE }
+        if (Whitelist.state.pinApproval) {
+            d.add(pinRow)
+            d.add(pinField, 8)
+            pinSwitch.setOnCheckedChangeListener { _, on -> pinField.visibility = if (on) View.VISIBLE else View.GONE }
+        }
+        d.button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
+        d.button("Send", Ui.Kind.PRIMARY) {
+            val pin = if (Whitelist.state.pinApproval && pinSwitch.isChecked) pinField.text.toString().trim() else null
+            if (pin != null && !Regex("^\\d{4,8}$").matches(pin)) { pinField.error = "The PIN is 4 to 8 digits"; return@button }
+            it.dismiss()
+            hideFrameNote()
+            sendRequest(Requests.Action.ALLOW, Requests.Scope.SITE, Requests.Media.UNCHANGED, site, top,
+                noteField.text.toString().trim(), pin = pin, frames = sites)
+        }
+        d.show()
+    }
+
+    // ---------- light or dark ----------
+
+    /** ⋮ → Appearance: the phone's own setting (the default), light or dark. Remembered on this phone. */
+    private fun showAppearance() {
+        val options = listOf("system" to "Phone's setting", "light" to "Light", "dark" to "Dark")
+        val current = options.indexOfFirst { it.first == Ui.choice(this) }.coerceAtLeast(0)
+        var picked = current
+        Ui.AppDialog(this, sheet = false).apply {
+            title("Appearance", icon = R.drawable.ic_d_theme)
+            add(Ui.Segmented(this@MainActivity, options.map { it.second }, current, narrow) { picked = it }.view)
+            add(Ui.text(this@MainActivity, "\"Phone's setting\" switches between light and dark along with the phone.", 13.5f, Ui.MUTED), 8)
+            button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
+            button("Done", Ui.Kind.PRIMARY) {
+                it.dismiss()
+                if (picked != current) {
+                    Ui.setChoice(this@MainActivity, options[picked].first)
+                    if (Ui.wantsDark(this@MainActivity) != Ui.dark) recreate()   // redraw in the new look (pages are kept)
+                }
+            }
+        }.show()
+    }
+
+    /** The phone switched between light and dark: follow it (when Appearance is "Phone's setting"). */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (Ui.wantsDark(this, newConfig) != Ui.dark) recreate()
+    }
+
     // ---------- content filters ----------
 
     /**
@@ -1372,35 +1505,21 @@ class MainActivity : Activity() {
      * registers and becomes the phone's name on GitHub and the admin page, where it can be changed.
      */
     private fun askName() {
-        val pad = ((if (narrow) 12 else 20) * resources.displayMetrics.density).toInt()
-        val field = EditText(this).apply {
-            hint = "Your name"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_WORDS
-            setSingleLine()
-        }
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad / 2, pad, 0)
-            addView(introText("So whoever manages this browser knows whose phone this is."))
-            addView(field, LinearLayout.LayoutParams(-1, -2))
-        }
-        val dialog = AlertDialog.Builder(this)
-            .titled("What's your name?", box)
-            .setView(scrollable(box))
-            .setCancelable(false)
-            .setPositiveButton("OK", null)
-            .create()
-            .fitAboveKeyboard()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        val field = Ui.field(this, "e.g. Emma",
+            type = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_WORDS)
+        Ui.AppDialog(this, sheet = false, cancelable = false).apply {
+            title("What's your name?", icon = R.drawable.ic_d_user)
+            add(Ui.text(this@MainActivity, "So whoever manages this browser knows whose phone this is.", 14.5f, Ui.MUTED))
+            add(Ui.label(this@MainActivity, "Your name"))
+            add(field, 6)
+            button("Continue", Ui.Kind.PRIMARY) {
                 val name = field.text.toString().trim()
-                if (name.isEmpty()) { field.error = "Type your name"; return@setOnClickListener }
-                Device.setName(this, name)
-                dialog.dismiss()
+                if (name.isEmpty()) { field.error = "Type your name"; return@button }
+                Device.setName(this@MainActivity, name)
+                it.dismiss()
                 sendWaiting(registerFirst = true) // registers now (or as soon as it's online)
             }
-        }
-        dialog.show()
+        }.show()
     }
 
     // ---------- about this phone ----------
@@ -1409,29 +1528,48 @@ class MainActivity : Activity() {
     private fun showAbout() {
         val id = Device.id(this)
         val st = Whitelist.state
-        val msg = buildString {
-            appendLine("Phone ID: $id")
-            appendLine("Name: ${st.deviceName ?: Device.name(this@MainActivity) ?: "not set"}" + if (st.registered) "" else " (not registered yet)")
-            appendLine("Lists: ${st.listNames.ifEmpty { listOf("none") }.joinToString(", ")}")
-            appendLine("Allowed sites: ${st.allow.distinct().size}")
-            appendLine("Ad blocking: " + if (st.adblock) "on (${AdBlock.blockedCount.get()} blocked since the app opened)" else "off")
-            fun f(on: Boolean, filter: Filter) = if (on) "on (${filter.blockedCount.get()} blocked)" else "off"
-            appendLine("Adult content filter: ${f(st.adult, Filters.adult)}")
-            appendLine("Gambling filter: ${f(st.gambling, Filters.gambling)}")
-            appendLine("Malware filter: ${f(st.malware, Filters.malware)}")
-            val waiting = Outbox.count(this@MainActivity)
-            if (waiting > 0) appendLine("Waiting to send: $waiting (${Outbox.lastProblem ?: "sends when online"})")
-            append("App version: ${BuildConfig.VERSION_NAME}")
+        val copy = {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("Phone ID", id))
+            toast("Phone ID copied")
         }
-        AlertDialog.Builder(this)
-            .setTitle("About this phone")
-            .setMessage(msg)
-            .setPositiveButton("Close", null)
-            .setNeutralButton("Copy ID") { _, _ ->
-                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                cm.setPrimaryClip(android.content.ClipData.newPlainText("Phone ID", id))
-                toast("Phone ID copied")
+        fun row(key: String, value: String): LinearLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            val p = Ui.dp(this@MainActivity, 14)
+            setPadding(p, Ui.dp(this@MainActivity, 11), p, Ui.dp(this@MainActivity, 11))
+            addView(Ui.text(this@MainActivity, key, 14f, Ui.MUTED), LinearLayout.LayoutParams(0, -2, 1f))
+            addView(Ui.text(this@MainActivity, value, 14.5f, Ui.INK, "bold").apply { gravity = android.view.Gravity.END },
+                LinearLayout.LayoutParams(0, -2, 1.4f))
+        }
+        fun table(rows: List<LinearLayout>) = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 16).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
+            rows.forEachIndexed { i, r ->
+                if (i > 0) addView(View(this@MainActivity).apply { setBackgroundColor(Ui.LINE2) }, LinearLayout.LayoutParams(-1, Ui.dp(this@MainActivity, 1)))
+                addView(r)
             }
-            .show()
+        }
+        fun f(on: Boolean, filter: Filter) = if (on) "On · ${filter.blockedCount.get()} blocked" else "Off"
+        val phone = mutableListOf(
+            row("Phone ID", id),
+            row("Name", (st.deviceName ?: Device.name(this) ?: "Not set") + if (st.registered) "" else " (not registered yet)"),
+            row("Lists", st.listNames.ifEmpty { listOf("none") }.joinToString(", ")),
+            row("Allowed sites", st.allow.distinct().size.toString()))
+        val waiting = Outbox.count(this)
+        if (waiting > 0) phone += row("Waiting to send", "$waiting (${Outbox.lastProblem ?: "sends when online"})")
+        phone += row("App version", BuildConfig.VERSION_NAME)
+        Ui.AppDialog(this, sheet = true).apply {
+            title("About this phone", icon = R.drawable.ic_d_user)
+            add(table(phone))
+            add(Ui.label(this@MainActivity, "Filters"))
+            add(table(listOf(
+                row("Ads and trackers", if (st.adblock) "On · ${AdBlock.blockedCount.get()} blocked" else "Off"),
+                row("Adult content", f(st.adult, Filters.adult)),
+                row("Gambling", f(st.gambling, Filters.gambling)),
+                row("Malware and scams", f(st.malware, Filters.malware)))), 6)
+            button("Copy ID", Ui.Kind.SECONDARY) { copy() }
+            button("Close", Ui.Kind.PRIMARY) { it.dismiss() }
+        }.show()
     }
 }

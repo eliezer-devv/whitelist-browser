@@ -28,10 +28,13 @@ class AdminActivity : Activity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
+        Ui.applyTheme(this)                         // the same light or dark as the rest of the app
+        setTheme(if (Ui.dark) R.style.AppThemeDark else R.style.AppTheme)
         super.onCreate(savedInstanceState)
         // No screenshots or app-switcher previews of the admin screen (the token is typed here).
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         web = WebView(this)
+        web.setBackgroundColor(Ui.PAGE)
         setContentView(web)
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true   // for the PIN-protected token
@@ -71,7 +74,8 @@ class AdminActivity : Activity() {
             }
         }
         web.loadUrl("https://${HomePage.HOST}${PATH}admin.html?inapp=1" +
-            "&owner=${Uri.encode(Config.GITHUB_USERNAME)}&repo=${Uri.encode(PrivateRepo.NAME)}")
+            "&owner=${Uri.encode(Config.GITHUB_USERNAME)}&repo=${Uri.encode(PrivateRepo.NAME)}" +
+            "&theme=${if (Ui.dark) "dark" else "light"}")
     }
 
     private fun serve(path: String): WebResourceResponse {

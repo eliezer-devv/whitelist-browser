@@ -40,7 +40,7 @@ object Requests {
      */
     fun queue(ctx: Context, action: Action, scope: Scope, media: Media, domain: String, pageUrl: String?, note: String,
               hops: List<String> = emptyList(), minutes: Int = 0, unverified: Boolean = false,
-              filtered: List<String> = emptyList(), pin: String? = null): String {
+              filtered: List<String> = emptyList(), pin: String? = null, frames: List<String> = emptyList()): String {
         if (!isSetUp()) throw IOException("Requests aren't set up for this app yet")
 
         val page = if (scope == Scope.PAGE) pageUrl?.let { Whitelist.pageKey(it) } else null
@@ -53,8 +53,9 @@ object Requests {
             action == Action.BLOCK && media == Media.OFF -> "Block only the photos and videos on $what"
             action == Action.ALLOW -> "Open $what"
             else -> "Block $what"
-        } + if (minutes > 0) ", for ${duration(minutes)}" else ""
-        val title = when {
+        }.let { if (frames.isNotEmpty()) "Embedded content on $domain, from ${frames.joinToString(", ")}" else it } +
+            if (minutes > 0) ", for ${duration(minutes)}" else ""
+        val title = if (frames.isNotEmpty()) "Embedded content on $domain" else when {
             media == Media.ON -> "Photos and videos back on: $subject"
             action == Action.ALLOW && media == Media.OFF -> "Open $kind without photos and videos: $subject"
             action == Action.BLOCK && media == Media.OFF -> "Block photos and videos: $subject"
@@ -70,6 +71,7 @@ object Requests {
             .apply { if (filtered.isNotEmpty()) put("filtered", JSONArray(filtered)) } // on a content filter's list
             .apply { if (pin != null) put("pin", pin) } // approval PIN: checked by GitHub, then removed from the request
             .apply { if (hops.isNotEmpty()) put("hops", JSONArray(hops.take(10))) }
+            .apply { if (frames.isNotEmpty()) put("frames", JSONArray(frames.take(10))) } // blocked embedded content on this site
             .apply { if (!pageUrl.isNullOrBlank()) put("url", pageUrl) }
             .toString()
         val body = buildString {
@@ -97,7 +99,8 @@ object Requests {
 
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putLong("${action.word}|$subject|${media.word}", System.currentTimeMillis()).apply()
-        return Outbox.add(ctx, "issue", payload, summary = "$headline: $subject")
+        return Outbox.add(ctx, "issue", payload,
+            summary = if (frames.isNotEmpty()) "Embedded content on $domain (from ${frames.joinToString(", ")})" else "$headline: $subject")
     }
 
     /** Sends a saved request and returns its issue number. Called by [Outbox.flush]. */

@@ -3,30 +3,46 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>if (/(^|[#&])theme=dark(&|$)/.test(location.hash)) document.documentElement.dataset.theme = 'dark';</script>
 <title>Not on the list</title>
 <style>
-  body { margin: 0; min-height: 100vh; display: flex; align-items: center; background: #eef4f2;
-    color: #1f3a3d; font: 17px/1.5 system-ui, sans-serif; }
-  @media (prefers-color-scheme: dark) { body { background: #162a2c; color: #e8f1ef; } code { background: #2b4c50 !important; } }
-  main { max-width: 32rem; padding: 1.75rem; }
-  h1 { font-size: 1.7rem; line-height: 1.2; margin: 0 0 .6rem; }
+  /* The app's fonts (packed in at build time). If they're missing, the phone's own font is used. */
+  @font-face { font-family: 'Figtree'; src: url('fonts/Figtree.ttf') format('truetype'); font-weight: 300 900; font-display: swap; }
+  @font-face { font-family: 'Bricolage Grotesque'; src: url('fonts/BricolageGrotesque.ttf') format('truetype'); font-weight: 200 800; font-display: swap; }
+  *, *::before, *::after { box-sizing: border-box; }
+  :root { --bg: #F5F3EE; --ink: #1C2B2D; --ink2: #3E4B49; --card: #FFFFFF; --outline: #CFDDD8; --accent: #1F5F55;
+    --accent-text: #1F5F55; --soft: #E1EEEA; --red-bg: #F7E3DE; --red-ink: #8E3322; }
+  :root[data-theme="dark"] { --bg: #121C1D; --ink: #E6EEEC; --ink2: #C5D2CF; --card: #22302F; --outline: #3B4B49;
+    --accent: #2E7D6E; --accent-text: #7FD1A8; --soft: #1E3833; --red-bg: #3D2420; --red-ink: #F4A99B; color-scheme: dark; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; background: var(--bg);
+    color: var(--ink); font: 16.5px/1.5 Figtree, system-ui, sans-serif; }
+  main { max-width: 32rem; padding: 1.75rem 1.5rem; }
+  .mark { width: 56px; height: 56px; border-radius: 18px; background: var(--red-bg); color: var(--red-ink); display: grid;
+    place-items: center; margin-bottom: 1rem; }
+  h1 { font: 700 1.7rem/1.2 'Bricolage Grotesque', Figtree, sans-serif; margin: 0 0 .6rem; }
+  p { margin: 0 0 1.25rem; color: var(--ink2); }
+  code { background: var(--soft); color: var(--accent-text); padding: .1rem .45rem; border-radius: 7px; word-break: break-all;
+    font: 600 .92em/1.5 ui-monospace, Menlo, monospace; }
+  .actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+  button, .button { font: 700 1rem/1 Figtree, system-ui, sans-serif; border: 1px solid var(--outline); border-radius: 999px;
+    padding: .85rem 1.3rem; background: var(--card); color: var(--accent-text); text-decoration: none; display: inline-flex;
+    align-items: center; min-height: 48px; }
+  .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   /* Small screens (e.g. 2.8-inch phones): smaller text, so the buttons are on screen sooner. */
   @media (max-width: 340px) {
     main { padding: 1rem .8rem; }
+    .mark { width: 42px; height: 42px; border-radius: 13px; margin-bottom: .6rem; }
+    .mark svg { width: 20px; height: 20px; }
     h1 { font-size: 1.25rem; }
     body { font-size: .9rem; }
-    button, .button { padding: .55rem .9rem; }
+    p { margin-bottom: .9rem; }
+    button, .button { padding: .6rem 1rem; min-height: 42px; font-size: .92rem; }
   }
-  p { margin: 0 0 1rem; }
-  code { background: #d9e6e3; padding: .1rem .4rem; border-radius: 6px; word-break: break-all; }
-  .actions { display: flex; flex-wrap: wrap; gap: .6rem; }
-  button, .button { font: inherit; border: 0; border-radius: 10px; padding: .65rem 1.2rem; background: #d9e6e3;
-    color: #1f3a3d; text-decoration: none; display: inline-block; }
-  .primary { background: #1f3a3d; color: #fff; }
 </style>
 </head>
 <body>
 <main>
+  <div class="mark" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/></svg></div>
   <h1 id="title">This site isn't on the list</h1>
   <p id="msg"></p>
   <p class="actions">

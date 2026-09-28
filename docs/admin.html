@@ -4,6 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Whitelist admin</title>
+<script>
+  // Light or dark: inside the app, the app's choice (?theme=); on the web, the device's own setting (live).
+  (() => {
+    const asked = new URLSearchParams(location.search).get('theme');
+    const mq = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+    const set = () => { document.documentElement.dataset.theme = asked === 'dark' || asked === 'light' ? asked : (mq && mq.matches ? 'dark' : 'light'); };
+    set();
+    if (!asked && mq && mq.addEventListener) mq.addEventListener('change', set);
+  })();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -220,6 +230,38 @@
   }
   details.more > summary { cursor: pointer; font-weight: 600; color: var(--accent); padding: 6px 4px; list-style: none; }
   details.more > summary::-webkit-details-marker { display: none; }
+
+  /* ---------- Dark ----------
+     Inside the app: the app's choice (?theme=dark). On the web: the device's own setting. */
+  :root[data-theme="dark"] { --bg: #121C1D; --card: #22302F; --ink: #E6EEEC; --ink2: #C5D2CF; --muted: #9DB0AC; --faint: #6F817E;
+    --line: #2E3D3C; --line2: #2A3837; --field: #3B4B49; --accent: #2E7D6E; --accent-dark: #276B5E; --accent-soft: #1E3833;
+    --mint: #7FD1A8; --amber: #3A2F1A; --amber-line: #5A4724; --amber-ink: #F2C97A; --red: #F4A99B; --red-soft: #3D2420;
+    color-scheme: dark; }
+  :root[data-theme="dark"] a, :root[data-theme="dark"] .back, :root[data-theme="dark"] .done, :root[data-theme="dark"] details.more > summary, :root[data-theme="dark"] .chip.teal, :root[data-theme="dark"] .av, :root[data-theme="dark"] .pick[aria-pressed="true"],
+  :root[data-theme="dark"] #tabs button[aria-current="page"] { color: var(--mint); }
+  :root[data-theme="dark"] .btn.s, :root[data-theme="dark"] .lc, :root[data-theme="dark"] .inp, :root[data-theme="dark"] .stepper button, :root[data-theme="dark"] .tile.big, :root[data-theme="dark"] .tempcard button, :root[data-theme="dark"] .btn.dline, :root[data-theme="dark"] #tabs { background: var(--card); color: var(--ink); }
+  :root[data-theme="dark"] .btn.s { border-color: var(--field); color: var(--mint); }
+  :root[data-theme="dark"] .btn.dline { border-color: #6B3A33; color: var(--red); }
+  :root[data-theme="dark"] .lc[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  :root[data-theme="dark"] .pick[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--mint); }
+  :root[data-theme="dark"] .lc.add { background: transparent; border-color: #4A5957; }
+  :root[data-theme="dark"] .seg, :root[data-theme="dark"] .chip, :root[data-theme="dark"] .av.grey { background: #2A3837; }
+  :root[data-theme="dark"] .seg button[aria-pressed="true"] { background: #3A4B49; color: var(--ink); }
+  :root[data-theme="dark"] .chip.amber { color: var(--amber-ink); }
+  :root[data-theme="dark"] .chip.red { color: var(--red); }
+  :root[data-theme="dark"] .sw { background: #4A5957; }
+  :root[data-theme="dark"] .sw:checked { background: var(--accent); }
+  :root[data-theme="dark"] .wheel div { color: #6F817E; }
+  :root[data-theme="dark"] .wheel div.sel { color: var(--ink); }
+  :root[data-theme="dark"] .wheel-band { background: rgba(127, 209, 168, .10); }
+  :root[data-theme="dark"] #tabs { border-top-color: var(--line); }
+  :root[data-theme="dark"] button.row:hover, :root[data-theme="dark"] a.row:hover { background: #26342F; }
+  :root[data-theme="dark"] .tile { background: #1A2627; color: var(--mint) !important; }
+  :root[data-theme="dark"] .tempcard { color: var(--amber-ink); }
+  :root[data-theme="dark"] .tempcard button { border-color: #5A4724; color: var(--amber-ink); }
+  :root[data-theme="dark"] .quote { background: #1A2627; }
+  :root[data-theme="dark"] #savebar, :root[data-theme="dark"] #toast { background: #0B1415; }
+  :root[data-theme="dark"] .inp::placeholder { color: #6F817E; }
 </style>
 </head>
 <body>
@@ -795,7 +837,7 @@ function render() {
   else if (!S.connected || (S.sub && S.sub.name === 'connect')) node = connectScreen();
   else if (S.sub) node = ({ site: siteScreen, temp: tempScreen, block: blockScreen, nomedia: noMediaScreen, import: importScreen,
     listsettings: listSettingsScreen, phone: phoneScreen, archived: archivedScreen, neverblock: neverBlockScreen, pin: pinScreen,
-    approvalpin: approvalPinScreen })[S.sub.name]();
+    approvalpin: approvalPinScreen, embeds: embedsScreen })[S.sub.name]();
   else node = ({ requests: requestsScreen, sites: sitesScreen, phones: phonesScreen, settings: settingsScreen })[S.tab]();
   view.replaceChildren(node);
   const key = S.connected ? (S.sub ? 'sub:' + S.sub.name : 'tab:' + S.tab) : 'connect';
@@ -980,6 +1022,7 @@ async function loadInbox() {
 }
 function describe(req) {
   const site = req.domain || '?';
+  if (Array.isArray(req.frames) && req.frames.length) return { title: `Embedded content on ${site}`, page: null };
   const page = req.scope === 'page' && req.url ? pageKey(req.url) : null;
   if (req.action === 'block') {
     if (req.media === 'off') return { title: page ? `Turn off photos on one page of ${site}` : `Turn off photos on ${site}`, page };
@@ -1024,6 +1067,7 @@ function requestCard(issue) {
     confirm(`${req.domain} is on the ${filteredText}. It's blocked by that filter even if a list allows it.\n\nOpen it anyway?`);
   const anyway = filtered.length ? ' anyway' : '';
   const hops = Array.isArray(req.hops) ? req.hops : [];
+  const frames = Array.isArray(req.frames) ? req.frames : [];   // embedded content blocked on req.domain
   const card = h('article', { class: 'card', 'data-n': issue.number });
   const everyone = h('input', { type: 'checkbox', class: 'everyone' });
   const actions = h('div', { class: 'acts' });
@@ -1080,7 +1124,7 @@ function requestCard(issue) {
   } else {
     actions.append(h('button', { type: 'button', class: 'btn p grow approve', onclick: () => { if (confirmFiltered()) send('approve' + anyway, asked ? `Approved for ${fmtMin(asked)}` : 'Approved'); } },
       (asked ? `Approve for ${fmtMin(asked)}` : 'Approve') + (filtered.length ? ' anyway' : '')));
-    actions.append(h('button', { type: 'button', class: 'btn s while', onclick: openWhile }, asked ? 'Other time' : 'For a while'));
+    if (!frames.length) actions.append(h('button', { type: 'button', class: 'btn s while', onclick: openWhile }, asked ? 'Other time' : 'For a while'));
   }
   actions.append(h('button', { type: 'button', class: 'btn d deny', onclick: openDeny }, 'Deny'));
   card.append(...[
@@ -1090,6 +1134,8 @@ function requestCard(issue) {
     page ? h('p', { class: 'mono muted', style: 'margin:0' }, page) : null,
     allow && req.media === 'off' ? h('p', { class: 'line' }, icon('photooff', 16), 'Asked without photos and videos') : null,
     hops.length ? h('p', { class: 'line' }, icon('link', 16), `Goes through ${plural(hops.length, 'other address')} first, allowed too when you approve`) : null,
+    frames.length ? h('p', { class: 'line', style: 'align-items:flex-start' }, icon('link', 16),
+      h('span', null, 'Content from ', h('b', null, frames.join(', ')), ` (like a video or a map) was blocked on this site. Approving lets it show inside ${req.domain}'s pages only.`)) : null,
     req.unverified ? h('p', { class: 'warn' }, 'The phone couldn\'t find this site when asking. It may be a typo: check it before approving.') : null,
     filtered.length ? h('p', { class: 'warn', style: 'background:var(--red-soft);color:#7A2A1D' },
       `⚠️ On the ${filteredText}. The phone blocks it even if a list allows it, unless you approve it anyway.`) : null,
@@ -1167,6 +1213,8 @@ function sitesScreen() {
       moreRow('clock', 'Open something for a while', null, () => open({ name: 'temp' }), 'openTemp'),
       moreRow('ban', 'Always blocked', L.block.length, () => open({ name: 'block' }), 'openBlock'),
       moreRow('photooff', 'No photos on some pages', L.noMediaPages.length, () => open({ name: 'nomedia' }), 'openNoMedia'),
+      moreRow('link', 'Embedded content allowed', Object.values((L.extra && L.extra.embeds) || {}).reduce((n, v) => n + (Array.isArray(v) ? v.length : 0), 0),
+        () => open({ name: 'embeds' }), 'openEmbeds'),
       moreRow('table', 'Import from a spreadsheet', null, () => open({ name: 'import' }), 'openImport'),
       moreRow('gear', 'List settings', null, () => open({ name: 'listsettings' }), 'openListSettings')));
 }
@@ -1288,6 +1336,42 @@ function tempScreen() {
 }
 
 // ---------- always blocked / no photos on pages / never block (one address per line) ----------
+// Embedded content allowed on a site (the list's "embeds"): content from these sites may show inside that
+// site's pages, like a video or a map. Usually approved from a request; can be added or removed here.
+function embedsScreen() {
+  const L = S.L;
+  const E = (L.extra && L.extra.embeds && typeof L.extra.embeds === 'object') ? L.extra.embeds : {};
+  const save = next => {
+    const clean = {};
+    Object.keys(next).sort().forEach(k => { if (next[k] && next[k].length) clean[k] = [...new Set(next[k])].sort(); });
+    L.extra = { ...(L.extra || {}) };
+    if (Object.keys(clean).length) L.extra.embeds = clean; else delete L.extra.embeds;
+    markList(); render();
+  };
+  const rows = [];
+  Object.keys(E).sort().forEach(site => (E[site] || []).forEach(from => rows.push(
+    h('div', { class: 'row' }, h('span', { class: 'ic' }, icon('link', 20)),
+      h('span', { class: 'grow' }, h('span', { style: 'font-weight:600' }, from), h('span', { class: 'dom' }, `inside ${site}`)),
+      h('button', { type: 'button', class: 'btn d sm', 'aria-label': `Remove ${from} on ${site}`, onclick: () => {
+        const next = { ...E, [site]: (E[site] || []).filter(x => x !== from) };
+        save(next); say(`Removed ${from} on ${site}. Tap Save to apply it.`);
+      } }, 'Remove')))));
+  const site = h('input', { class: 'inp', id: 'emSite', placeholder: 'Site, e.g. bbc.co.uk', autocomplete: 'off' });
+  const from = h('input', { class: 'inp', id: 'emFrom', placeholder: 'Content from, e.g. player.vimeo.com', autocomplete: 'off' });
+  const add = () => {
+    const s1 = (normalize(site.value) || '').replace(/^(www|m)\./, ''), f1 = (normalize(from.value) || '').replace(/^www\./, '');
+    if (!s1 || !f1 || hasPath(s1) || hasPath(f1)) return say('Type two site addresses, e.g. bbc.co.uk and player.vimeo.com.', true);
+    save({ ...E, [s1]: [...(E[s1] || []), f1] }); say(`Content from ${f1} can show on ${s1} once you tap Save.`);
+  };
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Sites'),
+    screenTitle('Embedded content allowed', `In ${listLabel(S.current)}`),
+    h('p', { class: 'hint' }, 'Content from these sites (like a video or a map) may show inside the site named under it, but only there: the site itself doesn\'t open. ' +
+      'Phones ask for this when part of a page was blocked. For a site you trust completely, use its Allow content embedded from other sites switch instead.'),
+    rows.length ? h('div', { class: 'group' }, rows) : h('div', { class: 'card empty' }, h('b', null, 'Nothing yet'), 'Approved requests for blocked parts of pages appear here.'),
+    h('div', { class: 'card stack', style: 'gap:10px' }, h('b', null, 'Add one'), site, from,
+      h('button', { type: 'button', class: 'btn s', id: 'emAdd', onclick: add }, 'Add')));
+}
+
 function linesScreen({ backTo, title, sub, hint, value, placeholder, check, apply, id }) {
   const ta = h('textarea', { class: 'inp', id, spellcheck: 'false', autocapitalize: 'off', placeholder, value });
   const done = () => {

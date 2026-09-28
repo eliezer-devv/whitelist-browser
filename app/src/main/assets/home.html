@@ -5,50 +5,58 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Home</title>
 <style>
-  :root { --bg: #eef4f2; --ink: #1f3a3d; --muted: #5e7a76; --tile: #ffffff; --edge: #d5e3df; --accent: #1f6f63; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #162a2c; --ink: #e8f1ef; --muted: #9cb8b4; --tile: #20393c; --edge: #2b4c50; --accent: #7fd1a8; }
-  }
+  /* The app's fonts (packed in at build time). If they're missing, the phone's own font is used. */
+  @font-face { font-family: 'Figtree'; src: url('fonts/Figtree.ttf') format('truetype'); font-weight: 300 900; font-display: swap; }
+  @font-face { font-family: 'Bricolage Grotesque'; src: url('fonts/BricolageGrotesque.ttf') format('truetype'); font-weight: 200 800; font-display: swap; }
+  :root { --bg: #F5F3EE; --ink: #1C2B2D; --muted: #5B6B69; --tile: #FFFFFF; --edge: #E7E3DB; --accent: #1F5F55;
+    --accent-text: #1F5F55; --soft: #E1EEEA; }
+  /* Dark (the app says which: data-theme on <html>) */
+  :root[data-theme="dark"] { --bg: #121C1D; --ink: #E6EEEC; --muted: #9DB0AC; --tile: #22302F; --edge: #2E3D3C;
+    --accent: #2E7D6E; --accent-text: #7FD1A8; --soft: #1E3833; color-scheme: dark; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.4 system-ui, sans-serif;
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.4 Figtree, system-ui, sans-serif;
     -webkit-tap-highlight-color: transparent; }
-  main { max-width: 40rem; margin: 0 auto; padding: 2rem 1rem 3rem; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 1.4rem .5rem; }
-  a.tile { display: flex; flex-direction: column; align-items: center; gap: .45rem; text-decoration: none; color: inherit; }
-  .icon { width: 56px; height: 56px; border-radius: 16px; background: var(--tile); border: 1px solid var(--edge);
-    display: grid; place-items: center; }
-  .icon img { border-radius: 4px; }
-  .icon img { width: 32px; height: 32px; }
-  .icon .letter { font-size: 1.5rem; font-weight: 600; color: var(--accent); }
+  main { max-width: 40rem; margin: 0 auto; padding: 1.4rem 1rem 3rem; }
+  .hello { font: 700 1.35rem/1.2 'Bricolage Grotesque', Figtree, sans-serif; margin: 0 .25rem 1.1rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 1.3rem .5rem; }
+  a.tile { display: flex; flex-direction: column; align-items: center; gap: .5rem; text-decoration: none; color: inherit; }
+  .icon { position: relative; width: 60px; height: 60px; border-radius: 18px; background: var(--tile); border: 1px solid var(--edge);
+    display: grid; place-items: center; box-shadow: 0 1px 2px rgba(28, 43, 45, .06); }
+  .icon img { width: 32px; height: 32px; border-radius: 6px; }
+  .icon .letter { font: 700 1.5rem/1 'Bricolage Grotesque', Figtree, sans-serif; color: var(--accent-text); }
   a.tile:active .icon { transform: scale(.94); }
-  a.tile:focus-visible .icon { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .icon { position: relative; }
-  .badge { position: absolute; right: -6px; top: -6px; background: var(--accent); color: var(--bg); font-size: .62rem;
-    font-weight: 600; padding: 1px 5px; border-radius: 8px; white-space: nowrap; }
-  .name { font-size: .8rem; text-align: center; max-width: 100%; overflow: hidden; display: -webkit-box;
+  a.tile:focus-visible .icon { outline: 3px solid #7FD1A8; outline-offset: 2px; }
+  .badge { position: absolute; right: -8px; top: -7px; background: var(--accent); color: #fff; font-size: .64rem;
+    font-weight: 700; padding: 2px 6px; border-radius: 9px; white-space: nowrap; }
+  .name { font-size: .8rem; font-weight: 600; text-align: center; max-width: 100%; overflow: hidden; display: -webkit-box;
     -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
-  .empty { text-align: center; color: var(--muted); padding: 3rem 1rem; }
-  .empty h1 { color: var(--ink); font-size: 1.3rem; margin: 0 0 .4rem; }
+  .empty { text-align: center; color: var(--muted); padding: 3rem 1rem 1rem; }
+  .empty h1 { color: var(--ink); font: 700 1.35rem/1.25 'Bricolage Grotesque', Figtree, sans-serif; margin: 0 0 .4rem; }
+  .ask { display: flex; align-items: center; justify-content: center; gap: .45rem; margin: 2.2rem auto 0; width: max-content;
+    background: var(--accent); color: #fff; font-weight: 700; text-decoration: none; padding: .8rem 1.3rem;
+    border-radius: 999px; min-height: 48px; }
+  .ask svg { flex: none; }
+  .ask:active { filter: brightness(.9); }
   /* Small screens (e.g. 2.8-inch phones, about 240px wide): three smaller tiles per row. */
   @media (max-width: 340px) {
     main { padding: .9rem .5rem 2rem; }
+    .hello { display: none; }
     .grid { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: .9rem .25rem; }
-    .icon { width: 46px; height: 46px; border-radius: 13px; }
-    .icon img { width: 22px; height: 22px; }
+    .icon { width: 48px; height: 48px; border-radius: 14px; }
+    .icon img { width: 24px; height: 24px; }
     .icon .letter { font-size: 1.2rem; }
     .name { font-size: .72rem; }
-    .empty { padding: 1.5rem .5rem; }
+    .empty { padding: 1.5rem .5rem .5rem; }
+    .ask { margin-top: 1.4rem; padding: .7rem 1.1rem; font-size: .9rem; }
   }
-  .ask { display: block; margin: 2.5rem auto 0; width: max-content; color: var(--accent); font-weight: 600;
-    text-decoration: none; padding: .6rem 1rem; border-radius: 10px; }
-  .ask:active { background: var(--edge); }
 </style>
 </head>
 <body>
 <main>
+  <h1 class="hello" id="hello">Your sites</h1>
   <div class="grid" id="grid"></div>
   <div class="empty" id="empty" hidden><h1 id="emptyTitle"></h1><p id="emptyText"></p></div>
-  <a class="ask" id="ask" href="wlb://request?action=allow" hidden>Ask for a new site</a>
+  <a class="ask" id="ask" href="wlb://request?action=allow" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Ask for a new site</a>
 </main>
 <script>
   function tile(t) {
@@ -102,6 +110,7 @@
     }
     const empty = document.getElementById('empty');
     empty.hidden = d.tiles.length > 0;
+    document.getElementById('hello').hidden = !d.tiles.length;
     if (!d.tiles.length) {
       document.getElementById('emptyTitle').textContent =
         !d.loaded ? 'Loading the list of sites' : d.siteCount ? 'No sites on the home page' : 'No sites are allowed yet';

@@ -6,4 +6,9 @@
     <color name="muted">#9CB8B4</color>
     <color name="bad">#F07A6A</color>
     <color name="update">#7FD1A8</color>
+    <color name="accent">#1F5F55</color>
+    <color name="text">#1C2B2D</color>
+    <color name="paper">#F5F3EE</color>
+    <color name="accent_dark">#7FD1A8</color>
+    <color name="text_dark">#E6EEEC</color>
 </resources>
