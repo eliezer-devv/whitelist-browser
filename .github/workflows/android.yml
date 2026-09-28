@@ -65,6 +65,13 @@ jobs:
         run: |
           curl -fsSL --retry 3 https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt \
             -o app/src/main/assets/adblock-adguard.txt || echo "::warning::Ad list download failed; phones will fetch it themselves."
+          # The content filters' lists (adult, gambling, malware). If one fails, phones fetch it themselves.
+          get() { curl -fsSL --retry 3 "$1" -o "app/src/main/assets/$2" && echo "$2: $(grep -c '^||' "app/src/main/assets/$2") sites" \
+                  || echo "::warning::Couldn't download $2; phones will fetch it themselves."; }
+          get https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/nsfw.txt adult-hagezi.txt
+          get https://nsfw.oisd.nl/ adult-oisd.txt
+          get https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/gambling.txt gambling-hagezi.txt
+          get https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.mini.txt malware-hagezi.txt
 
       # Pack the lists new phones start with (admin page: "When a new phone is set up") into the app,
       # so a phone that has never been online can already use them. None ticked: no starter lists.
