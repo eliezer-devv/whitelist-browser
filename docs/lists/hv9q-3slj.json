@@ -10,6 +10,11 @@
       "domain": "givebutter.com",
       "name": "givebutter.com",
       "home": true
+    },
+    {
+      "domain": "jepqueens.com",
+      "name": "jepqueens.com",
+      "home": true
     }
   ],
   "block": []
