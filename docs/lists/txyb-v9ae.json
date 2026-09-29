@@ -26,13 +26,13 @@
     },
     {
       "domain": "accounts.google.com",
-      "name": "accounts.google.com",
-      "home": true
+      "home": false,
+      "name": "accounts.google.com"
     },
     {
       "domain": "accounts.youtube.com",
-      "name": "accounts.youtube.com",
       "home": false,
+      "name": "accounts.youtube.com",
       "pages": [
         "accounts.youtube.com/accounts/SetSID"
       ],
@@ -40,8 +40,8 @@
     },
     {
       "domain": "accounts.google.co.il",
-      "name": "accounts.google.co.il",
       "home": false,
+      "name": "accounts.google.co.il",
       "pages": [
         "accounts.google.co.il/accounts/SetSID"
       ],
@@ -50,10 +50,7 @@
   ],
   "block": [],
   "noMedia": [
-    "youtube.com",
-    "torahanytime.com"
-  ],
-  "noVideos": [
-    "torahanytime.com"
+    "torahanytime.com",
+    "youtube.com"
   ]
 }
