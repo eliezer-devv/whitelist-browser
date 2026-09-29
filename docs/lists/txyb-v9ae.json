@@ -23,6 +23,11 @@
       "domain": "torahanytime.com",
       "home": true,
       "name": "torahanytime.com"
+    },
+    {
+      "domain": "accounts.google.com",
+      "name": "accounts.google.com",
+      "home": true
     }
   ],
   "block": [],
