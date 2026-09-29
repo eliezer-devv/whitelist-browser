@@ -2,16 +2,6 @@
   "refreshMinutes": 5,
   "sites": [
     {
-      "domain": "wikipedia.org",
-      "home": true,
-      "name": "Wikipedia"
-    },
-    {
-      "domain": "khanacademy.org",
-      "home": true,
-      "name": "Khan Academy"
-    },
-    {
       "domain": "theyeshivaworld.com",
       "home": true,
       "name": "theyeshivaworld.com"
