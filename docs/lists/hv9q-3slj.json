@@ -17,5 +17,10 @@
       "home": true
     }
   ],
-  "block": []
+  "block": [],
+  "embeds": {
+    "theyeshivaworld.com": [
+      "torahanytime.com"
+    ]
+  }
 }
