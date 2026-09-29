@@ -2,6 +2,9 @@
   "embeds": {
     "accounts.google.com": [
       "accounts.youtube.com"
+    ],
+    "theyeshivaworld.com": [
+      "player.vimeo.com"
     ]
   },
   "refreshMinutes": 5,
