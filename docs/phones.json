@@ -11,7 +11,10 @@
       ]
     },
     "HV9Q-3SLJ": {
-      "lists": []
+      "lists": [
+        "public",
+        "hv9q-3slj"
+      ]
     }
   }
 }
