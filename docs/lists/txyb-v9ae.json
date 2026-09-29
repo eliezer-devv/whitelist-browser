@@ -28,6 +28,24 @@
       "domain": "accounts.google.com",
       "name": "accounts.google.com",
       "home": true
+    },
+    {
+      "domain": "accounts.youtube.com",
+      "name": "accounts.youtube.com",
+      "home": false,
+      "pages": [
+        "accounts.youtube.com/accounts/SetSID"
+      ],
+      "passThrough": true
+    },
+    {
+      "domain": "accounts.google.co.il",
+      "name": "accounts.google.co.il",
+      "home": false,
+      "pages": [
+        "accounts.google.co.il/accounts/SetSID"
+      ],
+      "passThrough": true
     }
   ],
   "block": [],
