@@ -1,27 +1,22 @@
 {
-  "refreshMinutes": 5,
-  "sites": [
-    {
-      "domain": "charidyextra.com",
-      "name": "charidyextra.com",
-      "home": true
-    },
-    {
-      "domain": "givebutter.com",
-      "name": "givebutter.com",
-      "home": true
-    },
-    {
-      "domain": "jepqueens.com",
-      "name": "jepqueens.com",
-      "home": true
-    }
-  ],
-  "block": [],
   "embeds": {
     "theyeshivaworld.com": [
       "player.vimeo.com",
       "torahanytime.com"
     ]
-  }
+  },
+  "refreshMinutes": 5,
+  "sites": [
+    {
+      "domain": "charidyextra.com",
+      "home": true,
+      "name": "charidyextra.com"
+    },
+    {
+      "domain": "givebutter.com",
+      "home": true,
+      "name": "givebutter.com"
+    }
+  ],
+  "block": []
 }
