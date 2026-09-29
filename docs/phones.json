@@ -6,15 +6,12 @@
   "devices": {
     "TXYB-V9AE": {
       "lists": [
-        "public",
-        "txyb-v9ae"
+        "txyb-v9ae",
+        "public"
       ]
     },
     "HV9Q-3SLJ": {
-      "lists": [
-        "public",
-        "hv9q-3slj"
-      ]
+      "lists": []
     }
   }
 }
