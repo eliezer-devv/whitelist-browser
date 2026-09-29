@@ -48,7 +48,9 @@
       "passThrough": true
     }
   ],
-  "block": [],
+  "block": [
+    "wikipedia.org"
+  ],
   "noMedia": [
     "torahanytime.com",
     "youtube.com"
