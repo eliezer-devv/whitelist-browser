@@ -5,6 +5,11 @@
       "domain": "charidyextra.com",
       "name": "charidyextra.com",
       "home": true
+    },
+    {
+      "domain": "givebutter.com",
+      "name": "givebutter.com",
+      "home": true
     }
   ],
   "block": []
