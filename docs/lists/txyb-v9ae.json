@@ -98,7 +98,6 @@
     }
   ],
   "noSound": [
-    "spotify.com",
-    "music.youtube.com"
+    "spotify.com"
   ]
 }
