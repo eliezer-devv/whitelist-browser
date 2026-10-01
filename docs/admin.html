@@ -89,6 +89,45 @@
   .btn.s { background: #fff; border-color: #C9D9D4; color: var(--accent); font-weight: 600; }
   .btn.d { background: transparent; color: var(--red); font-weight: 600; padding: 0 12px; }
   .btn.dline { background: #fff; border-color: #E5C3BB; color: var(--red); font-weight: 600; }
+  .btn.dd { background: var(--red); color: #fff; }
+  .suggs { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 30; background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; box-shadow: 0 10px 28px rgba(0, 0, 0, .14); overflow: hidden; max-height: 60vh; overflow-y: auto; }
+  .sugg { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--line2);
+    background: transparent; color: var(--ink); text-align: left; }
+  .sugg:last-child { border-bottom: 0; }
+  .sugg:hover, .sugg:focus-visible { background: var(--accent-soft); }
+  .searchbox { position: relative; }
+  .searchbox > svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+  .searchbox .inp { padding-left: 40px; }
+  .phonerow { min-height: 58px; gap: 10px; }
+  .phonerow .pname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .phonerow .plists { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .phonerow .chips { flex-wrap: nowrap; }
+  .kvs { gap: 0; }
+  .kv { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line2); }
+  .kv:last-child { border-bottom: 0; }
+  .kv .k { width: 8.5rem; flex: none; color: var(--muted); font-size: 13.5px; }
+  .kv .v { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; white-space: pre-line; }
+  .targets { display: flex; flex-direction: column; }
+  .targets .check { min-height: 44px; }
+  .pubtag { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+    background: #E3ECF5; color: #2F5D8A; white-space: nowrap; }
+  .kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+  .title h1 { overflow-wrap: anywhere; }         /* a long address in a title wraps instead of widening the page */
+  .kc { flex: 1 1 4.5rem; min-width: 0; min-height: 42px; border-radius: 11px; border: 1px solid var(--line); background: var(--card); color: var(--ink2); font-weight: 700; font-size: 14px; }
+  .kc[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  :root[data-theme="dark"] .pubtag { background: #2A3D52; color: #A9C8EA; }
+  /* Dialogs (in place of the browser's own pop-ups) */
+  .dlg-shade { position: fixed; inset: 0; z-index: 50; background: rgba(16, 28, 29, .48); display: grid; place-items: center; padding: 16px; }
+  .dlg { width: min(420px, 100%); max-height: calc(100dvh - 32px); overflow: auto; box-sizing: border-box; background: var(--bg); color: var(--ink);
+    border-radius: 22px; box-shadow: 0 14px 40px rgba(0, 0, 0, .25); padding: 22px 20px 18px; display: flex; flex-direction: column; gap: 14px; }
+  .dlg .dhead { display: flex; align-items: center; gap: 12px; }
+  .dlg .dicon { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; flex: none; background: var(--accent-soft); color: var(--accent); }
+  .dlg .dicon.red { background: var(--red-soft); color: var(--red); }
+  .dlg h2 { margin: 0; font-family: var(--display); font-size: 21px; line-height: 1.2; }
+  .dlg p { margin: 0; color: var(--ink2); line-height: 1.45; }
+  .dlg .dacts { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  .dlg .dacts .btn { min-width: 96px; }
   .btn.sm { min-height: 40px; padding: 0 14px; font-size: 14.5px; }
   .btn.wide { width: 100%; min-height: 50px; font-size: 16px; border-radius: 14px; }
   .btn:disabled { opacity: .5; cursor: default; }
@@ -318,6 +357,11 @@ const ICONS = {
   ext: '<path d="M14 5h5v5"/><path d="M19 5l-8 8"/><path d="M18 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4"/>',
   table: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 10h16M10 10v9"/>',
   ban: '<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>',
+  info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/>',
+  trash: '<path d="M5 7h14M10 7V5h4v2M7 7l1 13h8l1-13"/>',
+  list: '<path d="M8 6h12M8 12h12M8 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  download: '<path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/>',
   photooff: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3 3l18 18"/>',
   archive: '<rect x="3.5" y="4.5" width="17" height="4.5" rx="1"/><path d="M5 9v9.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
@@ -336,13 +380,17 @@ const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
 // A phone's own list is named after its ID ("k7m4-q2xp"), since list names are public: show the person's name.
 const ID_LIST = /^[2-9a-hj-np-z]{4}-[2-9a-hj-np-z]{4}$/;
 function listLabel(n) {
-  if (n === 'public') return 'Everyone';
+  if (n === 'public') return 'Default public list';
   if (ID_LIST.test(n) && typeof S !== 'undefined' && S.D) {
     const id = n.toUpperCase(), d = S.D.devices[id] || (S.D.archived || {})[id];
     if (d) return d.name || id;
   }
-  return cap(n);
+  return cap(n.replace(/-/g, ' '));        // year-5 -> Year 5 (the list keeps its name)
 }
+// Public lists: the default one ("public"), and any list marked public (devices.json "publicLists"). They can
+// be ticked on any request, and given to groups of phones. A phone's own list is never public.
+const isPublicList = n => n === 'public' || (typeof S !== 'undefined' && S.D && (S.D.publicLists || []).includes(n) && !ID_LIST.test(n));
+const publicListNames = () => S.lists.filter(isPublicList).sort((a, b) => (a === 'public' ? -1 : b === 'public' ? 1 : a.localeCompare(b)));
 const tileColor = s => ['#3C3489', '#B4492F', '#6A4FB0', '#1F5F55', '#185FA5', '#854F0B', '#8E3322'][[...String(s)].reduce((a, c) => a + c.charCodeAt(0), 0) % 7];
 
 // ---------- messages ----------
@@ -631,6 +679,34 @@ async function openList(name) {
   S.listDirty = false;
 }
 
+// ---------- dialogs (in place of the browser's own confirm / prompt pop-ups) ----------
+// uiDialog({ title, icon, red, text, body: [nodes], ok, cancel, danger, onOk }) -> Promise<boolean>.
+// onOk() may return false (e.g. a field isn't right) to keep the dialog open.
+function uiDialog({ title, icon: ic = 'info', red = false, text, body = [], ok = 'OK', cancel = 'Cancel', danger = false, onOk }) {
+  return new Promise(resolve => {
+    const before = document.activeElement;
+    const close = v => { shade.remove(); document.removeEventListener('keydown', keys, true); if (before && before.focus) before.focus(); resolve(v); };
+    const okBtn = h('button', { type: 'button', class: 'btn ' + (danger ? 'dd' : 'p'), id: 'dlgOk' }, ok);
+    const noBtn = cancel ? h('button', { type: 'button', class: 'btn d', id: 'dlgCancel', onclick: () => close(false) }, cancel) : null;
+    okBtn.onclick = () => { if (onOk && onOk() === false) return; close(true); };
+    const dlg = h('section', { class: 'dlg', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+      h('div', { class: 'dhead' }, h('span', { class: 'dicon' + (red ? ' red' : '') }, icon(ic, 22)), h('h2', null, title)),
+      text ? h('p', null, text) : null, ...body, h('div', { class: 'dacts' }, noBtn, okBtn));
+    const shade = h('div', { class: 'dlg-shade', onclick: e => { if (e.target === shade && cancel) close(false); } }, dlg);
+    const keys = e => {
+      if (e.key === 'Escape' && cancel) { e.preventDefault(); close(false); }
+      else if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'BUTTON') { e.preventDefault(); okBtn.click(); }
+    };
+    document.addEventListener('keydown', keys, true);
+    document.body.append(shade);
+    (dlg.querySelector('input, textarea') || okBtn).focus();
+  });
+}
+// A yes/no question.
+const uiConfirm = (title, text, ok = 'OK', opts = {}) => uiDialog({ title, text, ok, ...opts });
+// A question that throws something away.
+const uiConfirmDanger = (title, text, ok, ic = 'trash') => uiDialog({ title, text, ok, danger: true, red: true, icon: ic });
+
 // ---------- saving ----------
 async function saveAll() {
   $('saveBtn').disabled = true;
@@ -641,6 +717,7 @@ async function saveAll() {
       S.listSha = await putJson(listPathOf(S.current), out.data, S.listSha, `Update ${S.current} list from admin page`);
       S.L = toModel(out.data);
       S.listDirty = false;
+      S.otherLists = null;      // the search fetches the lists afresh
     }
     if (S.devDirty) {
       S.devicesSha = await putJson('devices.json', S.D, S.devicesSha, 'Update phones and settings');
@@ -652,7 +729,7 @@ async function saveAll() {
   finally { $('saveBtn').disabled = false; renderSaveBar(); }
 }
 async function undoAll() {
-  if (!confirm('Undo all unsaved changes?')) return;
+  if (!(await uiConfirm('Undo all unsaved changes?', 'Everything since your last Save goes back to how it was.', 'Undo', { icon: 'warn' }))) return;
   try {
     if (S.listDirty) await openList(S.current);
     if (S.devDirty) await loadDevices();
@@ -672,18 +749,31 @@ $('undoBtn').onclick = undoAll;
 window.addEventListener('beforeunload', e => { if (S.listDirty || S.devDirty) { e.preventDefault(); e.returnValue = ''; } });
 
 // ---------- lists ----------
+// Unsaved changes to the open list: ask before leaving them.
+const discardListChanges = async () => !S.listDirty ||
+  uiConfirmDanger('Discard unsaved changes?', `Your changes to ${listLabel(S.current)} haven't been saved.`, 'Discard', 'warn');
 async function switchList(name) {
   if (name === S.current) return;
-  if (S.listDirty && !confirm(`Discard unsaved changes to ${listLabel(S.current)}?`)) return;
+  if (!(await discardListChanges())) return;
   try { await openList(name); render(); } catch (e) { say(e.message, true); }
 }
-function newList() {
-  if (S.listDirty && !confirm(`Discard unsaved changes to ${listLabel(S.current)}?`)) return;
-  const raw = prompt('Name for the new list, e.g. year-5 or weekend.\n(List names can be seen publicly, so don\'t use full names.)', '');
-  if (raw === null) return;
-  const name = raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30);
-  if (!name) return say('Use letters and numbers for the list name.', true);
-  if (S.lists.includes(name)) return say(`There's already a list called ${name}.`, true);
+async function newList() {
+  if (!(await discardListChanges())) return;
+  const nameIn = h('input', { class: 'inp', id: 'nlName', type: 'text', placeholder: 'e.g. year-6', autocapitalize: 'off', spellcheck: 'false' });
+  const pub = h('input', { type: 'checkbox', id: 'nlPublic', checked: true });
+  let name = '';
+  const ok = await uiDialog({ title: 'New list', icon: 'list', ok: 'Create', body: [
+    h('div', { class: 'field' }, h('label', { for: 'nlName' }, 'Name'), nameIn,
+      h('span', { class: 'hint' }, 'List names can be seen publicly, so don\'t use full names.')),
+    h('label', { class: 'check' }, pub, h('span', null, h('b', null, 'Public list'), h('br'),
+      h('span', { class: 'muted small' }, 'Can be ticked on any request, and given to groups of phones')))],
+    onOk: () => {
+      name = nameIn.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30);
+      if (!name) { say('Use letters and numbers for the list name.', true); return false; }
+      if (S.lists.includes(name)) { say(`There's already a list called ${name}.`, true); return false; }
+    } });
+  if (!ok) return;
+  if (pub.checked) { S.D.publicLists = [...new Set([...(S.D.publicLists || []), name])]; markDevices(); }
   S.lists.push(name);
   S.current = name; S.listSha = null;
   S.L = toModel({ sites: [], block: [] });
@@ -695,11 +785,13 @@ async function deleteList() {
   const name = S.current;
   if (name === 'public') return;
   const users = phonesUsing(name);
-  if (!confirm(`Delete the ${listLabel(name)} list?` + (users.length ? ` ${users.join(', ')} will stop using it.` : ''))) return;
+  if (!(await uiConfirmDanger(`Delete the ${listLabel(name)} list?`,
+    (users.length ? `${users.join(', ')} will stop using it. ` : '') + 'Its sites are deleted with it.', 'Delete'))) return;
   try {
     if (S.listSha) await deleteFile(listPathOf(name), S.listSha, `Delete list ${name}`);
     Object.values(S.D.devices).forEach(d => { d.lists = (d.lists || []).filter(l => l !== name); if (d.requestsTo === name) delete d.requestsTo; });
     S.D.default = S.D.default.filter(l => l !== name);
+    if (S.D.publicLists) S.D.publicLists = S.D.publicLists.filter(l => l !== name);
     S.devicesSha = await putJson('devices.json', S.D, S.devicesSha, `Remove list ${name} from phones`);
     S.devDirty = false;
     S.lists = S.lists.filter(l => l !== name);
@@ -852,6 +944,39 @@ function exportCsv() {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+// Everything in one spreadsheet: a tab for each list, and a Phones tab (with all their details).
+const SITE_COLUMNS = ['domain', 'name', 'home page', 'tile opens', 'subdomains', 'only these pages', 'no photos', 'no videos', 'no sound'];
+const siteRow = s => [s.domain.trim(), s.name.trim(), s.home ? 'yes' : 'no', s.url.trim(), s.subdomains ? 'yes' : 'no', s.pages.join(' '),
+  s.noPhotos ? 'yes' : 'no', s.noVideos ? 'yes' : 'no', s.noSound ? 'yes' : 'no'];
+async function exportAll() {
+  try {
+    say('Making the spreadsheet…');
+    await loadSheetJs();
+    const wb = XLSX.utils.book_new();
+    const used = new Set();
+    const tabName = t => {                     // a sheet's name: up to 31 characters, none of []:*?/\, each different
+      let n = String(t).replace(/[\[\]:*?\/\\]/g, ' ').slice(0, 31).trim() || 'List', k = n, i = 2;
+      while (used.has(k.toLowerCase())) k = `${n.slice(0, 27)} (${i++})`;
+      used.add(k.toLowerCase()); return k;
+    };
+    for (const n of [...publicListNames(), ...S.lists.filter(x => !isPublicList(x))]) {
+      const L = n === S.current ? S.L : toModel(((await getJson(listPathOf(n))) || { data: { sites: [], block: [] } }).data);
+      const rows = [SITE_COLUMNS, ...L.sites.filter(x => x.domain.trim()).map(siteRow)];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), tabName(listLabel(n)));
+    }
+    const yn = v => v === 'on' ? 'on' : v === 'off' ? 'off' : 'usual';
+    const phones = [['first name', 'last name', 'name', 'phone ID', 'model', 'lists', 'blocked', 'ads', 'adult filter', 'gambling filter',
+      'malware filter', 'approval PIN', 'approvals go to', 'added']];
+    Object.entries(S.D.devices).forEach(([id, d]) => phones.push([d.first || '', d.last || '', d.name || '', id, d.model || '',
+      (d.blocked ? (d.blockedLists || []) : (d.lists || [])).map(listLabel).join(', '), d.blocked ? 'yes' : 'no',
+      yn(d.adblock), yn(d.adult), yn(d.gambling), yn(d.malware),
+      d.approvalPin === 'none' ? 'none' : d.approvalPin ? 'own PIN' : 'usual', d.requestsTo ? listLabel(d.requestsTo) : 'usual', d.registered || '']));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(phones), tabName('Phones'));
+    XLSX.writeFile(wb, `whitelist-browser-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    say('Downloaded: a tab for each list, and one for the phones.');
+  } catch (e) { say(`Couldn't make the spreadsheet: ${e.message}`, true); }
+}
+
 // ============================================================================================
 // Navigation
 // ============================================================================================
@@ -868,7 +993,7 @@ function render() {
   else if (!S.connected || (S.sub && S.sub.name === 'connect')) node = connectScreen();
   else if (S.sub) node = ({ site: siteScreen, temp: tempScreen, block: blockScreen, nomedia: noMediaScreen, import: importScreen,
     listsettings: listSettingsScreen, phone: phoneScreen, archived: archivedScreen, neverblock: neverBlockScreen, pin: pinScreen,
-    approvalpin: approvalPinScreen, embeds: embedsScreen })[S.sub.name]();
+    approvalpin: approvalPinScreen, embeds: embedsScreen, request: requestDetailsScreen })[S.sub.name]();
   else node = ({ requests: requestsScreen, sites: sitesScreen, phones: phonesScreen, settings: settingsScreen })[S.tab]();
   view.replaceChildren(node);
   const key = S.connected ? (S.sub ? 'sub:' + S.sub.name : 'tab:' + S.tab) : 'connect';
@@ -890,7 +1015,10 @@ function renderTabs() {
 $('markIcon').append(icon('check', 16, 2.4));
 $('connBtn').onclick = () => go('settings');
 $('closeBtn').hidden = !INAPP;
-$('closeBtn').onclick = () => { if ((S.listDirty || S.devDirty) && !confirm('Close without saving your changes?')) return; closeAdmin(); };
+$('closeBtn').onclick = async () => {
+  if ((S.listDirty || S.devDirty) && !(await uiConfirmDanger('Close without saving?', 'Your changes haven\'t been saved.', 'Close', 'warn'))) return;
+  closeAdmin();
+};
 
 // ============================================================================================
 // Connect
@@ -1105,22 +1233,51 @@ function requestCard(issue) {
   const FNAMES = { adult: 'adult content', gambling: 'gambling', malware: 'malware and scams' };
   const filtered = allow && req.media !== 'on' ? (Array.isArray(req.filtered) ? req.filtered : []).filter(f => FNAMES[f]) : [];
   const filteredText = filtered.map(f => FNAMES[f]).join(' and ') + (filtered.length > 1 ? ' lists' : ' list');
-  const confirmFiltered = () => !filtered.length ||
-    confirm(`${req.domain} is on the ${filteredText}. It's blocked by that filter even if a list allows it.\n\nOpen it anyway?`);
+  const confirmFiltered = async () => !filtered.length ||
+    uiConfirm(`${req.domain} is on the ${filteredText}`, 'It\'s blocked by that filter even if a list allows it. Open it anyway?', 'Open anyway', { icon: 'warn', red: true });
   const anyway = filtered.length ? ' anyway' : '';
   const hops = Array.isArray(req.hops) ? req.hops : [];
   const frames = Array.isArray(req.frames) ? req.frames : [];   // embedded content blocked on req.domain
   const card = h('article', { class: 'card', 'data-n': issue.number });
-  const everyone = h('input', { type: 'checkbox', class: 'everyone' });
+  // "Add it to": the phone's own list (or wherever its approvals usually go) and every public list.
+  const devId = String(req.device || '').toUpperCase(), dev = S.D.devices[devId];
+  const phoneLists = dev ? (dev.lists || []) : S.D.default;
+  const usual = dev ? (dev.requestsTo || S.D.requestsTo || 'own') : 'public';
+  const targets = [];
+  if (dev) targets.push({ word: 'own', name: devId.toLowerCase(), label: `${dev.name || devId} (own list)`, on: usual === 'own' || !S.lists.includes(usual) });
+  if (dev && usual !== 'own' && S.lists.includes(usual) && !isPublicList(usual)) targets.push({ word: usual, name: usual, label: listLabel(usual), on: true });
+  publicListNames().forEach(n => targets.push({ word: n, name: n, label: listLabel(n), pub: true, on: n === usual }));
+  targets.forEach((t, i) => { t.box = h('input', { type: 'checkbox', class: 'target', id: `tg${issue.number}-${i}`, checked: t.on }); });
+  const listWords = () => {
+    const ticked = targets.filter(t => t.box.checked);
+    if (!ticked.length) return '';
+    const words = ticked.map(t => t.word);
+    // The person who asked always gets it: if none of the ticked lists is one their phone uses, their own list too.
+    if (dev && !ticked.some(t => t.word === 'own' || phoneLists.includes(t.name))) words.push('own');
+    return ' ' + words.join(' ');
+  };
+  // "Without": photos, videos and/or sound (opening a site: as the phone asked, changeable here).
+  const KINDS = [['photos', 'Photos', 'photooff'], ['videos', 'Videos', 'photooff'], ['sound', 'Sound', 'photooff']];
+  const askedKinds = req.media === 'off' ? (String(req.mediaKind || '').split(',').filter(k => KINDS.some(x => x[0] === k)).length
+    ? String(req.mediaKind).split(',') : ['photos', 'videos', 'sound']) : [];
+  const without = new Set(askedKinds);
+  const kindChips = KINDS.map(([k, t]) => h('button', { type: 'button', class: 'kc', 'aria-pressed': String(without.has(k)),
+    onclick: e => { if (without.has(k)) without.delete(k); else without.add(k); e.currentTarget.setAttribute('aria-pressed', String(without.has(k))); } }, t));
+  const kindWords = () => without.size ? ' no ' + ['photos', 'videos', 'sound'].filter(k => without.has(k)).join(' and ')
+    : askedKinds.length ? ' with media' : '';
   const actions = h('div', { class: 'acts' });
   const panels = h('div');
   const send = async (text, label) => {
     actions.querySelectorAll('button').forEach(b => b.disabled = true);
     try {
-      const forEveryone = everyone.checked && text.startsWith('approve');   // not added to a deny reason
-      await reply(issue.number, text + (forEveryone ? ' public' : ''));
+      // Approving: the ticked lists, and without what's chosen (not added to a deny reason).
+      const approving = text.startsWith('approve');
+      const lw = approving ? listWords() : '';
+      const kw = approving && allow && req.media !== 'on' && !frames.length ? kindWords() : '';
+      await reply(issue.number, text + lw + kw);
       S.requests = S.requests.filter(i => i.number !== issue.number);
-      S.answered.unshift({ title, label: `${label}${forEveryone ? ', for every phone' : ''}` });
+      const where = approving ? targets.filter(t => t.box.checked).map(t => t.label) : [];
+      S.answered.unshift({ title, label: `${label}${where.length ? ', in ' + where.join(', ') : ''}` });
       render();
       say(`${label}. ${phone} will be told in a few minutes.`);
     } catch (e) {
@@ -1143,9 +1300,9 @@ function requestCard(issue) {
     panels.append(whilePanel);
     const picker = makePicker(host, asked || 30, setLabels);
     whilePanel._picker = picker;
-    goBtn.onclick = () => {
+    goBtn.onclick = async () => {
       const m = picker.get(); if (!m) return;
-      if (!confirmFiltered()) return;
+      if (!(await confirmFiltered())) return;
       send(`approve for ${Math.floor(m / 60) ? Math.floor(m / 60) + 'h' : ''}${m % 60 ? m % 60 + 'm' : ''}${use.checked ? ' use' : ''}${anyway}`,
         `Approved for ${fmtMin(m)}${use.checked ? ' of use' : ''}`);
     };
@@ -1164,7 +1321,7 @@ function requestCard(issue) {
   if (!allow) {
     actions.append(h('button', { type: 'button', class: 'btn p grow approve', onclick: () => send('approve', req.media === 'off' ? 'Photos turned off' : 'Blocked') }, req.media === 'off' ? 'Turn them off' : 'Block it'));
   } else {
-    actions.append(h('button', { type: 'button', class: 'btn p grow approve', onclick: () => { if (confirmFiltered()) send('approve' + anyway, asked ? `Approved for ${fmtMin(asked)}` : 'Approved'); } },
+    actions.append(h('button', { type: 'button', class: 'btn p grow approve', onclick: async () => { if (await confirmFiltered()) send('approve' + anyway, asked ? `Approved for ${fmtMin(asked)}` : 'Approved'); } },
       (asked ? `Approve for ${fmtMin(asked)}` : 'Approve') + (filtered.length ? ' anyway' : '')));
     if (!frames.length) actions.append(h('button', { type: 'button', class: 'btn s while', onclick: openWhile }, asked ? 'Other time' : 'Temporary'));
   }
@@ -1183,10 +1340,52 @@ function requestCard(issue) {
     filtered.length ? h('p', { class: 'warn', style: 'background:var(--red-soft);color:#7A2A1D' },
       `⚠️ On the ${filteredText}. The phone blocks it even if a list allows it, unless you approve it anyway.`) : null,
     note ? h('p', { class: 'quote' }, `“${note}”`) : null,
+    targets.length ? h('div', { class: 'flabel', style: 'margin-top:4px' }, 'Add it to') : null,
+    targets.length ? h('div', { class: 'targets' }, targets.map(t => h('label', { class: 'check', for: t.box.id }, t.box,
+      h('span', { class: 'grow' }, t.label), t.pub ? h('span', { class: 'pubtag' }, icon('globe', 13), 'Public') : null))) : null,
+    allow && req.media !== 'on' && !frames.length ? h('div', { class: 'flabel' }, 'Without') : null,
+    allow && req.media !== 'on' && !frames.length ? h('div', { class: 'kinds' }, kindChips) : null,
     actions, panels,
-    h('label', { class: 'check' }, everyone, 'Change it for every phone (the Everyone list)')].filter(Boolean)); // skip lines that don't apply
+    h('button', { type: 'button', class: 'btn d details', style: 'align-self:center', onclick: () => open({ name: 'request', number: issue.number }) },
+      'All the details', icon('chev', 16))].filter(Boolean)); // skip lines that don't apply
   return card;
 }
+// ---------- a request: all the details ----------
+function requestDetailsScreen() {
+  const issue = S.requests.find(i => i.number === S.sub.number);
+  if (!issue) return h('main', { class: 'stack' }, backLink('Requests'), h('div', { class: 'card empty' }, h('b', null, 'Already answered'), 'This request isn\'t waiting any more.'));
+  const req = marker(issue.body);
+  const { title, page } = describe(req);
+  const devId = String(req.device || '').toUpperCase(), dev = S.D.devices[devId];
+  const kv = (k, v) => v == null || v === '' ? null : h('div', { class: 'kv' }, h('span', { class: 'k' }, k), h('span', { class: 'v' }, v));
+  const asked = Number(req.minutes) || 0;
+  const hops = Array.isArray(req.hops) ? req.hops : [];
+  const hopText = hops.map(x => typeof x === 'string' ? x : `${x.url} (${x.scope === 'site' ? 'whole site' : 'this page'}${x.tile ? ', with a tile' : ', no tile'})`);
+  const when = new Date(issue.created_at);
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Requests'),
+    screenTitle(title, `Request #${issue.number}`),
+    h('section', { class: 'card kvs' },
+      kv('Phone', dev ? `${dev.name || devId} (${devId})${dev.model ? ', ' + dev.model : ''}` : (devId || 'Unknown')),
+      kv('Asked', when.toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })),
+      kv('What', req.action === 'block' ? (req.media === 'off' ? `Block only the ${mediaWords(req.mediaKind)}` : 'Block it')
+        : req.media === 'on' ? (req.item ? 'One photo or video' : `Turn ${mediaWords(req.mediaKind)} back on`)
+        : Array.isArray(req.frames) && req.frames.length ? 'Embedded content' : 'Open it'),
+      kv('Where', page ? `Just this page: ${page}` : `The whole site: ${req.domain || '?'}`),
+      kv('From the page', req.url && pageKey(req.url) !== page ? pageKey(req.url) : null),
+      kv('One item', req.item || null),
+      kv('Embedded from', Array.isArray(req.frames) && req.frames.length ? req.frames.join(', ') : null),
+      kv('Home page tile', req.action !== 'block' && req.media !== 'on' && !(req.frames || []).length ? (req.tile === false ? 'No' : 'Yes') : null),
+      kv('How long', asked ? `${fmtMin(asked)}${req.timeMode === 'use' ? ', time on the site only' : ', from when it\'s approved'}` : req.action === 'block' ? null : 'Always'),
+      kv('Without', req.media === 'off' ? mediaWords(req.mediaKind) : null),
+      kv('Note', field(issue.body, 'Note') ? `“${field(issue.body, 'Note')}”` : null),
+      kv('Passes through', hopText.length ? hopText.join('\n') : null),
+      kv('On a filter list', Array.isArray(req.filtered) && req.filtered.length ? req.filtered.join(', ') : null),
+      kv('Unverified', req.unverified ? 'The phone couldn\'t find this site when asking: check for a typo' : null)),
+    h('a', { class: 'btn s wide', href: issue.html_url, target: '_blank', rel: 'noopener' }, 'Open it on GitHub', icon('ext', 16)),
+    h('div', { class: 'flabel', style: 'margin-top:8px' }, 'Answer it'),
+    requestCard(issue));
+}
+
 function newPhoneCard(issue) {
   const r = marker(issue.body);
   const name = h('input', { class: 'inp', type: 'text', placeholder: 'Their name, e.g. Leo', 'aria-label': 'Name' });
@@ -1223,8 +1422,59 @@ function siteChips(s) {
   if (s.unfiltered) c.push(chip('Not filtered', 'red'));
   return c;
 }
+// ---------- search every list (Sites) ----------
+// The other lists are fetched once, the first time the search is used; the open list is always as on screen.
+async function searchIndex() {
+  // Fetched once; every search waits for the same fetch (so none sees it half done).
+  if (!S.otherLists) S.otherLists = (async () => {
+    const got = {};
+    await Promise.all(S.lists.map(async n => {
+      try { const f = await getJson(listPathOf(n)); got[n] = f ? toModel(f.data).sites : []; } catch { got[n] = []; }
+    }));
+    return got;
+  })();
+  const others = await S.otherLists;
+  const all = [];
+  for (const n of S.lists) (n === S.current ? S.L.sites : (others[n] || [])).forEach(x => all.push({ list: n, site: x }));
+  return all;
+}
+let suggestionTurn = 0;        // only the latest search's results are shown (an earlier one may finish later)
+async function showSiteSuggestions(q, box) {
+  const turn = ++suggestionTurn;
+  q = q.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '');
+  if (!q) { box.hidden = true; box.replaceChildren(); return; }
+  const all = await searchIndex();
+  if (turn !== suggestionTurn) return;
+  // One suggestion per site: its name, address, and which lists it's in.
+  const bySite = new Map();
+  all.filter(({ site }) => (site.name || '').toLowerCase().includes(q) || (site.domain || '').toLowerCase().includes(q)).forEach(({ list, site }) => {
+    const key = (site.domain || '').replace(/^www\./, '');
+    if (!bySite.has(key)) bySite.set(key, { site, lists: [] });
+    bySite.get(key).lists.push(list);
+  });
+  const hits = [...bySite.values()].slice(0, 8);
+  box.replaceChildren(...(hits.length ? hits.map(({ site, lists }) => h('button', { type: 'button', class: 'sugg', role: 'option', onclick: async () => {
+      const where = lists.includes(S.current) ? S.current : lists[0];
+      if (where !== S.current) { await switchList(where); if (S.current !== where) return; }
+      const i = S.L.sites.findIndex(x => (x.domain || '').replace(/^www\./, '') === (site.domain || '').replace(/^www\./, ''));
+      S.siteQuery = ''; if (i >= 0) open({ name: 'site', index: i });
+    } },
+    h('span', { class: 'tile', style: `color:${tileColor(site.domain)}` }, (site.name || site.domain || '?').replace(/^www\./, '')[0].toUpperCase()),
+    h('span', { class: 'grow', style: 'min-width:0;display:flex;flex-direction:column' }, h('b', null, site.name || site.domain),
+      h('span', { class: 'muted small' }, `${site.domain} · in ${lists.map(listLabel).join(', ')}`))))
+    : [h('div', { class: 'muted small', style: 'padding:12px 14px' }, 'No site matches.')]));
+  box.hidden = false;
+}
+
 function sitesScreen() {
   const L = S.L;
+  const suggBox = h('div', { class: 'suggs', role: 'listbox', id: 'siteSuggestions', hidden: true });
+  const siteSearch = h('div', { class: 'searchbox', style: 'position:relative' }, icon('search', 18),
+    h('input', { class: 'inp', id: 'siteSearch', type: 'search', placeholder: 'Search sites in every list', 'aria-label': 'Search sites in every list',
+      value: S.siteQuery || '', autocapitalize: 'off', spellcheck: 'false', autocomplete: 'off',
+      oninput: e => { S.siteQuery = e.target.value; showSiteSuggestions(S.siteQuery, suggBox); },
+      onblur: () => setTimeout(() => { suggBox.hidden = true; }, 200),
+      onfocus: e => { if (e.target.value.trim()) showSiteSuggestions(e.target.value, suggBox); } }), suggBox);
   const users = phonesUsing(S.current);
   const info = S.current === 'public'
     ? `The general list${users.length ? `, used by ${users.join(', ')}` : ''}.`
@@ -1244,8 +1494,10 @@ function sitesScreen() {
     count != null ? h('span', { class: 'count' }, count) : null, h('span', { class: 'chev' }, icon('chev', 18)));
   return h('main', { class: 'stack' },
     screenTitle('Sites', 'What each list lets phones open'),
+    siteSearch,
     h('div', { class: 'listchips', role: 'group', 'aria-label': 'Lists' },
-      S.lists.map(n => h('button', { type: 'button', class: 'lc', 'aria-pressed': String(n === S.current), onclick: () => switchList(n) }, listLabel(n))),
+      [...publicListNames(), ...S.lists.filter(n => !isPublicList(n))].map(n => h('button', { type: 'button', class: 'lc', 'aria-pressed': String(n === S.current),
+        title: isPublicList(n) ? 'Public list' : null, onclick: () => switchList(n) }, isPublicList(n) ? icon('globe', 14) : null, listLabel(n))),
       h('button', { type: 'button', class: 'lc add', 'aria-label': 'New list', onclick: newList }, icon('plus', 18))),
     h('p', { class: 'hint', style: 'margin-top:-4px' }, info),
     temps,
@@ -1306,8 +1558,8 @@ function siteScreen() {
     markList(); back();
     say(`${isNew ? 'Added' : 'Updated'} ${site.name || dom}. Tap Save to apply it.`);
   };
-  const remove = () => {
-    if (!confirm(`Remove ${d.name || d.domain} from ${listLabel(S.current)}?`)) return;
+  const remove = async () => {
+    if (!(await uiConfirmDanger(`Remove ${d.name || d.domain}?`, `It comes off ${listLabel(S.current)} when you tap Save.`, 'Remove'))) return;
     S.L.sites.splice(sub.index, 1); markList(); back();
   };
   const letter = (d.name || d.domain || '?').replace(/^www\./, '')[0] || '?';
@@ -1517,6 +1769,7 @@ function importScreen() {
     INAPP ? h('p', { class: 'hint' }, 'To download the list or a template, use the admin page on a computer.') :
     h('div', { class: 'acts', style: 'justify-content:center' },
       h('button', { type: 'button', class: 'btn s sm', onclick: exportCsv }, 'Download this list as a spreadsheet'),
+      h('button', { type: 'button', class: 'btn s sm', id: 'exportAll', onclick: exportAll }, 'Download everything (all lists and phones)'),
       h('a', { class: 'btn s sm', href: 'sites-template.csv', download: '' }, 'Download a template')));
 }
 
@@ -1529,7 +1782,16 @@ function listSettingsScreen() {
   const step = d => { L.refreshMinutes = Math.max(1, Math.min(1440, L.refreshMinutes + d)); val.textContent = `${L.refreshMinutes} min`; markList(); };
   const users = phonesUsing(S.current);
   return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Sites'),
-    screenTitle(`${listLabel(S.current)} list`, S.current === 'public' ? 'The general list, for every phone that uses it' : users.length ? `Used by ${users.join(', ')}` : 'Not given to any phone yet'),
+    screenTitle(S.current === 'public' ? listLabel(S.current) : `${listLabel(S.current)} list`,
+      S.current === 'public' ? 'The general list, for every phone that uses it' : users.length ? `Used by ${users.join(', ')}` : 'Not given to any phone yet'),
+    // Public: can be ticked on any request, and given to groups of phones (not for a phone's own list).
+    S.current !== 'public' && !ID_LIST.test(S.current) ? h('div', { class: 'group' }, h('label', { class: 'tg', for: 'lPublic' },
+      h('span', { class: 'grow' }, h('span', { class: 't' }, 'Public list'), h('span', { class: 's' }, 'Can be ticked on any request, and given to groups of phones')),
+      h('input', { type: 'checkbox', class: 'sw', id: 'lPublic', checked: isPublicList(S.current), onchange: e => {
+        const on = e.target.checked, set = new Set(S.D.publicLists || []);
+        if (on) set.add(S.current); else set.delete(S.current);
+        S.D.publicLists = [...set]; markDevices();
+      } }))) : null,
     h('div', { class: 'field' }, h('label', { for: 'lHome' }, 'Start page'), home, h('p', { class: 'hint', style: 'margin:0' }, 'The page the app opens on. Leave empty for the home page with tiles.')),
     h('div', { class: 'group' }, h('div', { class: 'tg', style: 'cursor:default' }, h('span', { class: 'grow' }, h('span', { class: 't' }, 'Phones check for changes every'),
       h('span', { class: 's' }, 'Lower is quicker, but uses a little more data')),
@@ -1544,37 +1806,72 @@ function phonesScreen() {
   const entries = Object.entries(S.D.devices)
     .sort(([, a], [, b]) => (!!a.name - !!b.name) || (a.name || '').localeCompare(b.name || ''));
   const archived = Object.keys(S.D.archived || {}).length;
+  // One compact row per phone: name and ID, its lists, and only the tags that matter.
   const cards = entries.map(([id, d]) => {
-    const adsChip = [d.adblock === 'off' ? chip('Ads allowed') : d.adblock === 'on' ? chip('Ads blocked') : null,
-      ...FILTERS.map(([key, title]) => d[key] === 'off' ? chip(`${title.replace('Block ', '').replace(/ and scams$/, '').replace(/^./, c => c.toUpperCase())} filter off`, 'amber') : null)];
-    return h('button', { type: 'button', class: 'card phonecard', 'data-id': id, style: 'text-align:left;width:100%', onclick: () => open({ name: 'phone', id }) },
-      h('div', { style: 'display:flex;align-items:center;gap:12px' },
-        h('span', { class: 'av big' }, (d.name || '?')[0].toUpperCase()),
-        h('span', { style: 'flex:1;min-width:0;display:flex;flex-direction:column;gap:2px' },
-          h('b', { style: 'font-size:17px' }, d.name || 'No name yet'),
-          h('span', { class: 'muted small' }, [d.model || 'Phone', d.registered ? `added ${new Date(d.registered).toLocaleDateString([], { day: 'numeric', month: 'short' })}` : null].filter(Boolean).join(' · '))),
-        h('span', { class: 'chev', style: 'color:var(--faint)' }, icon('chev', 18))),
-      h('div', { class: 'chips' }, d.blocked ? chip('Blocked', 'red', 'ban') : null, !d.name ? chip('Needs a name', 'amber') : null,
-        d.blocked ? null : (d.lists || []).length ? (d.lists || []).map(l => chip(listLabel(l), 'teal')) : chip('No lists'), adsChip));
+    const off = FILTERS.filter(([key]) => d[key] === 'off').map(([, title]) => title.replace('Block ', '').replace(/ and scams$/, ''));
+    const tags = [d.blocked ? chip('Blocked', 'red', 'ban') : null, !d.name ? chip('Needs a name', 'amber') : null,
+      d.pinLockedUntil && Date.parse(d.pinLockedUntil) > Date.now() ? chip('Locked PIN', 'amber') : null,
+      off.length ? chip(`${cap(off.join(', '))} off`, 'amber') : null].filter(Boolean);
+    const lists = d.blocked ? 'Blocked: no lists' : (d.lists || []).length
+      ? (d.lists || []).map(l => ID_LIST.test(l) && l === id.toLowerCase() ? 'own list' : listLabel(l)).join(', ') : 'No lists';
+    const find = [d.name, id, d.model, lists].join(' ').toLowerCase();
+    const q = (S.phoneQuery || '').trim().toLowerCase();
+    return h('button', { type: 'button', class: 'row phonerow phonecard', 'data-id': id, 'data-find': find, hidden: !!q && !find.includes(q), onclick: () => open({ name: 'phone', id }) },
+      h('span', { class: 'av' }, (d.name || '?')[0].toUpperCase()),
+      h('span', { class: 'grow', style: 'min-width:0;display:flex;flex-direction:column;gap:1px' },
+        h('span', { style: 'display:flex;gap:6px;align-items:baseline;min-width:0' }, h('b', { class: 'pname' }, d.name || 'No name yet'), h('span', { class: 'muted small' }, id)),
+        h('span', { class: 'muted small plists' }, lists)),
+      tags.length ? h('span', { class: 'chips', style: 'flex:none' }, tags) : null,
+      h('span', { class: 'chev' }, icon('chev', 18)));
   });
-  const addPhone = () => {
-    const raw = (prompt('The phone\'s ID, e.g. K7M4-Q2XP (on the phone: ⋮ → About this phone)', '') || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (!raw) return;
-    const id = raw.slice(0, 4) + '-' + raw.slice(4);
-    if (!/^[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/.test(id)) return say('A phone ID looks like K7M4-Q2XP.', true);
-    if (S.D.devices[id]) return say(`That phone is already listed as ${S.D.devices[id].name || id}.`, true);
-    S.D.devices[id] = { name: '', lists: [...S.D.default] };
+  // Search: by name, ID, model or list, as you type.
+  const search = h('div', { class: 'searchbox' }, icon('search', 18),
+    h('input', { class: 'inp', id: 'phoneSearch', type: 'search', placeholder: 'Search phones: name, ID or list', 'aria-label': 'Search phones',
+      value: S.phoneQuery || '', autocapitalize: 'off', spellcheck: 'false', oninput: e => {
+        S.phoneQuery = e.target.value;
+        const q = S.phoneQuery.trim().toLowerCase();
+        let shown = 0;
+        document.querySelectorAll('.phonerow').forEach(r => { const hit = !q || r.dataset.find.includes(q); r.hidden = !hit; if (hit) shown++; });
+        $('phoneNone').hidden = shown > 0;
+      } }));
+  const addPhone = async () => {
+    const idIn = h('input', { class: 'inp', id: 'apId', type: 'text', placeholder: 'e.g. K7M4-Q2XP', autocapitalize: 'characters', spellcheck: 'false' });
+    const firstIn = h('input', { class: 'inp', id: 'apFirst', type: 'text', placeholder: 'e.g. Emma' });
+    const lastIn = h('input', { class: 'inp', id: 'apLast', type: 'text', placeholder: 'e.g. Smith' });
+    let id = '';
+    const ok = await uiDialog({ title: 'Add a phone', icon: 'phone', ok: 'Add', body: [
+      h('div', { class: 'field' }, h('label', { for: 'apId' }, 'The phone\'s ID'), idIn,
+        h('span', { class: 'hint' }, 'On the phone: ⋮ → Settings → About this phone.')),
+      h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(8rem,1fr));gap:10px' },
+        h('div', { class: 'field' }, h('label', { for: 'apFirst' }, 'First name'), firstIn),
+        h('div', { class: 'field' }, h('label', { for: 'apLast' }, 'Last name'), lastIn))],
+      onOk: () => {
+        const raw = idIn.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        id = raw.slice(0, 4) + '-' + raw.slice(4);
+        if (!/^[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/.test(id)) { say('A phone ID looks like K7M4-Q2XP.', true); return false; }
+        if (S.D.devices[id]) { say(`That phone is already listed as ${S.D.devices[id].name || id}.`, true); return false; }
+      } });
+    if (!ok) return;
+    const first = firstIn.value.trim(), last = lastIn.value.trim();
+    S.D.devices[id] = { name: [first, last].filter(Boolean).join(' '), lists: [...S.D.default] };
+    if (first) S.D.devices[id].first = first;
+    if (last) S.D.devices[id].last = last;
     markDevices(); open({ name: 'phone', id });
   };
   return h('main', { class: 'stack' },
     screenTitle('Phones', `${plural(entries.length, 'phone')}${archived ? ` · ${archived} archived` : ''}`),
-    entries.length ? cards : h('div', { class: 'card empty' }, h('b', null, 'No phones yet'), 'Phones appear here when the app is opened on them.'),
+    entries.length ? search : null,
+    entries.length ? h('div', { class: 'group phones' }, cards) : h('div', { class: 'card empty' }, h('b', null, 'No phones yet'), 'Phones appear here when the app is opened on them.'),
+    h('p', { class: 'hint', id: 'phoneNone', hidden: !(S.phoneQuery || '').trim() || cards.some(c => !c.hidden) }, 'No phone matches.'),
     h('div', { class: 'group' },
       h('button', { type: 'button', class: 'row', id: 'openArchived', onclick: () => open({ name: 'archived' }) }, h('span', { class: 'ic' }, icon('archive', 20)),
         h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Archived phones')), h('span', { class: 'count' }, archived), h('span', { class: 'chev' }, icon('chev', 18))),
       h('button', { type: 'button', class: 'row', id: 'addPhone', onclick: addPhone }, h('span', { class: 'ic' }, icon('plus', 20)),
-        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Add a phone by its ID')), h('span', { class: 'chev' }, icon('chev', 18)))),
-    h('p', { class: 'hint' }, 'Each phone asks for the person\'s name when it\'s first opened, and gets its own list named after them. Tap a phone to rename it or change its lists.'));
+        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Add a phone by its ID')), h('span', { class: 'chev' }, icon('chev', 18))),
+      h('button', { type: 'button', class: 'row', id: 'exportPhones', onclick: exportAll }, h('span', { class: 'ic' }, icon('download', 20)),
+        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Download everything as a spreadsheet'),
+          h('span', { class: 'muted small', style: 'display:block' }, 'A tab for each list, and one for the phones')), h('span', { class: 'chev' }, icon('chev', 18)))),
+    h('p', { class: 'hint' }, 'Each phone asks for the person\'s first and last name when it\'s first opened. Its own list is named after its ID, and shown by the person\'s name. Tap a phone to rename it or change its lists.'));
 }
 function phoneScreen() {
   const id = S.sub.id;
@@ -1592,7 +1889,7 @@ function phoneScreen() {
       d.lists = on ? d.lists.filter(x => x !== l) : [...(d.lists || []), l]; markDevices(); render(); } }, on ? icon('check', 15, 2.4) : null, listLabel(l));
   }));
   const req = h('select', { class: 'inp', id: 'pReq', onchange: e => { if (e.target.value) d.requestsTo = e.target.value; else delete d.requestsTo; markDevices(); } },
-    [['', 'The usual (see Settings)'], ['own', 'Its own list'], ...S.lists.map(n => [n, `The ${listLabel(n)} list`])].map(([v, t]) => h('option', { value: v }, t)));
+    [['', 'The usual (see Settings)'], ['own', 'Its own list'], ...S.lists.map(n => [n, n === 'public' ? 'The default public list' : `The ${listLabel(n)} list`])].map(([v, t]) => h('option', { value: v }, t)));
   req.value = d.requestsTo === 'own' || S.lists.includes(d.requestsTo) ? d.requestsTo : '';
   const filterRows = FILTERS.map(([key, title]) => h('div', { class: 'frow' },
     h('span', { class: 'small', style: 'font-weight:600' }, title.replace('Block ', '').replace(/^./, c => c.toUpperCase())),
@@ -1612,8 +1909,9 @@ function phoneScreen() {
     [['', 'Usual'], ['on', 'Blocked'], ['off', 'Allowed']].map(([v, t]) => h('button', { type: 'button', 'aria-pressed': String((d.adblock || '') === v),
       onclick: () => { if (v) d.adblock = v; else delete d.adblock; markDevices(); render(); } }, t)));
   // Block: keep it listed but allow nothing. Its lists are set aside, and Unblock gives them back.
-  const block = () => {
-    if (!confirm(`Block ${d.name || id}? It won't be able to open any site until you unblock it.`)) return;
+  const block = async () => {
+    if (!(await uiConfirmDanger(`Block ${d.name || id}'s phone?`, 'It won\'t be able to open any site until you unblock it. ' +
+      'Its lists are kept, and come back exactly as they were when you unblock it.', 'Block', 'ban'))) return;
     d.blockedLists = [...new Set([...(d.lists || []), ...(d.blockedLists || [])])];
     d.lists = []; d.blocked = true;
     markDevices(); render();
@@ -1679,8 +1977,8 @@ async function archiveNow(id) {
   const d = S.D.devices[id], who = d.name || id;
   const own = allListsOf(d).filter(l => l !== 'public' && !S.D.default.includes(l) &&
     !Object.entries(S.D.devices).some(([other, o]) => other !== id && allListsOf(o).includes(l)));
-  if (!confirm(`Archive ${who} now?` + (own.length ? ` Its own list (${own.map(listLabel).join(', ')}) is archived with it.` : '') +
-    ' You can restore it from Archived phones.')) return;
+  if (!(await uiConfirm(`Archive ${who} now?`, (own.length ? `Its own list (${own.map(listLabel).join(', ')}) is archived with it. ` : '') +
+    'You can restore it from Archived phones.', 'Archive', { icon: 'archive' }))) return;
   try {
     const moved = [];
     for (const l of own) {
@@ -1698,7 +1996,8 @@ async function archiveNow(id) {
 async function bringBack(fromId, toId) {
   if (S.devDirty) return say('Save or undo your phone changes first.', true);
   const a = S.D.archived[fromId], to = S.D.devices[toId], who = a.name || fromId;
-  if (!confirm(fromId === toId ? `Restore ${who} with its lists?` : `Give ${who}'s name and lists to ${to.name || to.model || toId}?`)) return render();
+  if (!(await uiConfirm(fromId === toId ? `Restore ${who}?` : `Give ${who}'s name and lists to ${to.name || to.model || toId}?`,
+    fromId === toId ? 'It comes back with its lists.' : 'That phone takes over its name and lists.', fromId === toId ? 'Restore' : 'Give', { icon: 'archive' }))) return render();
   try {
     const renamed = {};
     for (const l of a.archivedLists || []) {
@@ -1724,7 +2023,7 @@ async function deleteArchived(id) {
   if (S.devDirty) return say('Save or undo your phone changes first.', true);
   const a = S.D.archived[id];
   const lost = a.archivedLists || [];
-  if (!confirm(`Delete ${a.name || id} for good?` + (lost.length ? ` Its archived lists (${lost.join(', ')}) are deleted too.` : ''))) return;
+  if (!(await uiConfirmDanger(`Delete ${a.name || id} for good?`, lost.length ? `Its archived lists (${lost.join(', ')}) are deleted too.` : 'This can\'t be undone.', 'Delete'))) return;
   try {
     for (const l of lost) {
       const f = await getRaw(`docs/lists/archive/${l}.json`);

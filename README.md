@@ -647,7 +647,8 @@ Only you can decide otherwise, either once or as a setting:
 | Reply | Changes |
 |---|---|
 | `approve` | The list named in the message: the phone's private list, unless you changed the setting in the admin page |
-| `approve public` | The public list, just this once, so every phone using it gets the change |
+| `approve public` | The default public list, just this once, so every phone using it gets the change |
+| `approve own year-5` | Any lists by name, several at once (`own` is the phone's own list). The admin page's **Add it to** tick boxes send this. |
 | `approve personal` | The phone's private list, even if the setting says public |
 | `approve emma` (any list name) | That list |
 | `name Emma` | Doesn't approve anything. It names the phone, and you can then reply `approve` or `deny`. |
@@ -802,16 +803,26 @@ nothing without your token.
 
 **Requests.** Open requests from phones, newest first, with a red count on the tab.
 - **Each request** is a card showing who asked, when, what for, their note, and any warnings (like a link that passes
-  through other addresses, or a typed site the phone couldn't find).
+  through other addresses, or a typed site the phone couldn't find). **All the details** (at the bottom of the card)
+  shows everything about it: the phone, when, what and where, the page it was asked from, the home tile, how long and
+  how time is counted, what to leave out, addresses it passes through, and a link to it on GitHub.
+- **Add it to:** tick boxes for where an approval goes: the phone's own list (or wherever its approvals usually go,
+  ticked to start with) and every **public list**. Tick several to add it to all of them. If none of the ticked lists
+  is one the asking phone uses, its own list is added too, so the person who asked always gets it.
+- **Without:** **Photos**, **Videos** and **Sound** chips, as the phone asked; change them before approving.
 - **Answering:**
   - **Approve**, which says e.g. **Approve for 30 min** when they asked for a time.
   - **Temporary** (or **Other time**): the hour and minute wheels, with *Only count time while it's open on the phone*.
   - **Deny**, with an optional reason shown on their phone.
-  - **Change it for every phone** (a tick box on each card) changes the Everyone list instead of theirs.
 - **Phones with no name yet** are listed below the requests, with a box to type one.
 - **After answering,** the request moves to **Answered just now**, and the phone is told within a few minutes.
 
-**Sites.** The lists are chips at the top: **Everyone** is the public list, then one per person or group, and **+** makes a new one.
+**Sites.** **Search sites in every list** at the top suggests sites as you type (name, address, and which lists it's
+in); tap one to open it. Under it, the lists are buttons: the **public lists** first (with a globe: **Default public
+list** and any list marked public), then each phone's own list, and **+** makes a new one (with a **Public list**
+switch).
+- **Public lists** can be ticked on any request, and given to groups of phones (like Year 5 or Staff). A list becomes
+  public (or stops being) in its **List settings**. A phone's own list is never public.
 - **Temporary access** shows first, in amber, with the time left and **End now**.
 - **Each site is one row,** with small tags: *On home page* / *No tile*, *1 page only*, *Exact address*, *No photos*, *No videos* or *No photos or videos*, *Added automatically*.
 - **Tapping a site** opens it with:
@@ -831,10 +842,14 @@ nothing without your token.
   - **Import from a spreadsheet:** paste cells or choose a `.csv`/`.xlsx` file. The columns are domain, name, home page,
     tile opens, subdomains, only these pages, no photos, no videos (an older single "no photos or videos" column also works, for both), and only the domain is needed. A header row is
     optional. **Add to the list** updates sites already on it, and **Replace the list** removes the rest. You can also
-    download the list as a spreadsheet, or a template.
-  - **List settings:** the start page, how often phones check for changes, and **Delete** (not for Everyone).
+    download the list as a spreadsheet, a template, or **everything**: one file with a tab for each list and a
+    **Phones** tab (names, IDs, models, lists, filters, approval PIN and more). That's also at the bottom of **Phones**.
+  - **List settings:** **Public list** (on or off), the start page, how often phones check for changes, and **Delete**
+    (not for the default public list).
 
-**Phones.** One card per phone: its name, model, lists and ad setting. Phones without a name are listed first.
+**Phones.** One compact row per phone: its name, ID and lists, and tags only when something needs attention
+(*Blocked*, *Needs a name*, *Locked PIN*, a filter switched off). **Search phones** filters by name, ID, model or list as
+you type. Phones without a name are listed first.
 - **Tapping a phone** lets you change its **Name**, the **Lists it uses** (tap to switch each on or off), where its
   approved requests go, and **Ads** (Usual / Blocked / Allowed). At the bottom:
   - **Block this phone:** it stays listed but can't open any site, for a lost phone or one that shouldn't be used.
@@ -844,7 +859,9 @@ nothing without your token.
     to **Archived phones** with its name and settings, and its own list goes into the archive with it. **Restore**
     brings both back. If it's still being used, it's restored by itself the next day.
 - **Archived phones:** **Restore**, **Give to another phone** (after a factory reset), or **Delete for good**.
-- **Add a phone by its ID:** found on the phone under ⋮ → About this phone.
+- **Add a phone by its ID:** found on the phone under ⋮ → Settings → About this phone, with its first and last name.
+- **Questions** (delete, block, archive, discard changes) appear as the page's own dialogs: **Escape** or **Cancel**
+  backs out.
 
 **Settings.**
 - **Filters:** **Block ads and trackers**, **Block adult content**, **Block gambling**, **Block malware and scams**, and **Never block these** (for all of them).
