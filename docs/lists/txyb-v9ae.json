@@ -45,7 +45,7 @@
     {
       "domain": "jepqueens.com",
       "name": "jepqueens.com",
-      "home": false
+      "home": true
     }
   ],
   "block": [
@@ -57,6 +57,9 @@
     "youtube.com"
   ],
   "noPhotos": [
+    "jepqueens.com"
+  ],
+  "noVideos": [
     "jepqueens.com"
   ]
 }
