@@ -482,8 +482,13 @@ object Ui {
             if (sub != null) words.addView(Ui.text(ctx, sub, 14f, Ui.MUTED))
             row.addView(words, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             add(row)
+            titleView = row
             return this
         }
+
+        /** The heading, once [title] has added it (e.g. to notice taps on it). */
+        var titleView: View? = null
+            private set
 
         /** Adds a view to the content, with the usual space above it. */
         fun add(v: View, gapDp: Int = 12): AppDialog {

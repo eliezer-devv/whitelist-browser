@@ -434,18 +434,20 @@ admin page, and without signing in to the admin page on their phone.
 - **Set a PIN** on the admin page: **Settings** → **Approval PIN** → **PIN for all phones**, or per phone under
   **Phones** → the phone → **Approval PIN**: **Usual** (the all-phones PIN), **Own PIN**, or **None**. Use 4 to 8
   digits (6 is best).
-- **On the phone,** the request screen then shows **Approve here with a PIN**. Tick it, type the PIN and tap **Send**.
-  It approves exactly what was asked, including a time limit or "without photos", and the site opens by itself
-  within a minute or two. You still get the notification, marked *"Approved on the phone with the approval PIN"*.
-- **It can't open anything on the adult, gambling or malware lists.** The phone doesn't offer the PIN for those sites,
-  and if a PIN arrives with such a request anyway, it's ignored and the request waits for you. Only you can open those,
-  with **Approve anyway**.
+- **On the phone, it's hidden:** the person asks as usual, then you open **⋮** → **My requests** and **tap its title
+  7 times**. That's **approval mode**: tick one or more waiting requests, tap **Approve** or **Deny**, and type the PIN
+  once for all of them. **Exit** (or closing My requests) leaves approval mode.
+- **Approve** gives each request exactly what was asked, including a time limit or "without photos", and the site
+  opens by itself within a minute or two. **Deny** tells the person *"Denied with the approval PIN"*. You still get the
+  notifications, marked *"Approved (or Denied) on the phone with the approval PIN"*.
+- **It can't open anything on the adult, gambling or malware lists.** Such a request keeps waiting for you, and the
+  phone says so. Only you can open those, with **Approve anyway**.
 - **It only approves requests.** It can't open the admin page or change anything else.
 - **Safety:**
-  - **The phone never checks or keeps the PIN.** GitHub checks it, then deletes it from the request.
+  - **The phone never checks or keeps the PIN.** It sends it in a hidden note on each request; GitHub deletes the note
+    at once, then checks the PIN.
   - **Only a scrambled version is stored,** in the private repository. Phones only learn whether a PIN is set.
-  - **A wrong PIN** turns the request into a normal one waiting for you, and the phone says *"Wrong PIN, so your request
-    was sent for approval instead"*.
+  - **A wrong PIN** leaves the requests waiting for you, and the phone says how many tries are left.
   - **After 5 wrong PINs,** PIN approvals lock on that phone for 24 hours, and you're told. Unlock it early under
     **Phones** → the phone → **Unlock**.
   - **Choose a PIN nobody can guess,** and don't type it where it can be watched.

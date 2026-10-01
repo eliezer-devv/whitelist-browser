@@ -74,6 +74,16 @@ object MyRequests {
         write(ctx, items)
     }
 
+    /** A PIN was sent for these waiting requests: they say so until GitHub answers. */
+    @Synchronized fun markCheckingPin(ctx: Context, numbers: Collection<Int>) {
+        val items = read(ctx)
+        for (i in 0 until items.length()) {
+            val o = items.getJSONObject(i)
+            if (o.optInt("number") in numbers && o.optString("status", "waiting") == "waiting") o.put("message", "Checking the PIN…")
+        }
+        write(ctx, items)
+    }
+
     /** A waiting request was withdrawn on the phone ("Cancel request"). */
     @Synchronized fun markCancelled(ctx: Context, asked: Long) {
         val items = read(ctx)

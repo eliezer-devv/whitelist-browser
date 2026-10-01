@@ -304,6 +304,17 @@ object Requests {
         return true
     }
 
+    /**
+     * Approves or denies a waiting request (GitHub issue [number]) with the approval PIN ("My requests",
+     * approval mode). The PIN goes in a hidden note, which GitHub deletes at once, then checks the PIN.
+     * Blocking. True if the note was sent.
+     */
+    fun answerWithPin(number: Int, pin: String, approve: Boolean): Boolean {
+        if (number <= 0) return false
+        val note = JSONObject().put("pin", pin).put("action", if (approve) "approve" else "deny")
+        return call("POST", "issues/$number/comments", JSONObject().put("body", "🔑 <!-- whitelist-pin $note -->")) in 200..299
+    }
+
     private fun call(method: String, path: String, payload: JSONObject): Int {
         val conn = open(method, path)
         try {

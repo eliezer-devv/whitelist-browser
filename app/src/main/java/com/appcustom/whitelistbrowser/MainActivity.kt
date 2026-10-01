@@ -1259,16 +1259,8 @@ class MainActivity : Activity() {
         d.add(Ui.label(this, "Why? (optional)"))
         d.add(noteField, 6)
 
-        // Approve here with a PIN: when whoever manages this browser is with them. Only offered if a PIN is
-        // set for this phone. The phone doesn't check it: GitHub does, then removes it from the request.
-        if (Whitelist.state.pinApproval && filteredNow.isEmpty()) {   // the PIN can't open filtered sites
-            d.add(pinRow)
-            d.add(pinField, 8)
-            pinSwitch.setOnCheckedChangeListener { _, on ->
-                pinField.visibility = if (on) View.VISIBLE else View.GONE
-                if (on) pinField.requestFocus()
-            }
-        }
+        // (Approving with the PIN is in "My requests" now: tap its title 7 times. The switch isn't shown here,
+        // so no PIN is sent with a new request.)
 
         d.button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
         sendButton = d.button(if (filteredNow.isNotEmpty()) "Ask anyway" else "Send", Ui.Kind.PRIMARY) {
@@ -1508,7 +1500,7 @@ class MainActivity : Activity() {
      * archive instead, where swiping right puts one back and left deletes it. Waiting and not-yet-sent
      * requests always stay in the main list.
      */
-    private fun showMyRequests(archive: Boolean = false) {
+    private fun showMyRequests(archive: Boolean = false, approving: Boolean = false) {
         val d = Ui.AppDialog(this, sheet = true)
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val gap = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = Ui.dp(this@MainActivity, 8) }
@@ -1519,10 +1511,92 @@ class MainActivity : Activity() {
             val sent = MyRequests.all(this).filter { !it.archived }
             var archiveButton: Button? = null
             d.title("My requests")
-            if (notSent.isEmpty() && sent.isEmpty()) {
+            // Tapping the title 7 times (within a few seconds): approval mode, to approve or deny with the PIN.
+            var taps = 0
+            var firstTap = 0L
+            d.titleView?.setOnClickListener {
+                val now = System.currentTimeMillis()
+                if (now - firstTap > 4000) { firstTap = now; taps = 0 }
+                if (++taps >= 7) {
+                    taps = 0
+                    when {
+                        approving -> Unit
+                        !Whitelist.state.pinApproval -> toast("No approval PIN is set for this phone")
+                        else -> { d.dismiss(); showMyRequests(approving = true) }
+                    }
+                }
+            }
+            // Approval mode: the waiting requests ticked, then approved or denied with the PIN (typed once).
+            val picked = LinkedHashSet<MyRequests.Item>()
+            var approveButton: Button? = null
+            var denyButton: Button? = null
+            fun updateCounts() {
+                val n = picked.size
+                approveButton?.text = if (n > 0) "Approve ($n)" else "Approve"
+                denyButton?.text = if (n > 0) "Deny ($n)" else "Deny"
+            }
+            if (approving) {
+                val banner = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    background = Ui.rounded(Ui.AMBER_BG, Ui.dp(this@MainActivity, 14).toFloat())
+                    val p = Ui.dp(this@MainActivity, 12)
+                    setPadding(p, Ui.dp(this@MainActivity, 8), Ui.dp(this@MainActivity, 6), Ui.dp(this@MainActivity, 8))
+                }
+                banner.addView(Ui.text(this, "Approval mode. Tick requests, then approve or deny them with the PIN.", 13.5f, Ui.AMBER_INK, "bold"),
+                    LinearLayout.LayoutParams(0, -2, 1f))
+                banner.addView(Button(this).apply {
+                    text = "Exit"
+                    isAllCaps = false
+                    setTextColor(Ui.AMBER_INK)
+                    typeface = Ui.boldFace
+                    background = null
+                    minWidth = Ui.dp(this@MainActivity, 56); minimumWidth = Ui.dp(this@MainActivity, 56)
+                    setOnClickListener { d.dismiss(); showMyRequests() }
+                })
+                d.add(banner, 6)
+            } else if (notSent.isEmpty() && sent.isEmpty()) {
                 d.add(Ui.text(this, "Nothing here right now.", 15f, Ui.MUTED))
             } else {
                 d.add(Ui.text(this, "Swipe a request right to archive it, or left to delete it (or cancel it, if it's still waiting).", 13f, Ui.MUTED), 4)
+            }
+            if (approving) {
+                // Only waiting requests can be ticked; the rest are shown faded.
+                notSent.forEach { (_, summary, created) ->
+                    list.addView(requestRow("notsent", summary, "Not sent yet.", "Asked ${shortDate(created)}", card = true).apply { alpha = 0.5f },
+                        LinearLayout.LayoutParams(gap))
+                }
+                sent.forEach { item ->
+                    val row = requestRow(item.status, item.summary, item.message, whenText(item), card = true)
+                    if (item.status != "waiting") { row.alpha = 0.5f; list.addView(row, LinearLayout.LayoutParams(gap)); return@forEach }
+                    val wrap = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
+                    val box = android.widget.CheckBox(this).apply {
+                        buttonTintList = android.content.res.ColorStateList.valueOf(Ui.ACCENT)
+                        contentDescription = "Choose ${item.summary}"
+                        minWidth = Ui.dp(this@MainActivity, 44); minimumWidth = Ui.dp(this@MainActivity, 44)
+                    }
+                    val r = Ui.dp(this, 16).toFloat()
+                    box.setOnCheckedChangeListener { _, on ->
+                        if (on) picked += item else picked -= item
+                        row.background = if (on) Ui.rounded(Ui.CARD, r, Ui.ACCENT, Ui.dp(this, 2)) else Ui.rounded(Ui.CARD, r, Ui.LINE, Ui.dp(this, 1))
+                        updateCounts()
+                    }
+                    row.setOnClickListener { box.toggle() }
+                    wrap.addView(box)
+                    wrap.addView(row, LinearLayout.LayoutParams(0, -2, 1f))
+                    list.addView(wrap, LinearLayout.LayoutParams(gap))
+                }
+                d.add(list, 8)
+                denyButton = d.button("Deny", Ui.Kind.DANGER) {
+                    if (picked.isEmpty()) toast("Tick the requests first")
+                    else answerWithPin(picked.toList(), approve = false) { d.dismiss(); showMyRequests(approving = true) }
+                }
+                approveButton = d.button("Approve", Ui.Kind.PRIMARY) {
+                    if (picked.isEmpty()) toast("Tick the requests first")
+                    else answerWithPin(picked.toList(), approve = true) { d.dismiss(); showMyRequests(approving = true) }
+                }
+                d.show()
+                return
             }
             notSent.forEach { (id, summary, created) ->
                 val row = requestRow("notsent", summary, "No connection: it's sent when the phone is online.", "Asked ${shortDate(created)}", card = true)
@@ -1598,6 +1672,43 @@ class MainActivity : Activity() {
             d.button("Back", Ui.Kind.PRIMARY) { it.dismiss(); showMyRequests() }
         }
         d.show()
+    }
+
+    /**
+     * Approval mode: asks for the approval PIN once, then sends it for each of [items] (as a hidden note, which
+     * GitHub deletes at once). GitHub checks it, then answers each as asked ([approve]), or denies it.
+     */
+    private fun answerWithPin(items: List<MyRequests.Item>, approve: Boolean, after: () -> Unit) {
+        val n = items.size
+        val field = Ui.field(this, "Approval PIN",
+            type = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD)
+        Ui.AppDialog(this, sheet = false).apply {
+            title(if (approve) "Approve $n request${if (n == 1) "" else "s"}?" else "Deny $n request${if (n == 1) "" else "s"}?",
+                icon = R.drawable.ic_d_pin, iconBg = if (approve) Ui.SOFT else Ui.RED_BG, iconFg = if (approve) Ui.ACCENT_TEXT else Ui.RED_INK)
+            add(Ui.text(this@MainActivity, items.joinToString("\n") { "• " + it.summary }, 14.5f, Ui.INK2))
+            add(Ui.label(this@MainActivity, "Approval PIN"))
+            add(field, 6)
+            add(Ui.text(this@MainActivity, (if (approve) "Each gets what it asked for." else "Each is told: Denied with the approval PIN.") +
+                " GitHub checks the PIN, then removes it.", 13f, Ui.MUTED))
+            button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
+            button(if (approve) "Approve" else "Deny", if (approve) Ui.Kind.PRIMARY else Ui.Kind.DANGER) { dlg ->
+                val pin = field.text.toString().trim()
+                if (!Regex("^\\d{4,8}$").matches(pin)) { field.error = "The PIN is 4 to 8 digits"; return@button }
+                dlg.dismiss()
+                toast("Sending")
+                updateIo.execute {
+                    val sent = items.filter { runCatching { Requests.answerWithPin(it.number, pin, approve) }.getOrDefault(false) }
+                    main.post {
+                        if (isDestroyed) return@post
+                        if (sent.isEmpty()) { toast("Couldn't send it (no internet?). Try again later."); return@post }
+                        MyRequests.markCheckingPin(this@MainActivity, sent.map { it.number })
+                        toast(if (sent.size < n) "Sent ${sent.size} of $n. Answers arrive within a minute." else "Sent. Answers arrive within a minute.")
+                        fastChecks(10)
+                        after()
+                    }
+                }
+            }
+        }.show()
     }
 
     /** What swiping a row one way does: its word and icon on the trail, the trail's colour, and the action. */
@@ -1957,11 +2068,7 @@ class MainActivity : Activity() {
         val (pinRow, pinSwitch) = Ui.switchRow(this, "Approve here with a PIN", "If whoever manages this browser is with you")
         val pinField = Ui.field(this, "Approval PIN",
             type = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD).apply { visibility = View.GONE }
-        if (Whitelist.state.pinApproval) {
-            d.add(pinRow)
-            d.add(pinField, 8)
-            pinSwitch.setOnCheckedChangeListener { _, on -> pinField.visibility = if (on) View.VISIBLE else View.GONE }
-        }
+        // (Approving with the PIN is in "My requests" now; the switch isn't shown here.)
         d.button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
         d.button("Send", Ui.Kind.PRIMARY) {
             val pin = if (Whitelist.state.pinApproval && pinSwitch.isChecked) pinField.text.toString().trim() else null

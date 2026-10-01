@@ -149,13 +149,14 @@
   function start(e) {
     const a = e.target.closest('a.tile');
     if (!a || document.querySelector('.menu')) return;
+    closeMenu();
     const p = point(e);
     press = { a, x: p.x, y: p.y, held: false, dragging: false, ghost: null };
     press.timer = setTimeout(() => {
       if (!press) return;
       press.held = true;
-      a.classList.add('held');
       if (navigator.vibrate) navigator.vibrate(15);
+      showMenu(a);                     // straight away, while the finger is still down
     }, HOLD_MS);
   }
   function move(e) {
@@ -165,6 +166,7 @@
     if (!press.held) { if (moved > MOVE) cancel(); return; }      // a swipe before the hold: it's a scroll
     if (e.cancelable) e.preventDefault();                          // held: the page doesn't scroll
     if (!press.dragging && moved > MOVE) {
+      closeMenu();                     // moving: it's a drag, not the menu
       press.dragging = true;
       press.ghost = press.a.cloneNode(true);
       press.ghost.className = 'ghost';
@@ -195,9 +197,7 @@
       const keys = [...grid.children].map(x => x.dataset.domain).filter(Boolean);
       location.href = 'wlb://tile-order?keys=' + encodeURIComponent(keys.join(','));
     } else if (p.held) {
-      p.a.classList.remove('held');
-      swallowClick = true;
-      showMenu(p.a);
+      swallowClick = true;             // let go without moving: the menu stays open
     }
     if (e && (p.held || p.dragging) && e.cancelable) e.preventDefault();
   }
@@ -251,10 +251,10 @@
     document.body.append(shade, menu);
     const below = r.bottom + 8, h = menu.offsetHeight;
     menu.style.top = Math.max(8, below + h > window.innerHeight - 8 ? r.top - h - 8 : below) + 'px';
-    const close = () => { shade.remove(); menu.remove(); };
-    shade.addEventListener('click', close);
-    menu.addEventListener('click', close);
+    shade.addEventListener('click', closeMenu);
+    menu.addEventListener('click', closeMenu);
   }
+  function closeMenu() { document.querySelectorAll('.shade, .menu').forEach(x => x.remove()); }
 
   function load() {
     fetch('sites.json', { cache: 'no-store' }).then(r => r.json()).then(render).catch(() => {});
