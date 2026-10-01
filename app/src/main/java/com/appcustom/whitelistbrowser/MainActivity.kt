@@ -270,7 +270,11 @@ class MainActivity : Activity() {
                         if (request.isForMainFrame) openExternal(url, userTapped = request.hasGesture())
                         return true
                     }
-                    ExternalLinks.Kind.FORBIDDEN -> return true
+                    ExternalLinks.Kind.FORBIDDEN -> {
+                        // file:, content:, chrome:, view-source: links can't be opened here: say why nothing happened.
+                        if (request.isForMainFrame && request.hasGesture()) toast("This kind of link can't be opened in this browser.")
+                        return true
+                    }
                     ExternalLinks.Kind.WEB -> Unit
                 }
                 if (request.isForMainFrame) {
@@ -337,7 +341,16 @@ class MainActivity : Activity() {
                     }
                 }
                 if (request != null && request.isForMainFrame && !Whitelist.isAllowed(request.url.toString())) {
-                    return WebResourceResponse("text/plain", "utf-8", 403, "Blocked", emptyMap(),
+                    // Caught here rather than above (a redirect Android didn't report, a form sent to another
+                    // site...). Never fail silently: show the blocked page, with "Ask to open". From an allowed
+                    // page, first check whether it's a file to download (e.g. GitHub's downloads).
+                    val caught = request.url.toString()
+                    val post = request.method.equals("POST", ignoreCase = true)
+                    main.post {
+                        if (isDestroyed) return@post
+                        if (!post && Whitelist.isAllowed(web.url)) downloadIfFile(caught) else showBlocked(caught)
+                    }
+                    return WebResourceResponse("text/plain", "utf-8", 204, "No Content", emptyMap(),
                         ByteArrayInputStream(ByteArray(0)))
                 }
                 return null

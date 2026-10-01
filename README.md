@@ -282,6 +282,9 @@ page; otherwise their space shows *"Blocked: content from vimeo.com"*.
     a file, it downloads it; if it's a web page, it's blocked as usual and never shown, so this can't be used to open
     other sites.
   - **Never from a site on the malware, adult or gambling list.**
+- **Nothing fails silently.** Anything stopped because it isn't on the list (a link, a redirect, a form sent to another
+  site) shows the blocked page with **Ask to open**. Links that can only work inside the phone (`file:`, `content:`,
+  `view-source:`) say they can't be opened here.
 - **Camera and microphone,** for example for video calls. The first time a site asks, the app shows
   *"example.com wants to use your camera. Allow / Block"*. Android then asks once for the app itself.
   The answer for each site is remembered until the app is closed.
