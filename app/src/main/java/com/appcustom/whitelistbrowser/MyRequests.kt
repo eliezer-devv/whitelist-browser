@@ -74,6 +74,18 @@ object MyRequests {
         write(ctx, items)
     }
 
+    /** A waiting request was withdrawn on the phone ("Cancel request"). */
+    @Synchronized fun markCancelled(ctx: Context, asked: Long) {
+        val items = read(ctx)
+        for (i in 0 until items.length()) {
+            val o = items.getJSONObject(i)
+            if (o.optLong("asked") == asked && o.optString("status", "waiting") == "waiting") {
+                o.put("status", "cancelled").put("message", "You cancelled it.").put("answered", System.currentTimeMillis()).put("seen", true)
+            }
+        }
+        write(ctx, items)
+    }
+
     /** Deletes one request from this phone's history (it stays on GitHub). */
     @Synchronized fun delete(ctx: Context, asked: Long) {
         val items = read(ctx)

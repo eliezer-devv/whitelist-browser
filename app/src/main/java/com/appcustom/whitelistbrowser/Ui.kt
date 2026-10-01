@@ -229,8 +229,22 @@ object Ui {
         val sw = Switch(ctx).apply {
             isChecked = checked
             val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
-            thumbTintList = ColorStateList(states, intArrayOf(Color.WHITE, 0xFFF4F4F2.toInt()))
-            trackTintList = ColorStateList(states, intArrayOf(ACCENT, TRACK_OFF))
+            // Drawn by the app: Android's own track is pale when on. Solid green when on, grey when off.
+            val on = intArrayOf(android.R.attr.state_checked)
+            trackDrawable = android.graphics.drawable.StateListDrawable().apply {
+                addState(on, GradientDrawable().apply { setColor(ACCENT); cornerRadius = dp(ctx, 14).toFloat(); setSize(dp(ctx, 46), dp(ctx, 28)) })
+                addState(intArrayOf(), GradientDrawable().apply { setColor(TRACK_OFF); cornerRadius = dp(ctx, 14).toFloat(); setSize(dp(ctx, 46), dp(ctx, 28)) })
+            }
+            // The white knob, with a 3dp gap around it inside the track.
+            thumbDrawable = android.graphics.drawable.InsetDrawable(GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.WHITE)
+                setSize(dp(ctx, 22), dp(ctx, 22))
+            }, dp(ctx, 3))
+            trackTintList = null
+            thumbTintList = null
+            switchMinWidth = dp(ctx, 46)
+            showText = false
         }
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -295,7 +309,7 @@ object Ui {
         private fun paintButton(i: Int, b: Button) {
             val on = i == index
             b.background = if (on) Ui.rounded(Ui.CARD, Ui.dp(b.context, 10).toFloat()) else ColorDrawable(Color.TRANSPARENT)
-            b.setTextColor(if (on) Ui.INK else Ui.MUTED)
+            b.setTextColor(if (on) Ui.ACCENT_TEXT else Ui.MUTED)
             b.elevation = if (on) Ui.dp(b.context, 1).toFloat() else 0f
         }
     }
@@ -341,8 +355,8 @@ object Ui {
         private fun paintChip(i: Int, b: Button) {
             val on = i in selected
             val r = Ui.dp(b.context, 12).toFloat()
-            b.background = if (on) Ui.rounded(Ui.SOFT, r, Ui.ACCENT_TEXT, Ui.dp(b.context, 2)) else Ui.rounded(Ui.CARD, r, Ui.LINE, Ui.dp(b.context, 1))
-            val c = if (on) Ui.ACCENT_TEXT else Ui.INK2
+            b.background = if (on) Ui.rounded(Ui.ACCENT, r) else Ui.rounded(Ui.CARD, r, Ui.LINE, Ui.dp(b.context, 1))
+            val c = if (on) Color.WHITE else Ui.INK2
             b.setTextColor(c)
             b.compoundDrawables[0]?.setTint(c)
         }

@@ -65,7 +65,8 @@ class MainActivity : Activity() {
 
     // Embedded content blocked on the open page: the sites it came from (for the "parts were blocked" bar).
     @Volatile private var topUrl: String? = null
-    private val blockedFrames: MutableSet<String> = java.util.Collections.synchronizedSet(LinkedHashSet())
+    // site -> the exact addresses blocked from it (host + path, no "?..."), so one can be asked for on its own.
+    private val blockedFrames: MutableMap<String, MutableSet<String>> = java.util.Collections.synchronizedMap(LinkedHashMap())
     private var frameNoteClosedFor: String? = null     // the page whose bar was closed (don't show it again there)
 
     // Quick checking: after a request is sent (and when an approval arrives), the phone checks for the
@@ -252,7 +253,7 @@ class MainActivity : Activity() {
                 }
                 // "Ask for it" on a blocked part of a page: ask for the blocked parts.
                 if (url.startsWith("wlb://ask-frames")) {
-                    if (request.hasGesture()) showFramesRequest()
+                    if (request.hasGesture()) showFramesRequest(request.url.getQueryParameter("src"))
                     return true
                 }
                 if (url.startsWith("wlb://ask-media")) {
@@ -303,7 +304,7 @@ class MainActivity : Activity() {
                         return true
                     }
                 }
-                if (request.isForMainFrame) showBlocked(url) else request.url.host?.let { noteBlockedFrame(it) }
+                if (request.isForMainFrame) showBlocked(url) else request.url.host?.let { noteBlockedFrame(it, url) }
                 return true
             }
 
@@ -315,7 +316,8 @@ class MainActivity : Activity() {
                 }
                 // "No photos or videos" pages: media files and players get an empty answer.
                 if (request != null && !request.isForMainFrame && mediaOffHere &&
-                    ((photosOffHere && MediaBlock.isImage(request)) || (videosOffHere && MediaBlock.isVideo(request)) ||
+                    ((photosOffHere && MediaBlock.isImage(request)) ||
+                        (videosOffHere && MediaBlock.isVideo(request) && !(Whitelist.hasAllowedPlayer() && MediaBlock.isStream(request))) ||
                         (soundOffHere && MediaBlock.isSound(request, videosAllowed = !videosOffHere))) &&
                     !Whitelist.mediaAllowed(request.url.toString())) {        // a single photo or video allowed anyway
                     return MediaBlock.emptyResponse()
@@ -344,8 +346,8 @@ class MainActivity : Activity() {
                     val u = request.url.toString()
                     val host = request.url.host
                     if (host != null && (u.startsWith("https://") || u.startsWith("http://")) && !frameOk(u, host, topUrl)) {
-                        noteBlockedFrame(host)
-                        return frameBlockedResponse(host)
+                        noteBlockedFrame(host, u)
+                        return frameBlockedResponse(host, u)
                     }
                 }
                 if (request != null && request.isForMainFrame && !Whitelist.isAllowed(request.url.toString())) {
@@ -560,7 +562,13 @@ class MainActivity : Activity() {
         pageTitle.setOnLongClickListener { showFullTitle(); true }
         findViewById<View>(R.id.home).setOnClickListener { goHome() }
         findViewById<View>(R.id.menu).setOnClickListener { showMenu(it) }
-        status.setOnClickListener { checkListNow() }
+        // The slim line: tapping it does what it's about (try the list again, or ask for photos, videos, sound).
+        status.setOnClickListener {
+            when {
+                Whitelist.lastError != null -> checkListNow()
+                mediaOffHere -> showRequestDialog(Requests.Action.ALLOW, web.url, mediaBack = true, mediaKind = offKinds)
+            }
+        }
     }
 
     private fun updateUi() {
@@ -1397,6 +1405,7 @@ class MainActivity : Activity() {
             "notsent" -> RowLook(R.drawable.ic_d_send, Ui.AMBER_BG, Ui.AMBER_INK, "Not sent yet")
             "failed" -> RowLook(R.drawable.ic_d_warn, Ui.AMBER_BG, Ui.AMBER_INK, "Couldn't be sent")
             "waiting" -> RowLook(R.drawable.ic_d_clock, Ui.SEG, Ui.INK2, "Waiting for an answer")
+            "cancelled" -> RowLook(R.drawable.ic_d_x, Ui.SEG, Ui.INK2, "Cancelled")
             else -> RowLook(R.drawable.ic_d_clock, Ui.SEG, Ui.INK2, "Closed")
         }
         return LinearLayout(this).apply {
@@ -1432,21 +1441,46 @@ class MainActivity : Activity() {
         fun archivedCount() = MyRequests.all(this).count { it.archived }
         fun whenText(r: MyRequests.Item) = if (r.status == "waiting") "Asked ${shortDate(r.asked)}" else "Answered ${shortDate(r.answered)}"
         if (!archive) {
-            val notSent = Outbox.waitingRequests(this).reversed()
+            val notSent = Outbox.waitingRequestsWithIds(this).reversed()
             val sent = MyRequests.all(this).filter { !it.archived }
             var archiveButton: Button? = null
             d.title("My requests")
             if (notSent.isEmpty() && sent.isEmpty()) {
                 d.add(Ui.text(this, "Nothing here right now.", 15f, Ui.MUTED))
-            } else if (sent.any { it.status != "waiting" }) {
-                d.add(Ui.text(this, "Swipe an answered request right to archive it, or left to delete it. Or tap it.", 13f, Ui.MUTED), 4)
+            } else {
+                d.add(Ui.text(this, "Swipe a request right to archive it, or left to delete it (or cancel it, if it's still waiting).", 13f, Ui.MUTED), 4)
             }
-            notSent.forEach {
-                list.addView(requestRow("notsent", it.first, "No connection: it's sent when the phone is online.", "Asked ${shortDate(it.second)}", card = true), LinearLayout.LayoutParams(gap))
+            notSent.forEach { (id, summary, created) ->
+                val row = requestRow("notsent", summary, "No connection: it's sent when the phone is online.", "Asked ${shortDate(created)}", card = true)
+                lateinit var holder: View
+                val dontSend = { Outbox.cancel(this, id); list.removeView(holder); toast("It won't be sent") }
+                holder = swipeRow(row, right = null, left = SwipeAction("Don't send", R.drawable.ic_d_x, Ui.DANGER, dontSend))
+                list.addView(holder, LinearLayout.LayoutParams(gap))
             }
             sent.forEach { item ->
                 val row = requestRow(item.status, item.summary, item.message, whenText(item), card = true)
-                if (item.status == "waiting") { list.addView(row, LinearLayout.LayoutParams(gap)); return@forEach }
+                if (item.status == "waiting") {
+                    // Waiting: it can be withdrawn (closed on GitHub too, so nobody answers it for nothing).
+                    lateinit var waitingHolder: View
+                    val cancelIt = {
+                        toast("Cancelling the request")
+                        updateIo.execute {
+                            val ok = runCatching { Requests.cancel(item.number) }.getOrDefault(false)
+                            main.post {
+                                if (isDestroyed) return@post
+                                if (ok) {
+                                    MyRequests.markCancelled(this, item.asked)
+                                    list.removeView(waitingHolder)
+                                    toast("Request cancelled")
+                                } else toast("Couldn't cancel it right now (no internet?). Try again later.")
+                            }
+                        }
+                    }
+                    // The card springs back and stays until GitHub has withdrawn it (it may not work offline).
+                    waitingHolder = swipeRow(row, right = null, left = SwipeAction("Cancel", R.drawable.ic_d_x, Ui.DANGER, cancelIt, staysUntilDone = true))
+                    list.addView(waitingHolder, LinearLayout.LayoutParams(gap))
+                    return@forEach
+                }
                 lateinit var holder: View
                 val removed = { list.removeView(holder); archiveButton?.text = "Archived (${archivedCount()})" }
                 val archiveIt = { MyRequests.setArchived(this, item.asked, true); removed(); toast("Archived") }
@@ -1454,7 +1488,6 @@ class MainActivity : Activity() {
                 holder = swipeRow(row,
                     right = SwipeAction("Archive", R.drawable.ic_d_archive, Ui.ACCENT, archiveIt),
                     left = SwipeAction("Delete", R.drawable.ic_d_trash, Ui.DANGER, deleteIt))
-                row.setOnClickListener { requestOptions(item.summary, "Archive", onMain = archiveIt, onDelete = deleteIt) }
                 list.addView(holder, LinearLayout.LayoutParams(gap))
             }
             d.add(list, 8)
@@ -1473,7 +1506,6 @@ class MainActivity : Activity() {
                 holder = swipeRow(row,
                     right = SwipeAction("Put back", R.drawable.ic_d_undo, Ui.ACCENT, putBack),
                     left = SwipeAction("Delete", R.drawable.ic_d_trash, Ui.DANGER, deleteIt))
-                row.setOnClickListener { requestOptions(item.summary, "Put back", onMain = putBack, onDelete = deleteIt) }
                 list.addView(holder, LinearLayout.LayoutParams(gap))
             }
             d.add(list, 8)
@@ -1494,17 +1526,8 @@ class MainActivity : Activity() {
         d.show()
     }
 
-    /** Tapping a request: its main action (Archive, or Put back), or Delete. */
-    private fun requestOptions(summary: String, main: String, onMain: () -> Unit, onDelete: () -> Unit) {
-        Ui.AppDialog(this, sheet = false).apply {
-            title(summary)
-            button("Delete", Ui.Kind.GHOST) { it.dismiss(); onDelete() }
-            button(main, Ui.Kind.PRIMARY) { it.dismiss(); onMain() }
-        }.show()
-    }
-
     /** What swiping a row one way does: its word and icon on the trail, the trail's colour, and the action. */
-    private class SwipeAction(val label: String, val icon: Int, val color: Int, val run: () -> Unit)
+    private class SwipeAction(val label: String, val icon: Int, val color: Int, val run: () -> Unit, val staysUntilDone: Boolean = false)
 
     /**
      * Puts [row] on a coloured trail, like Gmail: swiping right shows [right]'s colour, icon and word on
@@ -1513,7 +1536,7 @@ class MainActivity : Activity() {
      * clearly sideways move starts it, so the list still scrolls; a plain tap still works as a tap.
      * Returns the holder to add to the list (instead of [row]).
      */
-    private fun swipeRow(row: View, right: SwipeAction, left: SwipeAction): View {
+    private fun swipeRow(row: View, right: SwipeAction?, left: SwipeAction): View {
         val radius = Ui.dp(this, 16).toFloat()
         val pad = Ui.dp(this, 20)
         val icon = android.widget.ImageView(this).apply { imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE) }
@@ -1534,7 +1557,7 @@ class MainActivity : Activity() {
             if (direction == shown) return
             shown = direction
             if (direction == 0) { trail.visibility = View.INVISIBLE; return }
-            val a = if (direction > 0) right else left
+            val a = (if (direction > 0) right else left) ?: return
             trail.background = Ui.rounded(a.color, radius)
             icon.setImageResource(a.icon)
             word.text = a.label
@@ -1570,16 +1593,20 @@ class MainActivity : Activity() {
                         v.parent?.requestDisallowInterceptTouchEvent(true)   // the list stops scrolling while swiping
                     }
                     if (dragging) {
-                        v.translationX = dx
-                        showTrail(if (dx > 0) 1 else if (dx < 0) -1 else 0)
+                        val d = if (dx > 0 && right == null) 0f else dx       // no action that way: it doesn't move
+                        v.translationX = d
+                        showTrail(if (d > 0) 1 else if (d < 0) -1 else 0)
                     }
                     true
                 }
                 android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
                     val dx = e.rawX - downX
-                    if (dragging && e.actionMasked == android.view.MotionEvent.ACTION_UP && Math.abs(dx) > v.width / 3f) {
+                    val action = if (dx > 0) right else left
+                    if (dragging && action != null && action.staysUntilDone && e.actionMasked == android.view.MotionEvent.ACTION_UP && Math.abs(dx) > v.width / 3f) {
+                        // It takes a moment (e.g. GitHub): spring back, then do it; it removes the card when done.
+                        v.animate().translationX(0f).setDuration(160).withEndAction { showTrail(0); action.run() }.start()
+                    } else if (dragging && action != null && e.actionMasked == android.view.MotionEvent.ACTION_UP && Math.abs(dx) > v.width / 3f) {
                         // Slide off, close the gap, then do it.
-                        val action = if (dx > 0) right else left
                         v.animate().translationX(if (dx > 0) v.width.toFloat() else -v.width.toFloat())
                             .setDuration(160).withEndAction {
                                 val start = holder.height
@@ -1748,33 +1775,47 @@ class MainActivity : Activity() {
 
     /** May a frame from [host] show inside the page [top]? */
     private fun frameOk(url: String, host: String, top: String?): Boolean =
-        Whitelist.isAllowed(url, false) || Whitelist.framesAllowedOn(top) || Whitelist.embedAllowed(top, host)
+        Whitelist.isAllowed(url, false) || Whitelist.framesAllowedOn(top) || Whitelist.embedAllowed(top, url)
 
     /** What shows in a blocked frame's place: a small note, in the app's look. */
-    private fun frameBlockedResponse(host: String): WebResourceResponse {
+    private fun frameBlockedResponse(host: String, frameUrl: String): WebResourceResponse {
         fun hex(c: Int) = String.format("#%06X", c and 0xFFFFFF)
         val site = host.removePrefix("www.").replace("<", "")
         val html = "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>" +
             "<body style='margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;" +
             "background:${hex(Ui.SEG)};color:${hex(Ui.MUTED)};font:600 14px/1.4 sans-serif;text-align:center;padding:8px;box-sizing:border-box'>" +
             "<div><div>Blocked: content from $site</div>" +
-            (if (Requests.isSetUp()) "<a href='wlb://ask-frames' target='_top' style='display:inline-block;margin-top:10px;padding:9px 16px;" +
+            (if (Requests.isSetUp()) "<a href='wlb://ask-frames?src=${Uri.encode(frameUrl)}' target='_top' style='display:inline-block;margin-top:10px;padding:9px 16px;" +
                 "border-radius:999px;background:${hex(Ui.ACCENT)};color:#fff;text-decoration:none;font-weight:700'>Ask for it</a>" else "") +
             "</div></body>"
         return WebResourceResponse("text/html", "utf-8", 200, "OK", emptyMap(), java.io.ByteArrayInputStream(html.toByteArray()))
     }
 
     /** Records a blocked frame's site, and shows the "parts were blocked" bar. (Any thread.) */
-    private fun noteBlockedFrame(host: String) {
+    /** A frame's exact address for asking: host + path, without "?..." (which often changes). */
+    private fun frameKey(url: String): String? {
+        val u = Uri.parse(url)
+        val host = u.host?.lowercase()?.removePrefix("www.") ?: return null
+        return host + (u.path ?: "").trimEnd('/')
+    }
+
+    private fun noteBlockedFrame(host: String, frameUrl: String? = null) {
         val site = host.lowercase().removePrefix("www.")
-        if (blockedFrames.add(site)) main.post { showFrameNote() }
+        val isNew = synchronized(blockedFrames) {
+            val known = blockedFrames.containsKey(site)
+            val parts: MutableSet<String> = blockedFrames.getOrPut(site) { LinkedHashSet() }
+            val key = if (frameUrl != null) frameKey(frameUrl) else null
+            if (key != null) parts.add(key)
+            !known
+        }
+        if (isNew) main.post { showFrameNote() }
     }
 
     private fun showFrameNote() {
         val top = web.url
         val note = findViewById<View>(R.id.frameNote)
         if (top == null || HomePage.isHome(top) || top.startsWith(BLOCKED_PAGE) || blockedFrames.isEmpty() || top == frameNoteClosedFor) return
-        val sites = blockedFrames.toList()
+        val sites = synchronized(blockedFrames) { blockedFrames.keys.toList() }
         findViewById<TextView>(R.id.frameNoteText).text = "Parts of this page were blocked (from ${sites.first()}" +
             (if (sites.size > 1) " and ${sites.size - 1} more)" else ")")
         findViewById<View>(R.id.frameNoteAsk).visibility = if (Requests.isSetUp()) View.VISIBLE else View.GONE
@@ -1785,40 +1826,56 @@ class MainActivity : Activity() {
         findViewById<View>(R.id.frameNote)?.visibility = View.GONE
     }
 
-    /** "Ask" on the bar: a request for the blocked parts, to show inside this site's pages. */
-    private fun showFramesRequest() {
+    /**
+     * "Ask" on the bar (or "Ask for it" in a blocked part, [focus]: its address): a request for the blocked
+     * parts, to show inside this site's pages. For each blocked site: a tick box, and "Just this one" (only
+     * that video, map or box) or "Everything from it".
+     */
+    private fun showFramesRequest(focus: String? = null) {
         val top = web.url ?: return
         val site = siteScope(top) ?: return
-        val sites = blockedFrames.toList().filter { it != site && !it.endsWith(".$site") }
-        if (sites.isEmpty()) { hideFrameNote(); return }
+        val blocked = synchronized(blockedFrames) { blockedFrames.mapValues { it.value.toList() } }
+            .filterKeys { it != site && !it.endsWith(".$site") }
+        if (blocked.isEmpty()) { hideFrameNote(); return }
         if (!Requests.isSetUp()) { toast("Requests aren't set up for this app yet"); return }
+        val focusKey = focus?.let { frameKey(it) }
+        val focusSite = focusKey?.substringBefore('/')
         val d = Ui.AppDialog(this, sheet = true)
         d.title("Ask for the blocked parts", sub = site)
         d.add(Ui.text(this, "Parts of this page, like a video or a map, come from other sites and were blocked. " +
             "If they're approved, they show inside $site's pages only.", 14.5f, Ui.MUTED), 6)
-        d.add(Ui.label(this, if (sites.size == 1) "Blocked content from" else "Which parts? Untick any you don't need"))
-        // One tick box per blocked site (all ticked to start with).
-        val boxes = sites.map { h ->
-            android.widget.CheckBox(this).apply {
-                text = h
-                isChecked = true
+        // One card per blocked site: ticked (all, or just the one tapped), and just these parts or everything.
+        class Choice(val site: String, val parts: List<String>, var ticked: Boolean, var everything: Boolean)
+        val choices = blocked.map { (s, parts) -> Choice(s, parts, focusSite == null || focusSite == s, false) }
+        choices.forEach { c ->
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 14).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
+                val p = Ui.dp(this@MainActivity, 12)
+                setPadding(p, Ui.dp(this@MainActivity, 4), p, p)
+            }
+            val box = android.widget.CheckBox(this).apply {
+                text = c.site
+                isChecked = c.ticked
                 setTextColor(Ui.INK)
                 typeface = Ui.boldFace
                 textSize = 15f
                 buttonTintList = android.content.res.ColorStateList.valueOf(Ui.ACCENT)
-                minHeight = Ui.dp(this@MainActivity, 48)
-                setPadding(Ui.dp(this@MainActivity, 6), 0, 0, 0)
+                minHeight = Ui.dp(this@MainActivity, 44)
             }
+            val many = c.parts.size > 1
+            val justLabel = if (many) "Just these ${c.parts.size}" else "Just this one"
+            val which = Ui.Segmented(this, listOf(justLabel, "Everything from it"), 0, narrow) { c.everything = it == 1 }.view
+            which.visibility = if (c.ticked) View.VISIBLE else View.GONE
+            box.setOnCheckedChangeListener { _, on -> c.ticked = on; which.visibility = if (on) View.VISIBLE else View.GONE }
+            card.addView(box)
+            if (c.parts.isNotEmpty()) card.addView(Ui.text(this, c.parts.joinToString("\n") { it.substringAfter('/', "").let { p -> if (p.isEmpty()) it else "/$p" } }, 12.5f, Ui.MUTED).apply {
+                maxLines = 3; ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(Ui.dp(this@MainActivity, 4), 0, 0, Ui.dp(this@MainActivity, 6))
+            })
+            card.addView(which, LinearLayout.LayoutParams(-1, -2))
+            d.add(card, 8)
         }
-        d.add(LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 14).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
-            setPadding(Ui.dp(this@MainActivity, 8), Ui.dp(this@MainActivity, 2), Ui.dp(this@MainActivity, 8), Ui.dp(this@MainActivity, 2))
-            boxes.forEachIndexed { i, b ->
-                if (i > 0) addView(View(this@MainActivity).apply { setBackgroundColor(Ui.LINE2) }, LinearLayout.LayoutParams(-1, Ui.dp(this@MainActivity, 1)))
-                addView(b)
-            }
-        }, 6)
         val noteField = Ui.field(this, "e.g. the video for my homework",
             type = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
         d.add(Ui.label(this, "Why? (optional)"))
@@ -1835,58 +1892,16 @@ class MainActivity : Activity() {
         d.button("Send", Ui.Kind.PRIMARY) {
             val pin = if (Whitelist.state.pinApproval && pinSwitch.isChecked) pinField.text.toString().trim() else null
             if (pin != null && !Regex("^\\d{4,8}$").matches(pin)) { pinField.error = "The PIN is 4 to 8 digits"; return@button }
-            val chosen = sites.filterIndexed { i, _ -> boxes[i].isChecked }
+            // Just the parts (their exact addresses), or the whole site, for each ticked one.
+            val chosen = choices.filter { it.ticked }.flatMap { c ->
+                if (c.everything || c.parts.isEmpty()) listOf(c.site) else c.parts
+            }
             if (chosen.isEmpty()) { toast("Tick at least one, or tap Cancel"); return@button }
             it.dismiss()
             hideFrameNote()
             sendRequest(Requests.Action.ALLOW, Requests.Scope.SITE, Requests.Media.UNCHANGED, site, top,
                 noteField.text.toString().trim(), pin = pin, frames = chosen)
         }
-        d.show()
-    }
-
-    // ---------- settings ----------
-
-    /** ⋮ → Settings: appearance, cookies and site data, cache, app update, and about this phone. */
-    private fun showSettings() {
-        val d = Ui.AppDialog(this, sheet = true)
-        d.title("Settings")
-        fun row(icon: Int, title: String, sub: String, onTap: () -> Unit): LinearLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            val p = Ui.dp(this@MainActivity, 14)
-            setPadding(p, Ui.dp(this@MainActivity, 12), p, Ui.dp(this@MainActivity, 12))
-            minimumHeight = Ui.dp(this@MainActivity, 60)
-            background = android.graphics.drawable.RippleDrawable(
-                android.content.res.ColorStateList.valueOf(Ui.SEG), null, android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE))
-            addView(Ui.badge(this@MainActivity, icon, Ui.SOFT, Ui.ACCENT_TEXT, 38, 12).apply {
-                (layoutParams as LinearLayout.LayoutParams).marginEnd = Ui.dp(this@MainActivity, 12)
-            })
-            val words = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
-            words.addView(Ui.text(this@MainActivity, title, 15.5f, Ui.INK, "bold"))
-            words.addView(Ui.text(this@MainActivity, sub, 13f, Ui.MUTED))
-            addView(words, LinearLayout.LayoutParams(0, -2, 1f))
-            setOnClickListener { d.dismiss(); onTap() }
-        }
-        val look = when (Ui.choice(this)) { "light" -> "Light"; "dark" -> "Dark"; else -> "Phone's setting" } +
-            if (Ui.usePhoneColours(this)) ", phone's colours" else ""
-        val name = Device.name(this) ?: "Not registered yet"
-        val rows = listOf(
-            row(R.drawable.ic_d_theme, "Appearance", look) { showAppearance() },
-            row(R.drawable.ic_d_cookie, "Cookies and site data", "Sign out of sites, reset camera and location answers") { confirmClearCookies() },
-            row(R.drawable.ic_d_broom, "Clear cache", "Frees space; pages load fresh") { clearCache() },
-            row(R.drawable.ic_d_update, "App update", "Version ${BuildConfig.VERSION_NAME}. Check for a new one") { checkForUpdate(manual = true) },
-            row(R.drawable.ic_d_user, "About this phone", "$name · ${Device.id(this)}") { showAbout() })
-        d.add(LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 16).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
-            clipToOutline = true
-            rows.forEachIndexed { i, r ->
-                if (i > 0) addView(View(this@MainActivity).apply { setBackgroundColor(Ui.LINE2) }, LinearLayout.LayoutParams(-1, Ui.dp(this@MainActivity, 1)))
-                addView(r)
-            }
-        })
-        d.button("Close", Ui.Kind.PRIMARY) { it.dismiss() }
         d.show()
     }
 
@@ -1969,7 +1984,9 @@ class MainActivity : Activity() {
         photosOffHere = Whitelist.photosBlocked(url)
         videosOffHere = Whitelist.videosBlocked(url)
         soundOffHere = Whitelist.soundBlocked(url)
-        val loadImages = !photosOffHere
+        // Android's "no images at all" switch can't make exceptions: with single photos allowed, keep it on and
+        // let the app block photos one by one (it knows which are allowed).
+        val loadImages = !photosOffHere || Whitelist.mediaAllowList().isNotEmpty()
         if (web.settings.loadsImagesAutomatically != loadImages) web.settings.loadsImagesAutomatically = loadImages
     }
 

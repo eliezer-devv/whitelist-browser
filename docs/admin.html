@@ -1410,15 +1410,19 @@ function embedsScreen() {
         save(next); say(`Removed ${from} on ${site}. Tap Save to apply it.`);
       } }, 'Remove')))));
   const site = h('input', { class: 'inp', id: 'emSite', placeholder: 'Site, e.g. bbc.co.uk', autocomplete: 'off' });
-  const from = h('input', { class: 'inp', id: 'emFrom', placeholder: 'Content from, e.g. player.vimeo.com', autocomplete: 'off' });
+  const from = h('input', { class: 'inp', id: 'emFrom', placeholder: 'Content from: a site, or one part (youtube.com/embed/abc)', autocomplete: 'off' });
   const add = () => {
-    const s1 = (normalize(site.value) || '').replace(/^(www|m)\./, ''), f1 = (normalize(from.value) || '').replace(/^www\./, '');
-    if (!s1 || !f1 || hasPath(s1) || hasPath(f1)) return say('Type two site addresses, e.g. bbc.co.uk and player.vimeo.com.', true);
+    // The site, and what may show inside it: a whole site, or one exact part (host + path, no "?...").
+    const s1 = (normalize(site.value) || '').replace(/^(www|m)\./, '');
+    const raw = from.value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('?')[0].split('#')[0].replace(/\/+$/, '');
+    const f1 = raw.includes('/') ? (/^[a-z0-9.-]+\.[a-z]{2,}\//.test(raw) ? raw : '') : (normalize(raw) || '').replace(/^www\./, '');
+    if (!s1 || !f1 || hasPath(s1)) return say('Type a site, e.g. bbc.co.uk, and what may show in it: a site like player.vimeo.com, or one part like youtube.com/embed/abc.', true);
     save({ ...E, [s1]: [...(E[s1] || []), f1] }); say(`Content from ${f1} can show on ${s1} once you tap Save.`);
   };
   return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Sites'),
     screenTitle('Embedded content allowed', `In ${listLabel(S.current)}`),
     h('p', { class: 'hint' }, 'Content from these sites (like a video or a map) may show inside the site named under it, but only there: the site itself doesn\'t open. ' +
+      'An entry with a path, like youtube.com/embed/abc, is one exact part only. ' +
       'Phones ask for this when part of a page was blocked. For a site you trust completely, use its Allow content embedded from other sites switch instead.'),
     rows.length ? h('div', { class: 'group' }, rows) : h('div', { class: 'card empty' }, h('b', null, 'Nothing yet'), 'Approved requests for blocked parts of pages appear here.'),
     h('div', { class: 'card stack', style: 'gap:10px' }, h('b', null, 'Add one'), site, from,

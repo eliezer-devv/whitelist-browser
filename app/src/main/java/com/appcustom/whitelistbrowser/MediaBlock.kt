@@ -59,6 +59,17 @@ object MediaBlock {
         return (request.requestHeaders ?: emptyMap()).keys.any { it.equals("Range", ignoreCase = true) } // players fetch in ranges
     }
 
+    /** Is this allowed item (host + path) an embedded video player, like YouTube's or Vimeo's? */
+    fun isPlayerKey(key: String): Boolean {
+        val host = key.substringBefore('/')
+        val path = key.substringAfter('/', "")
+        return VIDEO_HOSTS.any { host == it || host.endsWith(".$it") } ||
+            ((host == "youtube.com" || host.endsWith(".youtube.com")) && path.startsWith("embed"))
+    }
+
+    /** A player's video data, rather than a player itself (a player is a page, in a frame). */
+    fun isStream(request: WebResourceRequest): Boolean = !accept(request).contains("text/html")
+
     fun emptyResponse() =
         WebResourceResponse("text/plain", "utf-8", 200, "OK", emptyMap(), ByteArrayInputStream(ByteArray(0)))
 
@@ -87,7 +98,10 @@ object MediaBlock {
     try { var x = new URL(u, location.href); return (x.host + x.pathname).toLowerCase().replace(/^www[.]/, ''); } catch (e) { return ''; }
   }
   function srcOf(el) { return el.currentSrc || el.src || el.getAttribute('src') || ''; }
-  function allowed(el) { var s = srcOf(el); return !!s && allow.indexOf(itemKey(s)) >= 0; }
+  // Allowed one by one: by the address in use, or the one just set (the address in use catches up later).
+  function allowed(el) {
+    return [el.currentSrc, el.src, el.getAttribute('src')].some(function (s) { return !!s && allow.indexOf(itemKey(s)) >= 0; });
+  }
   var style = document.createElement('style');
   style.textContent =
     '.wlb-ph{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;max-width:100%;' +
@@ -139,11 +153,25 @@ object MediaBlock {
       var known = s[0] >= 48; // a real size to copy; otherwise a small placeholder
       el.style.setProperty('display', 'none', 'important');
       if (icon) return;
-      if (el.parentNode) el.parentNode.insertBefore(placeholder(kind, known ? s[0] : 0, known ? s[1] : 0, src), el);
+      var ph = placeholder(kind, known ? s[0] : 0, known ? s[1] : 0, src);
+      el.__wlbPh = ph;
+      if (el.parentNode) el.parentNode.insertBefore(ph, el);
     });
   }
+  // Many sites give an image its real address later (as it's scrolled to): check again when it changes,
+  // so one allowed one by one appears even then.
+  function recheck(el) {
+    if (!el.hasAttribute('data-wlb')) return;
+    if (allowed(el)) {
+      el.style.removeProperty('display');
+      if (el.__wlbPh) { el.__wlbPh.remove(); el.__wlbPh = null; }
+    }
+  }
   swap();
-  new MutationObserver(swap).observe(document.documentElement, { childList: true, subtree: true });
+  new MutationObserver(function (changes) {
+    changes.forEach(function (c) { if (c.type === 'attributes') recheck(c.target); });
+    swap();
+  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'srcset'] });
   document.addEventListener('play', function (e) {
     var el = e.target, tag = (el.tagName || '').toLowerCase();
     if (allowed(el)) return;

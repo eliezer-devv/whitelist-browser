@@ -186,7 +186,8 @@ in three ways:
 - **For single pages** of a site that's otherwise shown normally: admin page → **Sites** → **No photos or videos on
   some pages**, which has a box each for pages without photos, videos and sound (a page in all three has them all off).
 - **One photo or video anyway:** on a page where they're off, tapping a blocked one asks for **just that one** (or the
-  page, or the site). Approved ones go in the list's `mediaAllow`, also shown on that admin screen.
+  page, or the site). Approved ones go in the list's `mediaAllow`, also shown on that admin screen. When the one item
+  is an embedded player (YouTube, Vimeo...), its video is let through too, so it plays.
 - **By approving a request** (section 3).
 
 - **On the phone:**
@@ -262,15 +263,17 @@ Pages often show things from other sites: an embedded YouTube or Vimeo video, a 
 Pictures, scripts and styles from other sites always load. **Embedded frames** only show if they're allowed on that
 page; otherwise their space shows *"Blocked: content from vimeo.com"*.
 - **On the phone,** a bar appears under the top bar: *"Parts of this page were blocked (from vimeo.com)"*, with **Ask**
-  and ✕. The blocked part itself also has an **Ask for it** button. ✕ hides the bar until the page loads again, and while a page has blocked parts, **⋮** → **Ask for blocked parts**
-  does the same as **Ask**. It opens a short sheet with a tick box for each blocked site (all ticked to start with),
-  an optional note, and the approval PIN if one is set. Only the ticked ones are asked for.
+  and ✕. The blocked part itself also has an **Ask for it** button, which starts with just that part. ✕ hides the bar until the page loads again, and while a page has blocked parts, **⋮** → **Ask for blocked parts**
+  does the same as **Ask**. It opens a short sheet with a tick box for each blocked site, and for each one **Just this
+  one** (only that video, map or box; the default) or **Everything from it**, plus an optional note and the approval
+  PIN if one is set.
 - **The request** reads *"Embedded content on bbc.co.uk, from player.vimeo.com"*. Replying **`approve`** (or tapping
   **Approve** on the admin page) lets content from those sites show **inside bbc.co.uk's pages only**. The sites
   themselves still don't open, and the ad and content filters still apply. `approve public` does it for everyone.
   Once it's approved, reloading the page shows the blocked parts.
 - **To see or change what's allowed,** admin page → **Sites** → **Embedded content allowed**. You can remove any, or
-  add one yourself (a site, and the site whose content may show inside it). They're stored in the list's `embeds`.
+  add one yourself (a site, and what may show inside it: a whole site like `player.vimeo.com`, or one exact part like
+  `youtube.com/embed/abc`). They're stored in the list's `embeds`.
 - **For a site you trust completely,** turn on **Allow content embedded from other sites** on its screen instead:
   then frames from any site work on its pages. Its row shows **Embeds from anywhere**. Leaving the site is still
   blocked either way.
@@ -448,12 +451,15 @@ admin page, and without signing in to the admin page on their phone.
 ### My requests (on the phone)
 **⋮** → **My requests** lists the phone's requests: waiting, answered, and any not sent yet.
 - **Swipe an answered request right to archive it** (a green trail shows behind it), **or left to delete it** (a red
-  trail). Let go past about a third of the way to do it; let go sooner and it springs back. Tapping one gives
-  **Archive** and **Delete** too. Answered requests also move to the archive by themselves after 30 days.
+  trail). Let go past about a third of the way to do it; let go sooner and it springs back. Answered requests also move
+  to the archive by themselves after 30 days.
 - **Archived** (at the bottom) shows the archive. There, swipe right to **put one back** (green) or left to **delete
-  it** (red), or tap it for the same. **Delete all** empties it.
-- **Waiting and not-yet-sent requests always stay in the list.** Deleting only removes this phone's copy: the request
-  is still on GitHub. The phone keeps up to 100 requests.
+  it** (red). **Delete all** empties it.
+- **A request still waiting** can be withdrawn: swipe it left (**Cancel**). It's closed on GitHub too, marked as
+  cancelled on the phone, so nobody answers it for nothing. The card stays until that's done (it needs internet).
+- **A request not sent yet** (no connection when it was made): swipe it left (**Don't send**).
+- **Deleting only removes this phone's copy:** an answered request is still on GitHub. The phone keeps up to 100
+  requests.
 
 ### How quickly changes reach the phone
 A change goes through a short relay: the private repository saves it (instantly), copies it to the public repository
@@ -1027,7 +1033,8 @@ People never see it.
 - **The list button** (a list with a tick, next to Reload) checks the list now and says whether it changed. Reload
   only reloads the page.
 - **A slim line under the top bar** appears only when there's something to say: time left on something open for a
-  while, photos or videos being off, or the list couldn't be checked (tap it to try again). Otherwise it's hidden.
+  while, photos, videos or sound being off (tap it to ask for them), or the list couldn't be checked (tap it to try
+  again). Otherwise it's hidden.
 - **⋮ → Settings** holds **Appearance**, **Cookies and site data**, **Clear cache**, **App update** and **About this
   phone**.
 - **Sheets that slide up from the bottom** can be dragged by their handle: down to close, up to fill the screen.

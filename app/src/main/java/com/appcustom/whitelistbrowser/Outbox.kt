@@ -49,6 +49,17 @@ object Outbox {
             .map { it.optString("summary") to it.optLong("created") }
     }
 
+    /** Requests not sent yet, with their outbox ids: (id, summary, time asked), oldest first. */
+    @Synchronized fun waitingRequestsWithIds(ctx: Context): List<Triple<String, String, Long>> {
+        val items = read(ctx)
+        return (0 until items.length()).map { items.getJSONObject(it) }
+            .filter { it.optString("kind") == "issue" }
+            .map { Triple(it.optString("id"), it.optString("summary"), it.optLong("created")) }
+    }
+
+    /** "Don't send": takes a request that hasn't been sent yet out of the outbox. */
+    fun cancel(ctx: Context, id: String) = remove(ctx, id)
+
     @Synchronized fun has(ctx: Context, kind: String): Boolean {
         val items = read(ctx)
         return (0 until items.length()).any { items.getJSONObject(it).optString("kind") == kind }

@@ -208,7 +208,12 @@ object Whitelist {
             for (key in e.keys()) {
                 val site = normalize(key) ?: continue
                 val from = e.optJSONArray(key) ?: continue
-                embeds[site] = (0 until from.length()).mapNotNull { normalize(from.optString(it)) }
+                // A site ("player.vimeo.com"), or one exact part ("youtube.com/embed/abc": host + path).
+                embeds[site] = (0 until from.length()).mapNotNull { i ->
+                    val e = from.optString(i).trim().lowercase().removePrefix("https://").removePrefix("http://").removePrefix("www.")
+                        .substringBefore('?').substringBefore('#').trimEnd('/')
+                    if ('/' in e) e.takeIf { it.substringBefore('/').contains('.') } else normalize(e)
+                }
             }
         }
         return State(sites, block, blockPages, noMedia, noMediaPages, temps, home, maxOf(1, o.optInt("refreshMinutes", 5)), fetchedAt,
@@ -412,12 +417,18 @@ object Whitelist {
      * May a frame from [frameHost] show inside the page [topUrl]? Yes if one of the phone's lists allows
      * content from that site on the page's site (a list's "embeds"). The site itself still doesn't open.
      */
-    fun embedAllowed(topUrl: String?, frameHost: String): Boolean {
+    fun embedAllowed(topUrl: String?, frameUrl: String): Boolean {
         val top = hostOf(topUrl)?.removePrefix("www.") ?: return false
-        val from = frameHost.lowercase().trimEnd('.').removePrefix("www.")
+        val u = Uri.parse(frameUrl)
+        val from = (u.host ?: frameUrl).lowercase().trimEnd('.').removePrefix("www.")
+        val key = from + (u.path ?: "").lowercase().trimEnd('/')
         return state.embeds.any { (site, sources) ->
             val s = site.removePrefix("www.")
-            (top == s || top.endsWith(".$s")) && sources.any { val e = it.removePrefix("www."); from == e || from.endsWith(".$e") }
+            (top == s || top.endsWith(".$s")) && sources.any {
+                val e = it.removePrefix("www.")
+                if ('/' in e) key == e || key.startsWith("$e/")      // one exact part (or below it)
+                else from == e || from.endsWith(".$e")               // everything from that site
+            }
         }
     }
 
@@ -443,6 +454,12 @@ object Whitelist {
         val key = ((u.host ?: return false) + (u.path ?: "")).lowercase().removePrefix("www.")
         return key in state.mediaAllow
     }
+
+    /**
+     * Is one embedded video player allowed one by one? Then its video data is let through even where videos
+     * are off: other players' frames are still checked one by one, so only an allowed one can ask for it.
+     */
+    fun hasAllowedPlayer(): Boolean = state.mediaAllow.any { MediaBlock.isPlayerKey(it) }
 
     /** The addresses of the photos and videos allowed one by one (for the page script). */
     fun mediaAllowList(): List<String> = state.mediaAllow

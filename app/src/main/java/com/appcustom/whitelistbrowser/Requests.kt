@@ -291,6 +291,19 @@ object Requests {
         }
     }
 
+    /**
+     * Withdraws a request that's still waiting (GitHub issue [number]): closes it, then notes it was
+     * cancelled on the phone. Closed first, so GitHub's automation never reads the note as a reply.
+     * Blocking. True if it worked.
+     */
+    fun cancel(number: Int): Boolean {
+        if (number <= 0) return false
+        val closed = call("PATCH", "issues/$number", JSONObject().put("state", "closed").put("state_reason", "not_planned"))
+        if (closed !in 200..299) return false
+        runCatching { call("POST", "issues/$number/comments", JSONObject().put("body", "🚫 Cancelled on the phone.")) }
+        return true
+    }
+
     private fun call(method: String, path: String, payload: JSONObject): Int {
         val conn = open(method, path)
         try {
