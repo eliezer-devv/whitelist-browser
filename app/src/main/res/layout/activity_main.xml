@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/bar"
@@ -35,6 +36,10 @@
             android:textSize="@dimen/title_size"
             android:textStyle="bold" />
 
+        <!-- Check the list now (not the same as Reload, which reloads the page). -->
+        <ImageButton android:id="@+id/listCheck" style="@style/ToolButton"
+            android:contentDescription="Check the list now" android:src="@drawable/ic_list_check" />
+
         <ImageButton android:id="@+id/menu" style="@style/ToolButton"
             android:layout_marginStart="2dp"
             android:contentDescription="More options" android:src="@drawable/ic_menu" />
@@ -61,11 +66,11 @@
         android:paddingStart="@dimen/edge"
         android:paddingEnd="@dimen/edge"
         android:paddingBottom="6dp"
-        android:singleLine="true"
+        android:maxLines="2"
         android:ellipsize="end"
-        android:text="@string/checking"
         android:textColor="@color/muted"
-        android:textSize="12sp" />
+        android:textSize="12sp"
+        android:visibility="gone" />
 
     <!-- "Parts of this page were blocked": embedded content (a video, a map) from a site that isn't allowed here. -->
     <LinearLayout

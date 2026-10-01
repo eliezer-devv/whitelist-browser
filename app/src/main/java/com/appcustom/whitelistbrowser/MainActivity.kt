@@ -124,6 +124,9 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
         web = findViewById(R.id.web)
         web.setBackgroundColor(Ui.PAGE)            // no white flash between pages in dark mode
+        findViewById<View>(R.id.root).setBackgroundColor(Ui.BAR)
+        window.statusBarColor = Ui.BAR
+        window.navigationBarColor = Ui.BAR
         pageTitle = findViewById(R.id.pageTitle)
         // The app's fonts (packed in at build time; the phone's own font if they're missing).
         Ui.init(this)
@@ -235,6 +238,11 @@ class MainActivity : Activity() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
                 // Buttons on our own pages ("Ask for this site") use wlb: links. Websites can't use them.
+                // "Ask for it" on a blocked part of a page: ask for the blocked parts.
+                if (url.startsWith("wlb://ask-frames")) {
+                    if (request.hasGesture()) showFramesRequest()
+                    return true
+                }
                 if (url.startsWith("wlb://ask-media")) {
                     // A tapped "Photo blocked" or "Video blocked" placeholder: ask for that kind on this page.
                     if (request.isForMainFrame && request.hasGesture() && mediaOffHere) {
@@ -412,7 +420,10 @@ class MainActivity : Activity() {
             else -> "not-listed"
         }
         val cats = if (reason == "filtered") "&filters=${filtered.joinToString(",")}" else ""
-        val look = if (Ui.dark) "&theme=dark" else ""
+        // Light or dark, and the app's colours right now (so the page matches, the phone's colours too).
+        val pal = listOf(Ui.PAGE, Ui.INK, Ui.INK2, Ui.CARD, Ui.OUTLINE, Ui.ACCENT, Ui.ACCENT_TEXT, Ui.SOFT, Ui.RED_BG, Ui.RED_INK)
+            .joinToString(".") { Ui.hex(it).removePrefix("#") }
+        val look = (if (Ui.dark) "&theme=dark" else "") + "&pal=$pal"
         main.post { web.loadUrl("$BLOCKED_PAGE#reason=$reason&url=${Uri.encode(url)}$cats$look") }
     }
 
@@ -440,6 +451,14 @@ class MainActivity : Activity() {
 
     // ---------- whitelist refresh loop ----------
 
+    // A list check started by hand (the list button): it says how it went when it's done.
+    private var checkingByHand = false
+    private fun checkListNow() {
+        checkingByHand = true
+        toast("Checking the list")
+        refreshWhitelist()
+    }
+
     private fun refreshWhitelist() {
         main.removeCallbacks(refreshTask)
         io.execute {
@@ -465,6 +484,14 @@ class MainActivity : Activity() {
                     sendWaiting(registerFirst = true, checkIn = true)
                     prepareFilters() // a filter may have been switched on
                 }
+                if (checkingByHand) {
+                    checkingByHand = false
+                    toast(when {
+                        error != null -> "Couldn't check the list (no internet?). The saved list is still in use."
+                        !Whitelist.state.sameContent(before) -> "The list has changed. It's up to date now."
+                        else -> "The list is up to date."
+                    })
+                }
             }
         }
     }
@@ -482,16 +509,17 @@ class MainActivity : Activity() {
         findViewById<android.widget.ImageButton>(R.id.frameNoteClose).imageTintList = android.content.res.ColorStateList.valueOf(Ui.AMBER_INK)
         findViewById<View>(R.id.frameNoteAsk).setOnClickListener { showFramesRequest() }
         findViewById<View>(R.id.frameNoteClose).setOnClickListener { frameNoteClosedFor = web.url; hideFrameNote() }
-        if (tinyBar) {                             // room for the site's name: these two go in the ⋮ menu
+        findViewById<View>(R.id.listCheck).setOnClickListener { checkListNow() }
+        if (tinyBar) {                             // room for the site's name: these go in the ⋮ menu
             forwardBtn.visibility = View.GONE
             findViewById<View>(R.id.reload).visibility = View.GONE
+            findViewById<View>(R.id.listCheck).visibility = View.GONE
         }
+        // Holding the site's name shows it in full (the top bar cuts long names short).
+        pageTitle.setOnLongClickListener { showFullTitle(); true }
         findViewById<View>(R.id.home).setOnClickListener { goHome() }
         findViewById<View>(R.id.menu).setOnClickListener { showMenu(it) }
-        status.setOnClickListener {
-            status.text = getString(R.string.checking)
-            refreshWhitelist()
-        }
+        status.setOnClickListener { checkListNow() }
     }
 
     private fun updateUi() {
@@ -519,12 +547,40 @@ class MainActivity : Activity() {
             videosOffHere -> "Videos are off on this page. "
             else -> ""
         }
-        status.text = mediaNote + when {
-            err != null && s.allow.isEmpty() -> "No list loaded. Tap to retry."
-            err != null -> "Offline, using saved list of ${s.allow.distinct().size} sites. Tap to retry."
-            s.updatedAt == 0L -> getString(R.string.checking)
-            else -> "${s.allow.distinct().size} sites allowed, list checked ${ago(s.updatedAt)}. Tap to check now."
+        // The slim line under the top bar: only when there's something to say (time left, photos or videos
+        // off, or the list couldn't be checked). Otherwise it's hidden.
+        val problem = when {
+            err != null && s.allow.isEmpty() -> "No list loaded yet. Tap to try again."
+            err != null -> "Offline: using the saved list. Tap to try again."
+            else -> ""
         }
+        val line = (mediaNote + problem).trim()
+        status.text = line
+        status.visibility = if (line.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    /** A small bubble under the top bar with the open site's full name (the page's title, and its site). */
+    private fun showFullTitle() {
+        val cur = web.url ?: return
+        if (HomePage.isHome(cur) || cur.startsWith(BLOCKED_PAGE)) return
+        val full = web.title?.takeIf { it.isNotBlank() && !it.startsWith("http") } ?: return
+        val host = Uri.parse(cur).host?.removePrefix("www.") ?: ""
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.rounded(if (Ui.dark) Ui.CARD else Ui.INK, Ui.dp(this@MainActivity, 12).toFloat())
+            setPadding(Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 10), Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 10))
+            elevation = Ui.dp(this@MainActivity, 8).toFloat()
+            val fg = if (Ui.dark) Ui.INK else android.graphics.Color.WHITE
+            addView(Ui.text(this@MainActivity, full, 14.5f, fg, "bold"))
+            addView(Ui.text(this@MainActivity, host, 12.5f, if (Ui.dark) Ui.MUTED else 0xFFB9C9C6.toInt()))
+        }
+        val width = minOf(resources.displayMetrics.widthPixels - Ui.dp(this, 24), Ui.dp(this, 420))
+        val pop = android.widget.PopupWindow(box, width, LinearLayout.LayoutParams.WRAP_CONTENT, true).apply {
+            isOutsideTouchable = true
+            elevation = Ui.dp(this@MainActivity, 8).toFloat()
+        }
+        pop.showAsDropDown(pageTitle, 0, Ui.dp(this, 6))
+        main.postDelayed({ if (pop.isShowing) pop.dismiss() }, 4000)
     }
 
     private fun ago(t: Long): String {
@@ -558,12 +614,8 @@ class MainActivity : Activity() {
                 photosOffHere -> "Ask for photos"
                 else -> "Ask for videos"
             })
-            menu.add(0, 6, 2, "Clear cache")
-            menu.add(0, 7, 3, "Clear cookies and site data")
-            menu.add(0, 1, 4, "Check for app update")
-            menu.add(0, 2, 5, "Check list now")
-            menu.add(0, 12, 6, "Appearance")
-            menu.add(0, 3, 6, "About this phone")
+            if (tinyBar) menu.add(0, 2, 5, "Check the list now")   // the list button is hidden on tiny screens
+            menu.add(0, 14, 6, "Settings")
             setOnMenuItemClickListener {
                 when (it.itemId) {
                     4 -> showRequestDialog(Requests.Action.ALLOW, null)
@@ -579,7 +631,8 @@ class MainActivity : Activity() {
                     8 -> showRequestDialog(Requests.Action.ALLOW, cur, mediaBack = true,
                         mediaKind = if (photosOffHere && videosOffHere) "both" else if (photosOffHere) "photos" else "videos")
                     1 -> checkForUpdate(manual = true)
-                    2 -> { status.text = getString(R.string.checking); refreshWhitelist() }
+                    2 -> checkListNow()
+                    14 -> showSettings()
                 }
                 true
             }
@@ -1221,9 +1274,10 @@ class MainActivity : Activity() {
 
     /** Every request from this phone: not sent yet, waiting, and answered (newest first). */
     /**
-     * ⋮ → My requests. Answered requests can be swiped sideways (or tapped) to archive them; they also move
-     * to the archive by themselves after 30 days. [archive]: show the archive instead, where swiping deletes
-     * and tapping offers Restore. Waiting and not-yet-sent requests always stay in the main list.
+     * ⋮ → My requests. Answered requests: swipe right to archive (green), left to delete (red), or tap for
+     * the same choices. They also move to the archive by themselves after 30 days. [archive]: show the
+     * archive instead, where swiping right puts one back and left deletes it. Waiting and not-yet-sent
+     * requests always stay in the main list.
      */
     private fun showMyRequests(archive: Boolean = false) {
         val d = Ui.AppDialog(this, sheet = true)
@@ -1239,25 +1293,23 @@ class MainActivity : Activity() {
             if (notSent.isEmpty() && sent.isEmpty()) {
                 d.add(Ui.text(this, "Nothing here right now.", 15f, Ui.MUTED))
             } else if (sent.any { it.status != "waiting" }) {
-                d.add(Ui.text(this, "Swipe an answered request sideways to archive it, or tap it for more.", 13f, Ui.MUTED), 4)
+                d.add(Ui.text(this, "Swipe an answered request right to archive it, or left to delete it. Or tap it.", 13f, Ui.MUTED), 4)
             }
             notSent.forEach {
                 list.addView(requestRow("notsent", it.first, "No connection: it's sent when the phone is online.", "Asked ${shortDate(it.second)}", card = true), LinearLayout.LayoutParams(gap))
             }
             sent.forEach { item ->
                 val row = requestRow(item.status, item.summary, item.message, whenText(item), card = true)
-                if (item.status != "waiting") {
-                    val gone = {
-                        list.removeView(row)
-                        archiveButton?.text = "Archived (${archivedCount()})"
-                    }
-                    swipeable(row) { MyRequests.setArchived(this, item.asked, true); gone(); toast("Archived") }
-                    row.setOnClickListener {
-                        requestOptions(item.summary, "Archive", onMain = { MyRequests.setArchived(this, item.asked, true); gone(); toast("Archived") },
-                            onDelete = { MyRequests.delete(this, item.asked); gone(); toast("Deleted") })
-                    }
-                }
-                list.addView(row, LinearLayout.LayoutParams(gap))
+                if (item.status == "waiting") { list.addView(row, LinearLayout.LayoutParams(gap)); return@forEach }
+                lateinit var holder: View
+                val removed = { list.removeView(holder); archiveButton?.text = "Archived (${archivedCount()})" }
+                val archiveIt = { MyRequests.setArchived(this, item.asked, true); removed(); toast("Archived") }
+                val deleteIt = { MyRequests.delete(this, item.asked); removed(); toast("Deleted") }
+                holder = swipeRow(row,
+                    right = SwipeAction("Archive", R.drawable.ic_d_archive, Ui.ACCENT, archiveIt),
+                    left = SwipeAction("Delete", R.drawable.ic_d_trash, Ui.DANGER, deleteIt))
+                row.setOnClickListener { requestOptions(item.summary, "Archive", onMain = archiveIt, onDelete = deleteIt) }
+                list.addView(holder, LinearLayout.LayoutParams(gap))
             }
             d.add(list, 8)
             archiveButton = d.button("Archived (${archivedCount()})", Ui.Kind.SECONDARY) { it.dismiss(); showMyRequests(archive = true) }
@@ -1266,15 +1318,17 @@ class MainActivity : Activity() {
             val items = MyRequests.all(this).filter { it.archived }
             d.title("Archived requests")
             d.add(Ui.text(this, if (items.isEmpty()) "Nothing archived." else
-                "Swipe one sideways to delete it, or tap it to put it back. Only this phone's copy is deleted.", 13f, Ui.MUTED), 4)
+                "Swipe one right to put it back, or left to delete it. Only this phone's copy is deleted.", 13f, Ui.MUTED), 4)
             items.forEach { item ->
                 val row = requestRow(item.status, item.summary, item.message, whenText(item), card = true)
-                swipeable(row) { MyRequests.delete(this, item.asked); list.removeView(row); toast("Deleted") }
-                row.setOnClickListener {
-                    requestOptions(item.summary, "Put back", onMain = { MyRequests.setArchived(this, item.asked, false); list.removeView(row); toast("Put back in My requests") },
-                        onDelete = { MyRequests.delete(this, item.asked); list.removeView(row); toast("Deleted") })
-                }
-                list.addView(row, LinearLayout.LayoutParams(gap))
+                lateinit var holder: View
+                val putBack = { MyRequests.setArchived(this, item.asked, false); list.removeView(holder); toast("Put back in My requests") }
+                val deleteIt = { MyRequests.delete(this, item.asked); list.removeView(holder); toast("Deleted") }
+                holder = swipeRow(row,
+                    right = SwipeAction("Put back", R.drawable.ic_d_undo, Ui.ACCENT, putBack),
+                    left = SwipeAction("Delete", R.drawable.ic_d_trash, Ui.DANGER, deleteIt))
+                row.setOnClickListener { requestOptions(item.summary, "Put back", onMain = putBack, onDelete = deleteIt) }
+                list.addView(holder, LinearLayout.LayoutParams(gap))
             }
             d.add(list, 8)
             if (items.isNotEmpty()) d.button("Delete all", Ui.Kind.GHOST) { dlg ->
@@ -1303,11 +1357,55 @@ class MainActivity : Activity() {
         }.show()
     }
 
+    /** What swiping a row one way does: its word and icon on the trail, the trail's colour, and the action. */
+    private class SwipeAction(val label: String, val icon: Int, val color: Int, val run: () -> Unit)
+
     /**
-     * Lets [row] be swiped sideways (past a third of its width) to call [onSwiped]. Only a clearly sideways
-     * move starts it, so the list still scrolls up and down; a plain tap still works as a tap.
+     * Puts [row] on a coloured trail, like Gmail: swiping right shows [right]'s colour, icon and word on
+     * the left; swiping left shows [left]'s on the right. Let go past a third of the way and the row
+     * slides off and its space closes, then the action runs; let go sooner and it springs back. Only a
+     * clearly sideways move starts it, so the list still scrolls; a plain tap still works as a tap.
+     * Returns the holder to add to the list (instead of [row]).
      */
-    private fun swipeable(row: View, onSwiped: () -> Unit) {
+    private fun swipeRow(row: View, right: SwipeAction, left: SwipeAction): View {
+        val radius = Ui.dp(this, 16).toFloat()
+        val pad = Ui.dp(this, 20)
+        val icon = android.widget.ImageView(this).apply { imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE) }
+        val word = Ui.text(this, "", 14.5f, android.graphics.Color.WHITE, "bold")
+        val trail = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(pad, 0, pad, 0)
+            visibility = View.INVISIBLE
+        }
+        val holder = android.widget.FrameLayout(this)
+        holder.addView(trail, android.widget.FrameLayout.LayoutParams(-1, -1))
+        holder.addView(row, android.widget.FrameLayout.LayoutParams(-1, -2))
+
+        // Shows the trail for this direction: its colour, and its icon and word on the uncovered side.
+        var shown = 0
+        fun showTrail(direction: Int) {
+            if (direction == shown) return
+            shown = direction
+            if (direction == 0) { trail.visibility = View.INVISIBLE; return }
+            val a = if (direction > 0) right else left
+            trail.background = Ui.rounded(a.color, radius)
+            icon.setImageResource(a.icon)
+            word.text = a.label
+            trail.removeAllViews()
+            val gapPx = Ui.dp(this, 8)
+            if (direction > 0) {
+                trail.gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
+                trail.addView(icon, LinearLayout.LayoutParams(Ui.dp(this, 22), Ui.dp(this, 22)).apply { marginEnd = gapPx })
+                trail.addView(word)
+            } else {
+                trail.gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.END
+                trail.addView(word)
+                trail.addView(icon, LinearLayout.LayoutParams(Ui.dp(this, 22), Ui.dp(this, 22)).apply { marginStart = gapPx })
+            }
+            trail.visibility = View.VISIBLE
+        }
+
         val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
         var downX = 0f
         var downY = 0f
@@ -1327,17 +1425,29 @@ class MainActivity : Activity() {
                     }
                     if (dragging) {
                         v.translationX = dx
-                        v.alpha = 1f - minOf(0.7f, Math.abs(dx) / maxOf(1, v.width))
+                        showTrail(if (dx > 0) 1 else if (dx < 0) -1 else 0)
                     }
                     true
                 }
                 android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
                     val dx = e.rawX - downX
                     if (dragging && e.actionMasked == android.view.MotionEvent.ACTION_UP && Math.abs(dx) > v.width / 3f) {
-                        v.animate().translationX(if (dx > 0) v.width.toFloat() else -v.width.toFloat()).alpha(0f)
-                            .setDuration(160).withEndAction { onSwiped() }.start()
+                        // Slide off, close the gap, then do it.
+                        val action = if (dx > 0) right else left
+                        v.animate().translationX(if (dx > 0) v.width.toFloat() else -v.width.toFloat())
+                            .setDuration(160).withEndAction {
+                                val start = holder.height
+                                val shrink = android.animation.ValueAnimator.ofInt(start, 0).setDuration(180)
+                                shrink.addUpdateListener { a ->
+                                    holder.layoutParams = holder.layoutParams.apply { height = a.animatedValue as Int }
+                                }
+                                shrink.addListener(object : android.animation.AnimatorListenerAdapter() {
+                                    override fun onAnimationEnd(animation: android.animation.Animator) { action.run() }
+                                })
+                                shrink.start()
+                            }.start()
                     } else {
-                        v.animate().translationX(0f).alpha(1f).setDuration(160).start()
+                        v.animate().translationX(0f).setDuration(160).withEndAction { showTrail(0) }.start()
                         val moved = Math.abs(dx) > slop || Math.abs(e.rawY - downY) > slop
                         if (!dragging && !moved && e.actionMasked == android.view.MotionEvent.ACTION_UP) v.performClick()
                     }
@@ -1347,6 +1457,7 @@ class MainActivity : Activity() {
                 else -> false
             }
         }
+        return holder
     }
 
     /** When the phone gets a connection: send what's waiting and fetch the latest lists. */
@@ -1500,7 +1611,10 @@ class MainActivity : Activity() {
         val html = "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>" +
             "<body style='margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;" +
             "background:${hex(Ui.SEG)};color:${hex(Ui.MUTED)};font:600 14px/1.4 sans-serif;text-align:center;padding:8px;box-sizing:border-box'>" +
-            "<div>Blocked: content from $site</div></body>"
+            "<div><div>Blocked: content from $site</div>" +
+            (if (Requests.isSetUp()) "<a href='wlb://ask-frames' target='_top' style='display:inline-block;margin-top:10px;padding:9px 16px;" +
+                "border-radius:999px;background:${hex(Ui.ACCENT)};color:#fff;text-decoration:none;font-weight:700'>Ask for it</a>" else "") +
+            "</div></body>"
         return WebResourceResponse("text/html", "utf-8", 200, "OK", emptyMap(), java.io.ByteArrayInputStream(html.toByteArray()))
     }
 
@@ -1585,6 +1699,51 @@ class MainActivity : Activity() {
         d.show()
     }
 
+    // ---------- settings ----------
+
+    /** ⋮ → Settings: appearance, cookies and site data, cache, app update, and about this phone. */
+    private fun showSettings() {
+        val d = Ui.AppDialog(this, sheet = true)
+        d.title("Settings")
+        fun row(icon: Int, title: String, sub: String, onTap: () -> Unit): LinearLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            val p = Ui.dp(this@MainActivity, 14)
+            setPadding(p, Ui.dp(this@MainActivity, 12), p, Ui.dp(this@MainActivity, 12))
+            minimumHeight = Ui.dp(this@MainActivity, 60)
+            background = android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(Ui.SEG), null, android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE))
+            addView(Ui.badge(this@MainActivity, icon, Ui.SOFT, Ui.ACCENT_TEXT, 38, 12).apply {
+                (layoutParams as LinearLayout.LayoutParams).marginEnd = Ui.dp(this@MainActivity, 12)
+            })
+            val words = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+            words.addView(Ui.text(this@MainActivity, title, 15.5f, Ui.INK, "bold"))
+            words.addView(Ui.text(this@MainActivity, sub, 13f, Ui.MUTED))
+            addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+            setOnClickListener { d.dismiss(); onTap() }
+        }
+        val look = when (Ui.choice(this)) { "light" -> "Light"; "dark" -> "Dark"; else -> "Phone's setting" } +
+            if (Ui.usePhoneColours(this)) ", phone's colours" else ""
+        val name = Device.name(this) ?: "Not registered yet"
+        val rows = listOf(
+            row(R.drawable.ic_d_theme, "Appearance", look) { showAppearance() },
+            row(R.drawable.ic_d_cookie, "Cookies and site data", "Sign out of sites, reset camera and location answers") { confirmClearCookies() },
+            row(R.drawable.ic_d_broom, "Clear cache", "Frees space; pages load fresh") { clearCache() },
+            row(R.drawable.ic_d_update, "App update", "Version ${BuildConfig.VERSION_NAME}. Check for a new one") { checkForUpdate(manual = true) },
+            row(R.drawable.ic_d_user, "About this phone", "$name · ${Device.id(this)}") { showAbout() })
+        d.add(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 16).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
+            clipToOutline = true
+            rows.forEachIndexed { i, r ->
+                if (i > 0) addView(View(this@MainActivity).apply { setBackgroundColor(Ui.LINE2) }, LinearLayout.LayoutParams(-1, Ui.dp(this@MainActivity, 1)))
+                addView(r)
+            }
+        })
+        d.button("Close", Ui.Kind.PRIMARY) { it.dismiss() }
+        d.show()
+    }
+
     // ---------- light or dark ----------
 
     /** ⋮ → Appearance: the phone's own setting (the default), light or dark. Remembered on this phone. */
@@ -1596,13 +1755,17 @@ class MainActivity : Activity() {
             title("Appearance", icon = R.drawable.ic_d_theme)
             add(Ui.Segmented(this@MainActivity, options.map { it.second }, current, true) { picked = it }.view)
             add(Ui.text(this@MainActivity, "\"Phone's setting\" switches between light and dark along with the phone.", 13.5f, Ui.MUTED), 8)
+            // The phone's own colours, from its wallpaper: only on Android 12 and newer.
+            val wasPhoneColours = Ui.usePhoneColours(this@MainActivity)
+            val (colourRow, colourSwitch) = Ui.switchRow(this@MainActivity, "Use my phone's colours", "Matches your wallpaper", wasPhoneColours)
+            if (Ui.phoneColoursAvailable) add(colourRow)
             button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
             button("Done", Ui.Kind.PRIMARY) {
                 it.dismiss()
-                if (picked != current) {
-                    Ui.setChoice(this@MainActivity, options[picked].first)
-                    if (Ui.wantsDark(this@MainActivity) != Ui.dark) recreate()   // redraw in the new look (pages are kept)
-                }
+                val colourChanged = Ui.phoneColoursAvailable && colourSwitch.isChecked != wasPhoneColours
+                if (colourChanged) Ui.setPhoneColours(this@MainActivity, colourSwitch.isChecked)
+                if (picked != current) Ui.setChoice(this@MainActivity, options[picked].first)
+                if (colourChanged || (picked != current && Ui.wantsDark(this@MainActivity) != Ui.dark)) recreate()   // redraw (pages are kept)
             }
         }.show()
     }
@@ -1674,17 +1837,36 @@ class MainActivity : Activity() {
      * registers and becomes the phone's name on GitHub and the admin page, where it can be changed.
      */
     private fun askName() {
-        val field = Ui.field(this, "e.g. Emma",
-            type = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_WORDS)
+        val nameType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_WORDS
+        val firstField = Ui.field(this, "e.g. Emma", type = nameType)
+        val lastField = Ui.field(this, "e.g. Smith", type = nameType)
+        // First and last name: side by side, or one above the other on small screens.
+        fun column(label: String, f: View) = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(Ui.label(this@MainActivity, label))
+            addView(f, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dp(this@MainActivity, 6) })
+        }
+        val names = LinearLayout(this).apply {
+            orientation = if (narrow) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+            val gapPx = Ui.dp(this@MainActivity, 10)
+            if (narrow) {
+                addView(column("First name", firstField))
+                addView(column("Last name", lastField), LinearLayout.LayoutParams(-1, -2).apply { topMargin = gapPx })
+            } else {
+                addView(column("First name", firstField), LinearLayout.LayoutParams(0, -2, 1f))
+                addView(column("Last name", lastField), LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = gapPx })
+            }
+        }
         Ui.AppDialog(this, sheet = false, cancelable = false).apply {
             title("What's your name?", icon = R.drawable.ic_d_user)
             add(Ui.text(this@MainActivity, "So whoever manages this browser knows whose phone this is.", 14.5f, Ui.MUTED))
-            add(Ui.label(this@MainActivity, "Your name"))
-            add(field, 6)
+            add(names)
             button("Continue", Ui.Kind.PRIMARY) {
-                val name = field.text.toString().trim()
-                if (name.isEmpty()) { field.error = "Type your name"; return@button }
-                Device.setName(this@MainActivity, name)
+                val first = firstField.text.toString().trim()
+                val last = lastField.text.toString().trim()
+                if (first.isEmpty()) { firstField.error = "Type your first name"; return@button }
+                if (last.isEmpty()) { lastField.error = "Type your last name"; return@button }
+                Device.setNames(this@MainActivity, first, last)
                 it.dismiss()
                 sendWaiting(registerFirst = true) // registers now (or as soon as it's online)
             }
@@ -1723,7 +1905,11 @@ class MainActivity : Activity() {
         val phone = mutableListOf(
             row("Phone ID", id),
             row("Name", (st.deviceName ?: Device.name(this) ?: "Not set") + if (st.registered) "" else " (not registered yet)"),
-            row("Lists", st.listNames.ifEmpty { listOf("none") }.joinToString(", ")),
+            row("Lists", st.listNames.ifEmpty { listOf("none") }.joinToString(", ") { n ->
+                // A phone's own list is named after its ID: show the person's name instead.
+                if (n.equals(id, ignoreCase = true)) "${st.deviceName ?: Device.name(this) ?: "This phone"} (own list)"
+                else if (n == "public") "Everyone" else n
+            }),
             row("Allowed sites", st.allow.distinct().size.toString()))
         val waiting = Outbox.count(this)
         if (waiting > 0) phone += row("Waiting to send", "$waiting (${Outbox.lastProblem ?: "sends when online"})")

@@ -59,7 +59,17 @@ object Device {
     fun name(ctx: Context): String? = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("name", null)
 
     fun setName(ctx: Context, name: String) =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("name", name.trim().take(40)).apply()
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("name", name.trim().take(60)).apply()
+
+    /** First and last name, as typed on first launch. [name] is the two together. */
+    fun first(ctx: Context): String? = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("first", null)
+    fun last(ctx: Context): String? = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("last", null)
+    fun setNames(ctx: Context, first: String, last: String) {
+        val f = first.trim().take(30)
+        val l = last.trim().take(30)
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("first", f).putString("last", l).putString("name", listOf(f, l).filter { it.isNotEmpty() }.joinToString(" ")).apply()
+    }
 
     /** The date the app first ran on this phone (kept on the phone), e.g. "2026-09-23". */
     fun installedOn(ctx: Context): String {

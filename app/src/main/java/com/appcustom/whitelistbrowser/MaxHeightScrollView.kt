@@ -10,7 +10,7 @@ import android.widget.ScrollView
  * content can scroll. This measures the space actually visible (smaller while the keyboard is up)
  * and leaves [reservedDp] for the dialog's title, buttons and margins.
  */
-class MaxHeightScrollView(context: Context, private val reservedDp: Int = 170) : ScrollView(context) {
+class MaxHeightScrollView(context: Context, var reservedDp: Int = 170) : ScrollView(context) {
     init { isFillViewport = true }
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val frame = Rect()

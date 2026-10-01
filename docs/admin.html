@@ -233,9 +233,9 @@
 
   /* ---------- Dark ----------
      Inside the app: the app's choice (?theme=dark). On the web: the device's own setting. */
-  :root[data-theme="dark"] { --bg: #121C1D; --card: #22302F; --ink: #E6EEEC; --ink2: #C5D2CF; --muted: #9DB0AC; --faint: #6F817E;
-    --line: #2E3D3C; --line2: #2A3837; --field: #3B4B49; --accent: #2E7D6E; --accent-dark: #276B5E; --accent-soft: #1E3833;
-    --mint: #7FD1A8; --amber: #3A2F1A; --amber-line: #5A4724; --amber-ink: #F2C97A; --red: #F4A99B; --red-soft: #3D2420;
+  :root[data-theme="dark"] { --bg: #1F2B2C; --card: #304041; --ink: #ECF2F0; --ink2: #D2DDDA; --muted: #AEBFBB; --faint: #8EA19D;
+    --line: #3D4E4F; --line2: #364748; --field: #4A5D5E; --accent: #3D8F7E; --accent-dark: #347A6C; --accent-soft: #2C4A44;
+    --mint: #9BE3C2; --amber: #4A3B20; --amber-line: #6A5530; --amber-ink: #F5D08A; --red: #F7B4A7; --red-soft: #4A2C28;
     color-scheme: dark; }
   :root[data-theme="dark"] a, :root[data-theme="dark"] .back, :root[data-theme="dark"] .done, :root[data-theme="dark"] details.more > summary, :root[data-theme="dark"] .chip.teal, :root[data-theme="dark"] .av, :root[data-theme="dark"] .pick[aria-pressed="true"],
   :root[data-theme="dark"] #tabs button[aria-current="page"] { color: var(--mint); }
@@ -244,24 +244,24 @@
   :root[data-theme="dark"] .btn.dline { border-color: #6B3A33; color: var(--red); }
   :root[data-theme="dark"] .lc[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
   :root[data-theme="dark"] .pick[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--mint); }
-  :root[data-theme="dark"] .lc.add { background: transparent; border-color: #4A5957; }
-  :root[data-theme="dark"] .seg, :root[data-theme="dark"] .chip, :root[data-theme="dark"] .av.grey { background: #2A3837; }
-  :root[data-theme="dark"] .seg button[aria-pressed="true"] { background: #3A4B49; color: var(--ink); }
+  :root[data-theme="dark"] .lc.add { background: transparent; border-color: #56696A; }
+  :root[data-theme="dark"] .seg, :root[data-theme="dark"] .chip, :root[data-theme="dark"] .av.grey { background: #364748; }
+  :root[data-theme="dark"] .seg button[aria-pressed="true"] { background: #435657; color: var(--ink); }
   :root[data-theme="dark"] .chip.amber { color: var(--amber-ink); }
   :root[data-theme="dark"] .chip.red { color: var(--red); }
-  :root[data-theme="dark"] .sw { background: #4A5957; }
+  :root[data-theme="dark"] .sw { background: #56696A; }
   :root[data-theme="dark"] .sw:checked { background: var(--accent); }
-  :root[data-theme="dark"] .wheel div { color: #6F817E; }
+  :root[data-theme="dark"] .wheel div { color: #8EA19D; }
   :root[data-theme="dark"] .wheel div.sel { color: var(--ink); }
   :root[data-theme="dark"] .wheel-band { background: rgba(127, 209, 168, .10); }
   :root[data-theme="dark"] #tabs { border-top-color: var(--line); }
-  :root[data-theme="dark"] button.row:hover, :root[data-theme="dark"] a.row:hover { background: #26342F; }
-  :root[data-theme="dark"] .tile { background: #1A2627; color: var(--mint) !important; }
+  :root[data-theme="dark"] button.row:hover, :root[data-theme="dark"] a.row:hover { background: #344546; }
+  :root[data-theme="dark"] .tile { background: #273536; color: var(--mint) !important; }
   :root[data-theme="dark"] .tempcard { color: var(--amber-ink); }
   :root[data-theme="dark"] .tempcard button { border-color: #5A4724; color: var(--amber-ink); }
-  :root[data-theme="dark"] .quote { background: #1A2627; }
-  :root[data-theme="dark"] #savebar, :root[data-theme="dark"] #toast { background: #0B1415; }
-  :root[data-theme="dark"] .inp::placeholder { color: #6F817E; }
+  :root[data-theme="dark"] .quote { background: #273536; }
+  :root[data-theme="dark"] #savebar, :root[data-theme="dark"] #toast { background: #162021; }
+  :root[data-theme="dark"] .inp::placeholder { color: #8EA19D; }
 </style>
 </head>
 <body>
@@ -1548,7 +1548,12 @@ function phoneScreen() {
   const id = S.sub.id;
   const d = S.D.devices[id];
   if (!d) { S.sub = null; return phonesScreen(); }
-  const name = h('input', { class: 'inp', id: 'pName', value: d.name || '', placeholder: 'e.g. Emma', oninput: e => { d.name = e.target.value.trim(); markDevices(); } });
+  // First and last name (the phone asks for both); "name" is the two together, used everywhere else.
+  const parts = (d.name || '').trim().split(/\s+/);
+  if (d.first === undefined && d.last === undefined && d.name) { d.first = parts[0] || ''; d.last = parts.slice(1).join(' '); }
+  const setName = () => { d.name = [d.first, d.last].map(x => (x || '').trim()).filter(Boolean).join(' '); markDevices(); };
+  const first = h('input', { class: 'inp', id: 'pFirst', value: d.first || '', placeholder: 'e.g. Emma', oninput: e => { d.first = e.target.value; setName(); } });
+  const last = h('input', { class: 'inp', id: 'pLast', value: d.last || '', placeholder: 'e.g. Smith', oninput: e => { d.last = e.target.value; setName(); } });
   const lists = h('div', { class: 'chips', style: 'gap:8px' }, S.lists.map(l => {
     const on = (d.lists || []).includes(l);
     return h('button', { type: 'button', class: 'lc pick', 'aria-pressed': String(on), disabled: !!d.blocked, onclick: () => {
@@ -1591,7 +1596,9 @@ function phoneScreen() {
   return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Phones'),
     h('div', { style: 'display:flex;align-items:center;gap:14px;padding:0 4px' }, h('span', { class: 'av big' }, (d.name || '?')[0].toUpperCase()),
       h('div', { style: 'min-width:0' }, h('h1', { style: 'margin:0;font:700 28px/1.15 var(--display);overflow-wrap:anywhere' }, d.name || 'No name yet'), h('span', { class: 'muted small mono' }, `${id}${d.model ? ' · ' + d.model : ''}`))),
-    h('div', { class: 'field' }, h('label', { for: 'pName' }, 'Name'), name),
+    h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:10px' },
+      h('div', { class: 'field' }, h('label', { for: 'pFirst' }, 'First name'), first),
+      h('div', { class: 'field' }, h('label', { for: 'pLast' }, 'Last name'), last)),
     d.blocked ? h('p', { class: 'warn' }, `Blocked: it can't open any site. Its lists (${(d.blockedLists || []).map(listLabel).join(', ') || 'none'}) come back when you unblock it.`) : null,
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Lists it uses'), lists,
       h('p', { class: 'hint', style: 'margin:0' }, d.blocked ? 'Unblock it to change its lists.' : 'A site opens if any of these allows it, and is blocked if any of them blocks it.')),

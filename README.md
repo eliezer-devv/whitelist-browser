@@ -257,7 +257,7 @@ Pages often show things from other sites: an embedded YouTube or Vimeo video, a 
 Pictures, scripts and styles from other sites always load. **Embedded frames** only show if they're allowed on that
 page; otherwise their space shows *"Blocked: content from vimeo.com"*.
 - **On the phone,** a bar appears under the top bar: *"Parts of this page were blocked (from vimeo.com)"*, with **Ask**
-  and ✕. ✕ hides it until the page loads again, and while a page has blocked parts, **⋮** → **Ask for blocked parts**
+  and ✕. The blocked part itself also has an **Ask for it** button. ✕ hides the bar until the page loads again, and while a page has blocked parts, **⋮** → **Ask for blocked parts**
   does the same as **Ask**. It opens a short sheet with a tick box for each blocked site (all ticked to start with),
   an optional note, and the approval PIN if one is set. Only the ticked ones are asked for.
 - **The request** reads *"Embedded content on bbc.co.uk, from player.vimeo.com"*. Replying **`approve`** (or tapping
@@ -430,10 +430,11 @@ admin page, and without signing in to the admin page on their phone.
 
 ### My requests (on the phone)
 **⋮** → **My requests** lists the phone's requests: waiting, answered, and any not sent yet.
-- **Swipe an answered request sideways** to archive it, or tap it for **Archive** and **Delete**. Answered requests
-  also move to the archive by themselves after 30 days.
-- **Archived** (at the bottom) shows the archive. There, swipe one to delete it, or tap it for **Put back** and
-  **Delete**. **Delete all** empties it.
+- **Swipe an answered request right to archive it** (a green trail shows behind it), **or left to delete it** (a red
+  trail). Let go past about a third of the way to do it; let go sooner and it springs back. Tapping one gives
+  **Archive** and **Delete** too. Answered requests also move to the archive by themselves after 30 days.
+- **Archived** (at the bottom) shows the archive. There, swipe right to **put one back** (green) or left to **delete
+  it** (red), or tap it for the same. **Delete all** empties it.
 - **Waiting and not-yet-sent requests always stay in the list.** Deleting only removes this phone's copy: the request
   is still on GitHub. The phone keeps up to 100 requests.
 
@@ -1002,13 +1003,27 @@ People never see it.
 - **Don't change it.** A different package name is a different app: phones can't update across it, and every
   phone would need uninstalling and installing again.
 
+### The top bar and Settings
+- **The top bar** shows the open site's name. **Hold the name** to see it in full (the page's title and its site).
+- **The list button** (a list with a tick, next to Reload) checks the list now and says whether it changed. Reload
+  only reloads the page.
+- **A slim line under the top bar** appears only when there's something to say: time left on something open for a
+  while, photos or videos being off, or the list couldn't be checked (tap it to try again). Otherwise it's hidden.
+- **⋮ → Settings** holds **Appearance**, **Cookies and site data**, **Clear cache**, **App update** and **About this
+  phone**.
+- **Sheets that slide up from the bottom** can be dragged by their handle: down to close, up to fill the screen.
+- **First launch** asks for the person's **first and last name**. **About this phone** shows the phone's own list by
+  the person's name.
+
 ### The app's look
 The app, its dialogs, the home page, the blocked page and the admin page share one look: a warm off-white background,
 the app's deep green, rounded corners, and two fonts, **Figtree** for text and **Bricolage Grotesque** for headings.
 - **Longer screens** (asking for a site, My requests, About this phone) slide up from the bottom. Short questions
   (camera access, opening another app, clear cookies, answers) are small cards in the middle.
 - **Light or dark:** the app follows the phone's own setting, and switches when the phone does. Anyone can change it
-  on the phone: **⋮** → **Appearance** → **Phone's setting**, **Light** or **Dark** (remembered on that phone). It covers
+  on the phone: **⋮** → **Settings** → **Appearance** → **Phone's setting**, **Light** or **Dark** (remembered on that
+  phone). On Android 12 and newer, **Use my phone's colours** swaps the app's greens for the phone's own colours
+  (from its wallpaper), in light and dark; it's off unless chosen. It covers
   the dialogs, menus, home page, blocked page and the in-app admin. The admin page on the web follows the setting of
   the device it's opened on.
 - **The fonts** are free (SIL Open Font License), and each **Build APK** downloads them from Google's font collection

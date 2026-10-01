@@ -75,6 +75,8 @@ object Ui {
         private set
     var HANDLE = 0
         private set
+    var BAR = 0                       // the top bar (and the phone's status bar)
+        private set
     var dark = false
         private set
 
@@ -89,14 +91,40 @@ object Ui {
             PAPER = c(0xFFF5F3EE); PAGE = c(0xFFF5F3EE); CARD = c(0xFFFFFFFF); SEG = c(0xFFEAE7E0)
             ACCENT = c(0xFF1F5F55); ACCENT_TEXT = c(0xFF1F5F55); SOFT = c(0xFFE1EEEA); OUTLINE = c(0xFFCFDDD8)
             AMBER_BG = c(0xFFFBEFD5); AMBER_INK = c(0xFF6B4700); RED_BG = c(0xFFF7E3DE); RED_INK = c(0xFF8E3322)
-            DANGER = c(0xFFA33A2A); TRACK_OFF = c(0xFFBFBAB0); HANDLE = c(0xFFCFCBC2)
+            DANGER = c(0xFFA33A2A); TRACK_OFF = c(0xFFBFBAB0); HANDLE = c(0xFFCFCBC2); BAR = c(0xFF1F3A3D)
         } else {
-            INK = c(0xFFE6EEEC); INK2 = c(0xFFC5D2CF); MUTED = c(0xFF9DB0AC); HINT = c(0xFF7F918E)
-            LINE = c(0xFF2E3D3C); LINE2 = c(0xFF2A3837); FIELD_LINE = c(0xFF3B4B49)
-            PAPER = c(0xFF1A2627); PAGE = c(0xFF121C1D); CARD = c(0xFF22302F); SEG = c(0xFF2A3837)
-            ACCENT = c(0xFF2E7D6E); ACCENT_TEXT = c(0xFF7FD1A8); SOFT = c(0xFF1E3833); OUTLINE = c(0xFF3B4B49)
-            AMBER_BG = c(0xFF3A2F1A); AMBER_INK = c(0xFFF2C97A); RED_BG = c(0xFF3D2420); RED_INK = c(0xFFF4A99B)
-            DANGER = c(0xFFC0503D); TRACK_OFF = c(0xFF4A5957); HANDLE = c(0xFF3F4E4C)
+            // Dark: softer than near-black, so text and edges are easier to read.
+            INK = c(0xFFECF2F0); INK2 = c(0xFFD2DDDA); MUTED = c(0xFFAEBFBB); HINT = c(0xFF8EA19D)
+            LINE = c(0xFF3D4E4F); LINE2 = c(0xFF364748); FIELD_LINE = c(0xFF4A5D5E)
+            PAPER = c(0xFF273536); PAGE = c(0xFF1F2B2C); CARD = c(0xFF304041); SEG = c(0xFF364748)
+            ACCENT = c(0xFF3D8F7E); ACCENT_TEXT = c(0xFF9BE3C2); SOFT = c(0xFF2C4A44); OUTLINE = c(0xFF4A5D5E)
+            AMBER_BG = c(0xFF4A3B20); AMBER_INK = c(0xFFF5D08A); RED_BG = c(0xFF4A2C28); RED_INK = c(0xFFF7B4A7)
+            DANGER = c(0xFFC4553F); TRACK_OFF = c(0xFF56696A); HANDLE = c(0xFF56696A); BAR = c(0xFF1A3134)
+        }
+    }
+
+    /**
+     * "Use my phone's colours" (Android 12 and newer): the phone's own palette, taken from its wallpaper,
+     * in place of the app's greens and greys. Warnings (amber, red) keep their meaning.
+     */
+    private fun phonePalette(ctx: Context, night: Boolean) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        fun k(id: Int) = ctx.getColor(id)
+        val R = android.R.color::class.java
+        fun sys(name: String): Int = k(R.getField(name).getInt(null))
+        if (!night) {
+            ACCENT = sys("system_accent1_600"); ACCENT_TEXT = sys("system_accent1_700"); SOFT = sys("system_accent1_100")
+            OUTLINE = sys("system_accent1_200"); PAPER = sys("system_neutral1_50"); PAGE = sys("system_neutral1_10")
+            SEG = sys("system_neutral2_100"); LINE = sys("system_neutral2_100"); LINE2 = sys("system_neutral2_50")
+            INK = sys("system_neutral1_900"); INK2 = sys("system_neutral2_800"); MUTED = sys("system_neutral2_600")
+            TRACK_OFF = sys("system_neutral2_300"); HANDLE = sys("system_neutral2_300"); BAR = sys("system_accent1_800")
+        } else {
+            ACCENT = sys("system_accent1_500"); ACCENT_TEXT = sys("system_accent1_200"); SOFT = sys("system_accent1_800")
+            OUTLINE = sys("system_neutral2_600"); PAPER = sys("system_neutral1_800"); PAGE = sys("system_neutral1_900")
+            CARD = sys("system_neutral1_700"); SEG = sys("system_neutral2_700"); LINE = sys("system_neutral2_700")
+            LINE2 = sys("system_neutral2_800"); INK = sys("system_neutral1_50"); INK2 = sys("system_neutral1_100")
+            MUTED = sys("system_neutral2_200"); TRACK_OFF = sys("system_neutral2_500"); HANDLE = sys("system_neutral2_500")
+            BAR = sys("system_accent1_900")
         }
     }
 
@@ -111,8 +139,22 @@ object Ui {
         "dark" -> true
         else -> (config.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
     }
-    /** Picks the light or dark colours. Call before building any view. */
-    fun applyTheme(ctx: Context) = palette(wantsDark(ctx))
+    /** "Use my phone's colours" (only offered on Android 12 and newer). */
+    val phoneColoursAvailable get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    fun usePhoneColours(ctx: Context) = phoneColoursAvailable &&
+        ctx.getSharedPreferences(LOOK, Context.MODE_PRIVATE).getBoolean("phoneColours", false)
+    fun setPhoneColours(ctx: Context, on: Boolean) =
+        ctx.getSharedPreferences(LOOK, Context.MODE_PRIVATE).edit().putBoolean("phoneColours", on).apply()
+
+    /** Picks the light or dark colours (and the phone's own, if chosen). Call before building any view. */
+    fun applyTheme(ctx: Context) {
+        val night = wantsDark(ctx)
+        palette(night)
+        if (usePhoneColours(ctx)) runCatching { phonePalette(ctx, night) }   // if anything's missing: the app's colours
+    }
+
+    /** The colours as "#RRGGBB", for pages the app shows (home page, blocked page). */
+    fun hex(c: Int) = String.format("#%06X", c and 0xFFFFFF)
 
     @Volatile private var body: Typeface = Typeface.SANS_SERIF
     @Volatile private var bold: Typeface = Typeface.DEFAULT_BOLD
@@ -299,12 +341,37 @@ object Ui {
                     cornerRadii = if (sheet) floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f) else FloatArray(8) { r }
                 }
             }
-            if (sheet) root.addView(View(ctx).apply {       // the little handle at the top of a sheet
-                background = Ui.rounded(Ui.HANDLE, Ui.dp(ctx, 3).toFloat())
-            }, LinearLayout.LayoutParams(Ui.dp(ctx, 40), Ui.dp(ctx, 5)).apply {
-                gravity = Gravity.CENTER_HORIZONTAL; topMargin = Ui.dp(ctx, 10); bottomMargin = Ui.dp(ctx, 4)
-            })
             val scroll = MaxHeightScrollView(ctx, reservedDp = if (sheet) (if (narrow) 84 else 120) else (if (narrow) 110 else 160))
+            if (sheet) {
+                // The handle at the top of a sheet, in a wider strip that can be dragged: down to close,
+                // up to make the sheet (nearly) full screen.
+                val grip = android.widget.FrameLayout(ctx)
+                grip.addView(View(ctx).apply { background = Ui.rounded(Ui.HANDLE, Ui.dp(ctx, 3).toFloat()) },
+                    android.widget.FrameLayout.LayoutParams(Ui.dp(ctx, 40), Ui.dp(ctx, 5), Gravity.CENTER))
+                root.addView(grip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(ctx, 26)))
+                var startY = 0f
+                grip.setOnTouchListener { _, e ->
+                    when (e.actionMasked) {
+                        android.view.MotionEvent.ACTION_DOWN -> { startY = e.rawY; true }
+                        android.view.MotionEvent.ACTION_MOVE -> {
+                            val dy = e.rawY - startY
+                            if (dy > 0) root.translationY = dy                         // follows the finger down
+                            else if (dy < -Ui.dp(ctx, 40) && !expanded) expand(root, scroll)  // pulled up: full screen
+                            true
+                        }
+                        android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                            val dy = e.rawY - startY
+                            if (cancelable && dy > root.height * 0.25f) {
+                                root.animate().translationY(root.height.toFloat()).setDuration(160).withEndAction { dismiss() }.start()
+                            } else {
+                                root.animate().translationY(0f).setDuration(160).start()
+                            }
+                            true
+                        }
+                        else -> false
+                    }
+                }
+            }
             scroll.addView(content)
             root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             if (sheet) root.addView(View(ctx).apply { setBackgroundColor(Ui.LINE) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(ctx, 1)))
@@ -326,6 +393,16 @@ object Ui {
                     setLayout(minOf(w, Ui.dp(ctx, 440)), ViewGroup.LayoutParams.WRAP_CONTENT)
                 }
             }
+        }
+
+        /** Pulled up: the sheet fills (nearly) the whole screen, and its content gets all of that room. */
+        private var expanded = false
+        private fun expand(root: LinearLayout, scroll: MaxHeightScrollView) {
+            expanded = true
+            scroll.reservedDp = if (narrow) 70 else 96
+            root.minimumHeight = (ctx.resources.displayMetrics.heightPixels * 0.9f).toInt()
+            scroll.layoutParams = (scroll.layoutParams as LinearLayout.LayoutParams).apply { height = 0; weight = 1f }
+            root.requestLayout()
         }
 
         /** The heading, with an optional line under it and an optional icon badge beside it. */

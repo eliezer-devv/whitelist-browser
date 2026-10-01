@@ -3,7 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script>if (/(^|[#&])theme=dark(&|$)/.test(location.hash)) document.documentElement.dataset.theme = 'dark';</script>
+<script>
+  // The app passes light or dark, and its colours right now (so this page matches the rest of the app).
+  (function () {
+    var q = new URLSearchParams(location.hash.slice(1)), r = document.documentElement;
+    if (q.get('theme') === 'dark') r.dataset.theme = 'dark';
+    var p = (q.get('pal') || '').split('.');
+    var names = ['bg', 'ink', 'ink2', 'card', 'outline', 'accent', 'accent-text', 'soft', 'red-bg', 'red-ink'];
+    if (p.length === names.length && p.every(function (c) { return /^[0-9A-Fa-f]{6}$/.test(c); })) {
+      names.forEach(function (n, i) { r.style.setProperty('--' + n, '#' + p[i]); });
+    }
+  })();
+</script>
 <title>Not on the list</title>
 <style>
   /* The app's fonts (packed in at build time). If they're missing, the phone's own font is used. */
@@ -12,8 +23,8 @@
   *, *::before, *::after { box-sizing: border-box; }
   :root { --bg: #F5F3EE; --ink: #1C2B2D; --ink2: #3E4B49; --card: #FFFFFF; --outline: #CFDDD8; --accent: #1F5F55;
     --accent-text: #1F5F55; --soft: #E1EEEA; --red-bg: #F7E3DE; --red-ink: #8E3322; }
-  :root[data-theme="dark"] { --bg: #121C1D; --ink: #E6EEEC; --ink2: #C5D2CF; --card: #22302F; --outline: #3B4B49;
-    --accent: #2E7D6E; --accent-text: #7FD1A8; --soft: #1E3833; --red-bg: #3D2420; --red-ink: #F4A99B; color-scheme: dark; }
+  :root[data-theme="dark"] { --bg: #1F2B2C; --ink: #ECF2F0; --ink2: #D2DDDA; --card: #304041; --outline: #4A5D5E;
+    --accent: #3D8F7E; --accent-text: #9BE3C2; --soft: #2C4A44; --red-bg: #4A2C28; --red-ink: #F7B4A7; color-scheme: dark; }
   body { margin: 0; min-height: 100vh; display: flex; align-items: center; background: var(--bg);
     color: var(--ink); font: 16.5px/1.5 Figtree, system-ui, sans-serif; }
   main { max-width: 32rem; padding: 1.75rem 1.5rem; }

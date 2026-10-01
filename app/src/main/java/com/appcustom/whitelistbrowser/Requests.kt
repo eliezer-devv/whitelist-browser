@@ -74,6 +74,7 @@ object Requests {
         val marker = JSONObject().put("action", action.word).put("scope", if (page != null) "page" else "site")
             .put("domain", domain).put("device", Device.id(ctx)).put("model", Device.model())
             .apply { Device.name(ctx)?.let { put("name", it) } }
+            .apply { Device.first(ctx)?.let { put("first", it) }; Device.last(ctx)?.let { put("last", it) } }
             .apply { if (media != Media.UNCHANGED) put("media", media.word) }
             .apply { if (media != Media.UNCHANGED && mediaKind != "both") put("mediaKind", mediaKind) } // just photos, or just videos
             .apply { if (minutes > 0) put("minutes", minutes) }
@@ -186,6 +187,7 @@ object Requests {
         val now = utcNow()
         val marker = JSONObject().put("type", "register").put("id", id).put("model", Device.model())
             .apply { Device.name(ctx)?.let { put("name", it) } }
+            .apply { Device.first(ctx)?.let { put("first", it) }; Device.last(ctx)?.let { put("last", it) } }
             .put("lastSeen", now).put("installed", Device.installedOn(ctx))
             .put("version", BuildConfig.VERSION_NAME).toString()
         return (if (register) "A phone installed Whitelist Browser." else "Phone check-in record.") +
