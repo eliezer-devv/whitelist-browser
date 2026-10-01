@@ -75,5 +75,15 @@
     "jepqueens.com/wp-content/uploads/2017/02/jep-logo-copy.png",
     "jepqueens.com/wp-content/uploads/2018/04/website-banner-1024x439.png",
     "jepqueens.com/wp-content/uploads/2018/02/4-special-events-mobile.png"
+  ],
+  "temporary": [
+    {
+      "id": "tmuppqyzm3uw",
+      "what": "site",
+      "entry": "music.youtube.com",
+      "mode": "clock",
+      "minutes": 30,
+      "from": "2026-10-01T15:53:03.394Z"
+    }
   ]
 }
