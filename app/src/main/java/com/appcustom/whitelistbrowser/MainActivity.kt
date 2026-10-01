@@ -295,7 +295,7 @@ class MainActivity : Activity() {
                 // "No photos or videos" pages: media files and players get an empty answer.
                 if (request != null && !request.isForMainFrame && mediaOffHere &&
                     ((photosOffHere && MediaBlock.isImage(request)) || (videosOffHere && MediaBlock.isVideo(request)) ||
-                        (soundOffHere && MediaBlock.isSound(request))) &&
+                        (soundOffHere && MediaBlock.isSound(request, videosAllowed = !videosOffHere))) &&
                     !Whitelist.mediaAllowed(request.url.toString())) {        // a single photo or video allowed anyway
                     return MediaBlock.emptyResponse()
                 }

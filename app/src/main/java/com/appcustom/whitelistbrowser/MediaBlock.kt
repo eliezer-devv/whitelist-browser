@@ -31,9 +31,19 @@ object MediaBlock {
     fun isImage(request: WebResourceRequest): Boolean =
         ext(request) in IMAGE_EXT || accept(request).startsWith("image/")
 
-    /** Is this request sound: an audio file or stream? */
-    fun isSound(request: WebResourceRequest): Boolean =
-        ext(request) in SOUND_EXT || accept(request).startsWith("audio/")
+    // Sound formats that are also used for videos' own soundtracks (a video's sound sent separately).
+    private val SOUNDTRACK_EXT = setOf("m4a", "aac")
+
+    /**
+     * Is this request sound on its own (music, a podcast, a sound file or audio stream)? Videos keep their
+     * sound: with [videosAllowed], formats often used for a video's own soundtrack (.m4a, .aac) aren't
+     * counted, so allowed videos don't lose their sound.
+     */
+    fun isSound(request: WebResourceRequest, videosAllowed: Boolean = false): Boolean {
+        val e = ext(request)
+        if (videosAllowed && e in SOUNDTRACK_EXT) return false
+        return e in SOUND_EXT || accept(request).startsWith("audio/")
+    }
 
     /** Is this request a video: a file, a stream, or an embedded player? */
     fun isVideo(request: WebResourceRequest): Boolean {
@@ -62,8 +72,8 @@ object MediaBlock {
 
     /**
      * Replaces what's off (window.__wlbOff) with small placeholders: "Photo blocked", "Video blocked" or
-     * "Sound blocked", "tap to ask" (tiny images such as icons are just hidden). Stops players, mutes videos
-     * when only sound is off, and keeps doing so as the page adds more. Single items in "allow" are left
+     * "Sound blocked", "tap to ask" (tiny images such as icons are just hidden). Stops players, and keeps doing
+     * so as the page adds more. Videos that are allowed keep their sound. Single items in "allow" are left
      * alone. Tapping a placeholder asks for that kind, and that one item
      * (wlb://ask-media?kind=photos&src=...).
      */
@@ -131,8 +141,6 @@ object MediaBlock {
       if (icon) return;
       if (el.parentNode) el.parentNode.insertBefore(placeholder(kind, known ? s[0] : 0, known ? s[1] : 0, src), el);
     });
-    // Only sound off: videos play, muted.
-    if (off.sound && !off.videos) document.querySelectorAll('video').forEach(function (v) { if (!allowed(v)) v.muted = true; });
   }
   swap();
   new MutationObserver(swap).observe(document.documentElement, { childList: true, subtree: true });
@@ -142,12 +150,7 @@ object MediaBlock {
     try {
       if (tag === 'video' && off.videos) el.pause();
       else if (tag === 'audio' && off.sound) el.pause();
-      else if (tag === 'video' && off.sound) el.muted = true;
     } catch (x) {}
-  }, true);
-  if (off.sound) document.addEventListener('volumechange', function (e) {
-    var el = e.target;
-    if ((el.tagName || '').toLowerCase() === 'video' && !el.muted && !allowed(el)) el.muted = true;
   }, true);
 })();
 """

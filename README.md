@@ -178,8 +178,9 @@ You can keep something blocked but open it **for a while**: a whole site, a sing
 
 ### No photos, no videos, no sound
 Sites or pages can be set to open **without photos**, **without videos**, **without sound**, or any mix of them. The
-text, links and buttons work as usual, but pictures don't load, videos don't play, and/or there's no sound (videos
-that are allowed play muted). This is off by default. It can be turned on
+text, links and buttons work as usual, but pictures don't load, videos don't play, and/or sound on its own (music,
+podcasts, sound files, audio players) doesn't play. Videos that are allowed keep their own sound. (A few sites send a
+video's sound as a separate .m4a or .aac file, so while videos are allowed, those two formats aren't blocked.) This is off by default. It can be turned on
 in three ways:
 - **For a whole site:** the **No photos**, **No videos** and **No sound** switches on the site's screen on the admin page.
 - **For single pages** of a site that's otherwise shown normally: admin page → **Sites** → **No photos or videos on
@@ -948,7 +949,7 @@ updated by a version with the same seal. This stops anyone else from pushing a f
 | `noMedia` | Sites or pages that open without photos, videos and sound. If any of a phone's lists includes a page, it applies on that phone. | `[]` |
 | `noPhotos` | Sites or pages that open without photos only (the same format). | `[]` |
 | `noVideos` | Sites or pages that open without videos only. | `[]` |
-| `noSound` | Sites or pages that open without sound only (videos that are allowed play muted). | `[]` |
+| `noSound` | Sites or pages where sound on its own (music, podcasts, sound files) is blocked. Allowed videos keep their sound. | `[]` |
 | `mediaAllow` | Single photos or videos shown anyway where they're off: host and path, e.g. `ichef.bbci.co.uk/news/976/shark.jpg`. | `[]` |
 | `temporary` | Temporary access. `what`: `site`, `page`, `media` (photos, videos and sound on), `photos`, `videos` or `sound`. `mode`: `clock` (from `from`) or `use` (time on it, within 7 days). `minutes`: how long. Easiest to add on the admin page. | none |
 | `homepage` | A web address to start on instead of the home page with tiles. | the home page |

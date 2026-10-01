@@ -258,7 +258,7 @@ object Ui {
             background = Ui.rounded(Ui.SEG, Ui.dp(ctx, 13).toFloat())
             setPadding(Ui.dp(ctx, 4), Ui.dp(ctx, 4), Ui.dp(ctx, 4), Ui.dp(ctx, 4))
         }
-        private val buttons = options.mapIndexed { i, label ->
+        private val buttons: List<Button> = options.mapIndexed { i, label ->
             Button(ctx).apply {
                 text = label
                 isAllCaps = false
@@ -288,7 +288,11 @@ object Ui {
             onChange(i)
         }
 
-        private fun paint() = buttons.forEachIndexed { i, b ->
+        private fun paint() {
+            buttons.forEachIndexed { i, b -> paintButton(i, b) }
+        }
+
+        private fun paintButton(i: Int, b: Button) {
             val on = i == index
             b.background = if (on) Ui.rounded(Ui.CARD, Ui.dp(b.context, 10).toFloat()) else ColorDrawable(Color.TRANSPARENT)
             b.setTextColor(if (on) Ui.INK else Ui.MUTED)
@@ -301,9 +305,9 @@ object Ui {
      * [selected] holds the indexes that are on.
      */
     class Chips(ctx: Context, labels: List<String>, icons: List<Int>, on: Set<Int>, vertical: Boolean) {
-        val selected = on.toMutableSet()
-        val view = LinearLayout(ctx).apply { orientation = if (vertical) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL }
-        private val chips = labels.mapIndexed { i, label ->
+        val selected: MutableSet<Int> = on.toMutableSet()
+        val view: LinearLayout = LinearLayout(ctx).apply { orientation = if (vertical) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL }
+        private val chips: List<Button> = labels.mapIndexed { i, label ->
             Button(ctx).apply {
                 text = label
                 isAllCaps = false
@@ -330,7 +334,11 @@ object Ui {
             paint()
         }
 
-        private fun paint() = chips.forEachIndexed { i, b ->
+        private fun paint() {
+            chips.forEachIndexed { i, b -> paintChip(i, b) }
+        }
+
+        private fun paintChip(i: Int, b: Button) {
             val on = i in selected
             val r = Ui.dp(b.context, 12).toFloat()
             b.background = if (on) Ui.rounded(Ui.SOFT, r, Ui.ACCENT_TEXT, Ui.dp(b.context, 2)) else Ui.rounded(Ui.CARD, r, Ui.LINE, Ui.dp(b.context, 1))
