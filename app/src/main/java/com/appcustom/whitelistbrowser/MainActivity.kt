@@ -417,6 +417,9 @@ class MainActivity : Activity() {
             }
         }
 
+        // Files a page makes itself ("blob:" addresses, e.g. GitHub's download button on a file): the page hands
+        // them over through this bridge, which only accepts files the app asked for (a one-time code).
+        web.addJavascriptInterface(BlobBridge(), "WLBlobSaver")
         web.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
             startDownload(url, userAgent, contentDisposition, mimeType)
         }
@@ -835,6 +838,11 @@ class MainActivity : Activity() {
     }
 
     private fun startDownload(url: String, userAgent: String?, contentDisposition: String?, mimeType: String?) {
+        // A file the page made itself, or one written into the page: saved by the app (DownloadManager can't).
+        if (url.startsWith("blob:") || url.startsWith("data:")) {
+            saveFromPage(url, contentDisposition, mimeType)
+            return
+        }
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
             toast("This file can't be downloaded")
             return
@@ -861,6 +869,72 @@ class MainActivity : Activity() {
             } catch (e: Exception) {
                 toast("Download failed: ${e.message}")
             }
+        }
+    }
+
+    // Files the page makes itself ("blob:") are read in the page and handed over with a one-time code.
+    private val blobCodes = java.util.Collections.synchronizedMap(HashMap<String, Pair<String, String>>()) // code -> name, type
+
+    private inner class BlobBridge {
+        @android.webkit.JavascriptInterface
+        fun save(code: String, dataUrl: String) {
+            val (name, type) = blobCodes.remove(code) ?: return          // not one the app asked for: ignored
+            main.post { writeDownload(name, type, dataUrl) }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun failed(code: String) {
+            if (blobCodes.remove(code) != null) main.post { toast("This file couldn't be saved") }
+        }
+    }
+
+    /** Saves a "blob:" or "data:" file from the page into Downloads. */
+    private fun saveFromPage(url: String, contentDisposition: String?, mimeType: String?) {
+        val type = mimeType?.takeIf { it.isNotBlank() } ?: "application/octet-stream"
+        val name = URLUtil.guessFileName(if (url.startsWith("data:")) "file" else url, contentDisposition, type)
+        val perms = if (Build.VERSION.SDK_INT < 29) arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE) else emptyArray()
+        withAndroidPermissions(perms) { granted ->
+            if (perms.isNotEmpty() && granted.isEmpty()) {
+                toast("Storage permission is needed to download files")
+                return@withAndroidPermissions
+            }
+            if (url.startsWith("data:")) { writeDownload(name, type, url); return@withAndroidPermissions }
+            val code = java.util.UUID.randomUUID().toString()
+            blobCodes[code] = name to type
+            toast("Saving $name")
+            val js = "(function(u,c){fetch(u).then(function(r){return r.blob();}).then(function(b){" +
+                "var f=new FileReader();f.onloadend=function(){WLBlobSaver.save(c,String(f.result));};f.readAsDataURL(b);" +
+                "}).catch(function(){WLBlobSaver.failed(c);});})(" + org.json.JSONObject.quote(url) + "," + org.json.JSONObject.quote(code) + ");"
+            web.evaluateJavascript(js, null)
+        }
+    }
+
+    /** Writes a "data:" address's contents into the phone's Downloads folder. */
+    private fun writeDownload(name: String, type: String, dataUrl: String) {
+        try {
+            val comma = dataUrl.indexOf(',')
+            if (comma < 0) throw IllegalArgumentException("no data")
+            val head = dataUrl.substring(0, comma)
+            val body = dataUrl.substring(comma + 1)
+            val bytes = if (head.endsWith(";base64")) android.util.Base64.decode(body, android.util.Base64.DEFAULT)
+                else Uri.decode(body).toByteArray()
+            if (Build.VERSION.SDK_INT >= 29) {
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
+                    put(android.provider.MediaStore.Downloads.MIME_TYPE, type)
+                }
+                val uri = contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: throw IllegalStateException("no place to save")
+                contentResolver.openOutputStream(uri)?.use { it.write(bytes) } ?: throw IllegalStateException("can't write")
+            } else {
+                @Suppress("DEPRECATION")
+                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                dir.mkdirs()
+                java.io.File(dir, name).writeBytes(bytes)
+            }
+            toast("Saved $name to the Downloads folder")
+        } catch (e: Exception) {
+            toast("This file couldn't be saved: ${e.message}")
         }
     }
 
@@ -1902,6 +1976,51 @@ class MainActivity : Activity() {
             sendRequest(Requests.Action.ALLOW, Requests.Scope.SITE, Requests.Media.UNCHANGED, site, top,
                 noteField.text.toString().trim(), pin = pin, frames = chosen)
         }
+        d.show()
+    }
+
+    // ---------- settings ----------
+
+    /** ⋮ → Settings: appearance, cookies and site data, cache, app update, and about this phone. */
+    private fun showSettings() {
+        val d = Ui.AppDialog(this, sheet = true)
+        d.title("Settings")
+        fun row(icon: Int, title: String, sub: String, onTap: () -> Unit): LinearLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            val p = Ui.dp(this@MainActivity, 14)
+            setPadding(p, Ui.dp(this@MainActivity, 12), p, Ui.dp(this@MainActivity, 12))
+            minimumHeight = Ui.dp(this@MainActivity, 60)
+            background = android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(Ui.SEG), null, android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE))
+            addView(Ui.badge(this@MainActivity, icon, Ui.SOFT, Ui.ACCENT_TEXT, 38, 12).apply {
+                (layoutParams as LinearLayout.LayoutParams).marginEnd = Ui.dp(this@MainActivity, 12)
+            })
+            val words = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+            words.addView(Ui.text(this@MainActivity, title, 15.5f, Ui.INK, "bold"))
+            words.addView(Ui.text(this@MainActivity, sub, 13f, Ui.MUTED))
+            addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+            setOnClickListener { d.dismiss(); onTap() }
+        }
+        val look = when (Ui.choice(this)) { "light" -> "Light"; "dark" -> "Dark"; else -> "Phone's setting" } +
+            if (Ui.usePhoneColours(this)) ", phone's colours" else ""
+        val name = Device.name(this) ?: "Not registered yet"
+        val rows = listOf(
+            row(R.drawable.ic_d_theme, "Appearance", look) { showAppearance() },
+            row(R.drawable.ic_d_cookie, "Cookies and site data", "Sign out of sites, reset camera and location answers") { confirmClearCookies() },
+            row(R.drawable.ic_d_broom, "Clear cache", "Frees space; pages load fresh") { clearCache() },
+            row(R.drawable.ic_d_update, "App update", "Version ${BuildConfig.VERSION_NAME}. Check for a new one") { checkForUpdate(manual = true) },
+            row(R.drawable.ic_d_user, "About this phone", "$name · ${Device.id(this)}") { showAbout() })
+        d.add(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 16).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
+            clipToOutline = true
+            rows.forEachIndexed { i, r ->
+                if (i > 0) addView(View(this@MainActivity).apply { setBackgroundColor(Ui.LINE2) }, LinearLayout.LayoutParams(-1, Ui.dp(this@MainActivity, 1)))
+                addView(r)
+            }
+        })
+        d.button("Close", Ui.Kind.PRIMARY) { it.dismiss() }
         d.show()
     }
 

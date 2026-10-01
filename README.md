@@ -285,6 +285,8 @@ page; otherwise their space shows *"Blocked: content from vimeo.com"*.
     a file, it downloads it; if it's a web page, it's blocked as usual and never shown, so this can't be used to open
     other sites.
   - **Never from a site on the malware, adult or gambling list.**
+  - **Files a page makes itself** (GitHub's download button on a file does this: the address starts with `blob:`) are
+    saved by the app into **Downloads** too.
 - **Nothing fails silently.** Anything stopped because it isn't on the list (a link, a redirect, a form sent to another
   site) shows the blocked page with **Ask to open**. Links that can only work inside the phone (`file:`, `content:`,
   `view-source:`) say they can't be opened here.
