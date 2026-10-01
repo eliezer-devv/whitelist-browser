@@ -46,12 +46,19 @@
       "domain": "jepqueens.com",
       "name": "jepqueens.com",
       "home": true
+    },
+    {
+      "domain": "theyeshivaworld.com",
+      "name": "theyeshivaworld.com",
+      "home": false,
+      "pages": [
+        "theyeshivaworld.com/news/category/photos"
+      ]
     }
   ],
   "block": [
     "wikipedia.org",
-    "khanacademy.org",
-    "theyeshivaworld.com/news/category/photos"
+    "khanacademy.org"
   ],
   "noMedia": [
     "torahanytime.com",
