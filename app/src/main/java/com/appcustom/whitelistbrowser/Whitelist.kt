@@ -524,19 +524,30 @@ object Whitelist {
     fun isPageRestricted(url: String?): Boolean = isAllowed(url, mainFrame = false) && !isAllowed(url)
 
     /** JSON the home page reads: the tiles to show. */
-    fun homeJson(): String {
+    fun homeJson(ctx: Context): String {
         val s = state
-        val tiles = JSONArray()
+        val list = ArrayList<JSONObject>()
         val shown = HashSet<String>()
         s.sites.filter { it.home }.distinctBy { it.domain }.forEach {
             shown += it.domain
-            tiles.put(JSONObject().put("name", it.name).put("url", it.url).put("domain", it.domain))
+            list += JSONObject().put("name", it.name).put("url", it.url).put("domain", it.domain)
         }
-        // Sites open for a while get a tile too, with a timer badge.
+        // Sites open temporarily get a tile too, with a timer badge.
         s.temps.filter { it.what == "site" && it.active() && it.entry !in shown }.forEach {
             val min = ((it.left() + 59_999) / 60_000).toInt()
-            tiles.put(JSONObject().put("name", defaultName(it.entry)).put("url", "https://${it.entry}").put("domain", it.entry)
-                .put("temp", if (min >= 60) "${min / 60}h ${min % 60}m" else "${min}m"))
+            list += JSONObject().put("name", defaultName(it.entry)).put("url", "https://${it.entry}").put("domain", it.entry)
+                .put("temp", if (min >= 60) "${min / 60}h ${min % 60}m" else "${min}m")
+        }
+        // In this phone's order (dragged on the home page); new ones at the end. And where each was left off.
+        val order = Tiles.order(ctx)
+        val sorted = list.withIndex().sortedWith(compareBy({ order.indexOf(it.value.optString("domain")).let { i -> if (i < 0) Int.MAX_VALUE else i } }, { it.index }))
+            .map { it.value }
+        val tiles = JSONArray()
+        sorted.forEach { t ->
+            Tiles.lastPage(ctx, t.optString("domain"))?.let { (url, title) ->
+                if (url.trimEnd('/') != t.optString("url").trimEnd('/')) t.put("last", JSONObject().put("url", url).put("title", title))
+            }
+            tiles.put(t)
         }
         return JSONObject()
             .put("tiles", tiles)

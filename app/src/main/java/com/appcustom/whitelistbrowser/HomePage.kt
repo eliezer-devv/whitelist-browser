@@ -34,7 +34,7 @@ object HomePage {
             }.getOrElse { WebResourceResponse("text/plain", "utf-8", 404, "Not Found", headers, ByteArrayInputStream(ByteArray(0))) }
             "/home/sites.json" -> WebResourceResponse(
                 "application/json", "utf-8", 200, "OK", headers,
-                ByteArrayInputStream(Whitelist.homeJson().toByteArray()))
+                ByteArrayInputStream(Whitelist.homeJson(ctx).toByteArray()))
             else -> WebResourceResponse(
                 "text/plain", "utf-8", 404, "Not Found", headers, ByteArrayInputStream(ByteArray(0)))
         }

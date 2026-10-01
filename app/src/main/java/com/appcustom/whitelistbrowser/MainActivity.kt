@@ -242,6 +242,14 @@ class MainActivity : Activity() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
                 // Buttons on our own pages ("Ask for this site") use wlb: links. Websites can't use them.
+                // The home page's tiles were dragged into a new order: keep it (only from the home page).
+                if (url.startsWith("wlb://tile-order")) {
+                    if (HomePage.isHome(view?.url)) {
+                        val keys = request.url.getQueryParameter("keys").orEmpty().split(',').filter { it.isNotBlank() }
+                        if (keys.isNotEmpty()) Tiles.setOrder(this@MainActivity, keys)
+                    }
+                    return true
+                }
                 // "Ask for it" on a blocked part of a page: ask for the blocked parts.
                 if (url.startsWith("wlb://ask-frames")) {
                     if (request.hasGesture()) showFramesRequest()
@@ -375,6 +383,8 @@ class MainActivity : Activity() {
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
+                // Where this site was left off (the home page's "Open where you left off").
+                if (url != null && Whitelist.isAllowed(url)) siteScope(url)?.let { Tiles.rememberPage(this@MainActivity, it, url, view?.title) }
                 if (mediaOffHere) view?.evaluateJavascript(MediaBlock.script(photosOffHere, videosOffHere, soundOffHere, Whitelist.mediaAllowList()), null)
                 updateUi()
             }

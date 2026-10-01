@@ -1034,6 +1034,13 @@ People never see it.
 - **First launch** asks for the person's **first and last name**. **About this phone** shows the phone's own list by
   the person's name.
 
+### Home page tiles
+- **Tap a tile** to open the site.
+- **Hold a tile and let go** for a menu: **Open its home page**, or **Open where you left off** (the last page opened on
+  that site, by name).
+- **Hold a tile and drag it** to move it. The others make room, and the new order is kept on that phone (each person
+  can arrange their own). Sites added later go at the end.
+
 ### The app's look
 The app, its dialogs, the home page, the blocked page and the admin page share one look: a warm off-white background,
 the app's deep green, rounded corners, and two fonts, **Figtree** for text and **Bricolage Grotesque** for headings.
@@ -1137,6 +1144,7 @@ app/                           The Android app
   src/main/java/.../Config.kt          Your settings
   src/main/java/.../PrivateRepo.kt     The private repository's name (the public one's + "-private")
   src/main/java/.../MaxHeightScrollView.kt  Keeps dialogs' buttons on screen on small phones
+  src/main/java/.../Tiles.kt           Home tiles' order and "where you left off" (kept on the phone)
   src/main/java/.../Ui.kt              The app's look: colours, fonts, dialogs, buttons, switches
   src/main/res/drawable/ic_d_*.xml     The dialogs' icons
   src/main/java/.../MainActivity.kt    Browser screen, blocking, menu, requests, permissions
