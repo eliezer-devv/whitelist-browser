@@ -108,7 +108,11 @@ class MainActivity : Activity() {
     // Photos and/or videos off on the open page (lists: "noPhotos", "noVideos", "noMedia" for both).
     @Volatile private var photosOffHere = false
     @Volatile private var videosOffHere = false
-    private val mediaOffHere get() = photosOffHere || videosOffHere
+    @Volatile private var soundOffHere = false
+    private val mediaOffHere get() = photosOffHere || videosOffHere || soundOffHere
+    /** What's off on the open page, e.g. "photos,sound". */
+    private val offKinds get() = listOfNotNull("photos".takeIf { photosOffHere }, "videos".takeIf { videosOffHere },
+        "sound".takeIf { soundOffHere }).joinToString(",")
 
     // Told by Android when the phone gets a connection, so waiting items go out and lists update.
     private var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
@@ -247,8 +251,10 @@ class MainActivity : Activity() {
                     // A tapped "Photo blocked" or "Video blocked" placeholder: ask for that kind on this page.
                     if (request.isForMainFrame && request.hasGesture() && mediaOffHere) {
                         val kind = request.url.getQueryParameter("kind")
+                        val src = request.url.getQueryParameter("src")?.takeIf { it.startsWith("http") }
                         showRequestDialog(Requests.Action.ALLOW, view?.url, mediaBack = true,
-                            mediaKind = if (kind == "photos" || kind == "videos") kind else "both")
+                            mediaKind = if (kind == "photos" || kind == "videos" || kind == "sound") kind else offKinds,
+                            mediaItem = src)
                     }
                     return true
                 }
@@ -288,7 +294,9 @@ class MainActivity : Activity() {
                 }
                 // "No photos or videos" pages: media files and players get an empty answer.
                 if (request != null && !request.isForMainFrame && mediaOffHere &&
-                    ((photosOffHere && MediaBlock.isImage(request)) || (videosOffHere && MediaBlock.isVideo(request)))) {
+                    ((photosOffHere && MediaBlock.isImage(request)) || (videosOffHere && MediaBlock.isVideo(request)) ||
+                        (soundOffHere && MediaBlock.isSound(request))) &&
+                    !Whitelist.mediaAllowed(request.url.toString())) {        // a single photo or video allowed anyway
                     return MediaBlock.emptyResponse()
                 }
                 // Ad blocking: things a page loads from ad and tracker domains get an empty answer.
@@ -341,11 +349,11 @@ class MainActivity : Activity() {
             }
 
             override fun onPageCommitVisible(view: WebView?, url: String?) {
-                if (mediaOffHere) view?.evaluateJavascript(MediaBlock.script(photosOffHere, videosOffHere), null)
+                if (mediaOffHere) view?.evaluateJavascript(MediaBlock.script(photosOffHere, videosOffHere, soundOffHere, Whitelist.mediaAllowList()), null)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
-                if (mediaOffHere) view?.evaluateJavascript(MediaBlock.script(photosOffHere, videosOffHere), null)
+                if (mediaOffHere) view?.evaluateJavascript(MediaBlock.script(photosOffHere, videosOffHere, soundOffHere, Whitelist.mediaAllowList()), null)
                 updateUi()
             }
 
@@ -356,11 +364,12 @@ class MainActivity : Activity() {
                 // Sites that change pages without reloading: a new page may have a different media setting.
                 val photosBefore = photosOffHere
                 val videosBefore = videosOffHere
+                val soundBefore = soundOffHere
                 setMediaMode(url)
-                if ((photosOffHere && !photosBefore) || (videosOffHere && !videosBefore)) {
-                    view?.evaluateJavascript(MediaBlock.script(photosOffHere, videosOffHere), null)
+                if ((photosOffHere && !photosBefore) || (videosOffHere && !videosBefore) || (soundOffHere && !soundBefore)) {
+                    view?.evaluateJavascript(MediaBlock.script(photosOffHere, videosOffHere, soundOffHere, Whitelist.mediaAllowList()), null)
                 }
-                if ((!photosOffHere && photosBefore) || (!videosOffHere && videosBefore)) view?.reload()
+                if ((!photosOffHere && photosBefore) || (!videosOffHere && videosBefore) || (!soundOffHere && soundBefore)) view?.reload()
                 updateUi()
             }
         }
@@ -541,12 +550,8 @@ class MainActivity : Activity() {
         val s = Whitelist.state
         val err = Whitelist.lastError
         val tempNote = Whitelist.tempStatus(cur)?.let { "$it " } ?: ""
-        val mediaNote = tempNote + when {
-            photosOffHere && videosOffHere -> "Photos and videos are off on this page. "
-            photosOffHere -> "Photos are off on this page. "
-            videosOffHere -> "Videos are off on this page. "
-            else -> ""
-        }
+        val mediaNote = tempNote + if (mediaOffHere) "${Requests.mediaWords(offKinds).replaceFirstChar { it.uppercase() }} " +
+            "${if (offKinds.contains(',')) "are" else if (offKinds == "sound") "is" else "are"} off on this page. " else ""
         // The slim line under the top bar: only when there's something to say (time left, photos or videos
         // off, or the list couldn't be checked). Otherwise it's hidden.
         val problem = when {
@@ -609,11 +614,7 @@ class MainActivity : Activity() {
             menu.add(0, 4, 0, "Ask for a new site")
             menu.add(0, 9, 0, "My requests")
             menu.add(0, 5, 1, "Ask to block").isEnabled = onRealSite
-            if (mediaOffHere && onRealSite) menu.add(0, 8, 1, when {
-                photosOffHere && videosOffHere -> "Ask for photos and videos"
-                photosOffHere -> "Ask for photos"
-                else -> "Ask for videos"
-            })
+            if (mediaOffHere && onRealSite) menu.add(0, 8, 1, "Ask for ${Requests.mediaWords(offKinds)}")
             if (tinyBar) menu.add(0, 2, 5, "Check the list now")   // the list button is hidden on tiny screens
             menu.add(0, 14, 6, "Settings")
             setOnMenuItemClickListener {
@@ -628,8 +629,7 @@ class MainActivity : Activity() {
                     12 -> showAppearance()
                     7 -> confirmClearCookies()
                     5 -> showRequestDialog(Requests.Action.BLOCK, cur)
-                    8 -> showRequestDialog(Requests.Action.ALLOW, cur, mediaBack = true,
-                        mediaKind = if (photosOffHere && videosOffHere) "both" else if (photosOffHere) "photos" else "videos")
+                    8 -> showRequestDialog(Requests.Action.ALLOW, cur, mediaBack = true, mediaKind = offKinds)
                     1 -> checkForUpdate(manual = true)
                     2 -> checkListNow()
                     14 -> showSettings()
@@ -897,7 +897,7 @@ class MainActivity : Activity() {
      * types the site instead. [mediaBack] = asking for photos and videos on a page that has them off.
      */
     private fun showRequestDialog(action: Requests.Action, pageUrl: String?, mediaBack: Boolean = false,
-                                  route: Passthrough.Route? = null, mediaKind: String = "both") {
+                                  route: Passthrough.Route? = null, mediaKind: String = "both", mediaItem: String? = null) {
         if (!Requests.isSetUp()) {
             toast("Requests aren't set up for this app yet")
             return
@@ -911,9 +911,7 @@ class MainActivity : Activity() {
 
         val verb = if (action == Requests.Action.ALLOW) "open" else "block"
         val title = when {
-            mediaBack && mediaKind == "photos" -> "Ask for photos"
-            mediaBack && mediaKind == "videos" -> "Ask for videos"
-            mediaBack -> "Ask for photos and videos"
+            mediaBack -> "Ask for ${Requests.mediaWords(mediaKind)}"
             siteDomain == null -> "Ask for a new site"
             else -> "Ask to $verb"
         }
@@ -959,17 +957,42 @@ class MainActivity : Activity() {
         val checking = Ui.text(this, "", 13.5f, Ui.MUTED).apply { visibility = View.GONE }
         if (siteDomain == null) d.add(checking, 6)
 
-        // The addresses the link passes through on the way, so it's clear what else must be opened.
-        val hops = route?.hops.orEmpty().filter { it != pageUrl }
+        // The addresses the link passes through on the way: each needs opening too, so each gets its own
+        // choice (just that page, or its whole site; a home page tile or not, off to start with).
+        val hops = route?.hops.orEmpty().filter { it != pageUrl }.map { Requests.Hop(it) }
         if (hops.isNotEmpty()) {
-            d.add(Ui.box(this, "This link passes through:\n" +
-                hops.joinToString("\n") { "→ " + (Whitelist.pageKey(it)?.substringBefore('?') ?: it) } +
-                "\nThose are included in your request.", "info"))
+            d.add(Ui.text(this, "This link goes through other addresses on the way. Each one needs opening too.", 14f, Ui.MUTED))
+            hops.forEach { hop ->
+                val box = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 14).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
+                    val p = Ui.dp(this@MainActivity, 12)
+                    setPadding(p, p, p, p)
+                }
+                box.addView(Ui.text(this, Whitelist.pageKey(hop.url)?.substringBefore('?') ?: hop.url, 14.5f, Ui.INK, "bold").apply {
+                    maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
+                })
+                box.addView(Ui.Segmented(this, listOf("This page", "Whole site"), 0, false) { hop.scope = if (it == 1) "site" else "page" }.view,
+                    LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dp(this@MainActivity, 8) })
+                val (tileRow, tileSwitch) = Ui.switchRow(this, "Home page tile", null, false)
+                tileSwitch.setOnCheckedChangeListener { _, on -> hop.tile = on }
+                box.addView(tileRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dp(this@MainActivity, 8) })
+                d.add(box, 8)
+            }
+            if (siteDomain != null) d.add(Ui.label(this, "$siteDomain itself"))
+        }
+
+        // Asking for one photo or video (a tapped placeholder): just that one, this page, or the whole site.
+        var itemChoice = if (mediaBack && mediaItem != null) 0 else -1
+        if (itemChoice == 0) {
+            val opts = if (canChoose) listOf("Just this one", "This page", "Whole site") else listOf("Just this one", "Whole site")
+            d.add(Ui.label(this, "Open"))
+            d.add(Ui.Segmented(this, opts, 0, true) { itemChoice = if (!canChoose && it == 1) 2 else it }.view, 6)
         }
 
         // Just this page, or the whole site.
         var pageScope = canChoose
-        if (canChoose) {
+        if (canChoose && itemChoice < 0) {
             val which = Ui.text(this, pageKey ?: "", 13f, Ui.MUTED)
             d.add(Ui.label(this, "What"))
             d.add(Ui.Segmented(this, listOf("Just this page", "Whole site"), 0, narrow) {
@@ -979,7 +1002,11 @@ class MainActivity : Activity() {
             d.add(which, 4)
         }
 
-        // "For how long?": always, or just for a while, chosen on two scroll wheels (hours and minutes).
+        // A home page tile for it (opening a site: on to start with).
+        val (tileRow, tileSwitch) = Ui.switchRow(this, "Show on the home page", "Gives it a tile", true)
+        if (action == Requests.Action.ALLOW && !mediaBack) d.add(tileRow)
+
+        // "For how long?": always, or temporary, chosen on two scroll wheels (hours and minutes).
         var forAWhile = false
         val hoursWheel = android.widget.NumberPicker(this).apply {
             minValue = 0; maxValue = 24; value = 0
@@ -1004,37 +1031,54 @@ class MainActivity : Activity() {
             addView(Ui.text(this@MainActivity, "min", 13f, Ui.MUTED).apply { setPadding(gap / 2, 0, 0, 0) })
             visibility = View.GONE
         }
+        // Temporary: count only the time the site is open, or from when it's approved.
+        val useBox = android.widget.CheckBox(this).apply {
+            text = "Only count time while the site is open"
+            setTextColor(Ui.INK2)
+            typeface = Ui.bodyFace
+            textSize = 14.5f
+            buttonTintList = android.content.res.ColorStateList.valueOf(Ui.ACCENT)
+            visibility = View.GONE
+        }
         if (action == Requests.Action.ALLOW) {
             d.add(Ui.label(this, "For how long?"))
-            d.add(Ui.Segmented(this, listOf("Always", "For a while"), 0, false) {
+            d.add(Ui.Segmented(this, listOf("Always", "Temporary"), 0, false) {
                 forAWhile = it == 1
                 wheels.visibility = if (forAWhile) View.VISIBLE else View.GONE
+                useBox.visibility = wheels.visibility
             }.view, 6)
             d.add(wheels, 8)
+            d.add(useBox, 6)
         }
 
-        // Photos and videos, separately: opening without photos and/or without videos; blocking completely,
-        // or only photos, only videos, or both; or (asking for them back) photos, videos, or both.
-        val (noPhotosRow, noPhotosSwitch) = Ui.switchRow(this, "Without photos")
-        val (noVideosRow, noVideosSwitch) = Ui.switchRow(this, "Without videos")
-        var blockWhat = 0                      // 0 completely, 1 only photos, 2 only videos, 3 photos and videos
-        var backKind = mediaKind               // asking for them back: "photos", "videos" or "both"
+        // Photos, videos and sound, separately (any of them): opening without some of them; blocking
+        // completely or only some of them; or (asking for them back) which of the ones that are off.
+        val kindNames = listOf("photos", "videos", "sound")
+        val kindIcons = listOf(R.drawable.ic_d_photo, R.drawable.ic_d_video, R.drawable.ic_d_sound)
+        val kindLabels = listOf("Photos", "Videos", "Sound")
+        var chips: Ui.Chips? = null
+        var blockSome = false
+        val offHere = Requests.kindList(mediaKind)
         if (!mediaBack) {
             if (action == Requests.Action.ALLOW) {
-                d.add(noPhotosRow)
-                d.add(noVideosRow, 8)
+                d.add(Ui.label(this, "Without"))
+                chips = Ui.Chips(this, kindLabels, kindIcons, emptySet(), tinyBar).also { d.add(it.view, 6) }
             } else {
                 d.add(Ui.label(this, "Block"))
-                d.add(Ui.Segmented(this, listOf("Completely", "Only photos", "Only videos", "Photos and videos"), 0, true) {
-                    blockWhat = it
+                val c = Ui.Chips(this, kindLabels, kindIcons, setOf(0, 1, 2), tinyBar)
+                c.view.visibility = View.GONE
+                chips = c
+                d.add(Ui.Segmented(this, listOf("Completely", "Only some of it"), 0, narrow) {
+                    blockSome = it == 1
+                    c.view.visibility = if (blockSome) View.VISIBLE else View.GONE
                 }.view, 6)
+                d.add(c.view, 8)
             }
-        } else if (mediaKind == "both") {
-            // Both are off here: ask for photos, videos, or both.
+        } else if (offHere.size > 1 && mediaItem == null) {
+            // More than one is off here: which to ask for (all of them to start with).
             d.add(Ui.label(this, "Which?"))
-            d.add(Ui.Segmented(this, listOf("Photos", "Videos", "Both"), 2, false) {
-                backKind = listOf("photos", "videos", "both")[it]
-            }.view, 6)
+            chips = Ui.Chips(this, offHere.map { kindLabels[kindNames.indexOf(it)] }, offHere.map { kindIcons[kindNames.indexOf(it)] },
+                offHere.indices.toSet(), tinyBar).also { d.add(it.view, 6) }
         }
 
         val noteField = Ui.field(this, "e.g. for maths homework",
@@ -1060,23 +1104,33 @@ class MainActivity : Activity() {
                 siteField.error = "Type a website address"
                 return@button
             }
-            val scope = if (canChoose && pageScope) Requests.Scope.PAGE else Requests.Scope.SITE
+            val scope = when (itemChoice) {
+                0, 1 -> if (canChoose) Requests.Scope.PAGE else Requests.Scope.SITE   // one item, or this page
+                2 -> Requests.Scope.SITE
+                else -> if (canChoose && pageScope) Requests.Scope.PAGE else Requests.Scope.SITE
+            }
             val subject = if (scope == Requests.Scope.PAGE) pageKey!! else domain
+            // Which of photos, videos and sound: the chips that are on.
+            val picked = chips?.let { c -> c.selected.sorted().map { i ->
+                if (mediaBack) offHere[i] else kindNames[i] } } ?: emptyList()
             val media = when {
                 mediaBack -> Requests.Media.ON
-                action == Requests.Action.ALLOW && (noPhotosSwitch.isChecked || noVideosSwitch.isChecked) -> Requests.Media.OFF
-                action == Requests.Action.BLOCK && blockWhat != 0 -> Requests.Media.OFF
+                action == Requests.Action.ALLOW && picked.isNotEmpty() -> Requests.Media.OFF
+                action == Requests.Action.BLOCK && blockSome -> Requests.Media.OFF
                 else -> Requests.Media.UNCHANGED
             }
-            // Which of them: "photos", "videos" or "both".
-            val kind = when {
-                mediaBack -> backKind
-                action == Requests.Action.ALLOW && noPhotosSwitch.isChecked && !noVideosSwitch.isChecked -> "photos"
-                action == Requests.Action.ALLOW && noVideosSwitch.isChecked && !noPhotosSwitch.isChecked -> "videos"
-                action == Requests.Action.BLOCK && blockWhat == 1 -> "photos"
-                action == Requests.Action.BLOCK && blockWhat == 2 -> "videos"
-                else -> "both"
+            if (action == Requests.Action.BLOCK && blockSome && picked.isEmpty()) {
+                toast("Pick what to block, or choose Completely"); return@button
             }
+            if (mediaBack && chips != null && picked.isEmpty()) { toast("Pick at least one"); return@button }
+            val kind = when {
+                mediaBack && chips == null -> mediaKind
+                picked.isEmpty() -> "both"
+                else -> picked.joinToString(",")
+            }
+            val item = if (itemChoice == 0) mediaItem else null
+            val tile = !(action == Requests.Action.ALLOW && !mediaBack && !tileSwitch.isChecked)
+            val timeMode = if (action == Requests.Action.ALLOW && forAWhile && useBox.isChecked) "use" else null
             val minutes = if (action == Requests.Action.ALLOW && forAWhile)
                 hoursWheel.value * 60 + minutesWheel.value * 5 else 0
             if (action == Requests.Action.ALLOW && forAWhile && minutes == 0) {
@@ -1099,12 +1153,12 @@ class MainActivity : Activity() {
             // "Send anyway" after the site couldn't be found: send it, marked as not found.
             if (siteDomain == null && sendAnyway == domain) {
                 d.dismiss()
-                sendRequest(action, scope, media, domain, null, note, hops, minutes, unverified = true, pin = pin, mediaKind = kind)
+                sendRequest(action, scope, media, domain, null, note, hops, minutes, unverified = true, pin = pin, mediaKind = kind, tile = tile, timeMode = timeMode, item = item)
                 return@button
             }
             if (siteDomain != null) {
                 d.dismiss()
-                sendRequest(action, scope, media, domain, pageUrl, note, hops, minutes, pin = pin, mediaKind = kind)
+                sendRequest(action, scope, media, domain, pageUrl, note, hops, minutes, pin = pin, mediaKind = kind, tile = tile, timeMode = timeMode, item = item)
                 return@button
             }
             // A typed site on a content filter's list: say which, and ask them to confirm first.
@@ -1138,7 +1192,7 @@ class MainActivity : Activity() {
                     } else {
                         // Found, or no internet to check with: the request is sent (or saved until online).
                         d.dismiss()
-                        sendRequest(action, scope, media, domain, null, note, hops, minutes, pin = pin, mediaKind = kind)
+                        sendRequest(action, scope, media, domain, null, note, hops, minutes, pin = pin, mediaKind = kind, tile = tile, timeMode = timeMode, item = item)
                     }
                 }
             }
@@ -1164,16 +1218,17 @@ class MainActivity : Activity() {
      * internet it waits and goes out automatically when the phone is back online.
      */
     private fun sendRequest(action: Requests.Action, scope: Requests.Scope, media: Requests.Media,
-                            domain: String, pageUrl: String?, note: String, hops: List<String> = emptyList(),
+                            domain: String, pageUrl: String?, note: String, hops: List<Requests.Hop> = emptyList(),
                             minutes: Int = 0, unverified: Boolean = false, pin: String? = null,
-                            frames: List<String> = emptyList(), mediaKind: String = "both") {
+                            frames: List<String> = emptyList(), mediaKind: String = "both", tile: Boolean = true,
+                            timeMode: String? = null, item: String? = null) {
         toast(if (pin != null) "Checking the PIN" else "Sending request")
         updateIo.execute {
             val outcome = runCatching {
                 // Which content filters list it (so you see that before approving).
                 val filtered = if (action == Requests.Action.ALLOW) Whitelist.filteredAs(domain) else emptyList()
                 val id = Requests.queue(applicationContext, action, scope, media, domain, pageUrl, note, hops, minutes, unverified,
-                    if (frames.isEmpty()) filtered else emptyList(), pin, frames, mediaKind)
+                    if (frames.isEmpty()) filtered else emptyList(), pin, frames, mediaKind, tile, timeMode, item)
                 val r = Outbox.flush(applicationContext)
                 when {
                     id in r.sent -> null
@@ -1822,13 +1877,15 @@ class MainActivity : Activity() {
     private fun setMediaMode(url: String?) {
         photosOffHere = Whitelist.photosBlocked(url)
         videosOffHere = Whitelist.videosBlocked(url)
+        soundOffHere = Whitelist.soundBlocked(url)
         val loadImages = !photosOffHere
         if (web.settings.loadsImagesAutomatically != loadImages) web.settings.loadsImagesAutomatically = loadImages
     }
 
     /** Have photos or videos been switched on or off for [url] since the page opened? */
     private fun mediaChanged(url: String?) =
-        Whitelist.photosBlocked(url) != photosOffHere || Whitelist.videosBlocked(url) != videosOffHere
+        Whitelist.photosBlocked(url) != photosOffHere || Whitelist.videosBlocked(url) != videosOffHere ||
+            Whitelist.soundBlocked(url) != soundOffHere
 
     // ---------- first launch: their name ----------
 

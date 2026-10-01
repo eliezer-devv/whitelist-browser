@@ -510,30 +510,33 @@ const S = {
 };
 
 // The open list, as an editable model. Unknown keys in the file are kept as they are.
-const KNOWN = ['sites', 'block', 'noMedia', 'noPhotos', 'noVideos', 'temporary', 'homepage', 'refreshMinutes'];
+const KNOWN = ['sites', 'block', 'noMedia', 'noPhotos', 'noVideos', 'noSound', 'mediaAllow', 'temporary', 'homepage', 'refreshMinutes'];
 function toModel(data) {
   const sites = (data.sites || []).map(s => ({ domain: s.domain || '', name: s.name || '', url: s.url || '',
     home: s.home !== false, subdomains: s.subdomains !== false, pages: Array.isArray(s.pages) ? [...s.pages] : [],
-    passThrough: !!s.passThrough, frames: !!s.frames, unfiltered: !!s.unfiltered, noPhotos: false, noVideos: false }));
+    passThrough: !!s.passThrough, frames: !!s.frames, unfiltered: !!s.unfiltered, noPhotos: false, noVideos: false, noSound: false }));
   // "No photos" entries for a whole site show as that site's switch. www./m. don't matter
   // (a request may have been approved as www.example.com for the site example.com).
   const bareOf = d => (normalize(d) || '').replace(/^(www|m|mobile)\./, '');
   const domains = new Set(sites.map(s => bareOf(s.domain)).filter(Boolean));
-  // "noMedia": photos and videos both off; "noPhotos" / "noVideos": just one.
-  const nm = (data.noMedia || []).map(String), np = (data.noPhotos || []).map(String), nv = (data.noVideos || []).map(String);
+  // "noMedia": photos, videos and sound all off; "noPhotos" / "noVideos" / "noSound": just that one.
+  const nm = (data.noMedia || []).map(String), np = (data.noPhotos || []).map(String), nv = (data.noVideos || []).map(String),
+    ns = (data.noSound || []).map(String);
   const isSiteEntry = e => !hasPath(e) && domains.has(bareOf(e));
   const siteIn = (list, s) => list.some(e => !hasPath(e) && bareOf(e) === bareOf(s.domain));
-  sites.forEach(s => { s.noPhotos = siteIn(nm, s) || siteIn(np, s); s.noVideos = siteIn(nm, s) || siteIn(nv, s); });
+  sites.forEach(s => { const all = siteIn(nm, s); s.noPhotos = all || siteIn(np, s); s.noVideos = all || siteIn(nv, s); s.noSound = all || siteIn(ns, s); });
   const extra = {}; Object.keys(data).forEach(k => { if (!KNOWN.includes(k)) extra[k] = data[k]; });
   return { sites, block: [...(data.block || [])],
     noPhotoPages: [...new Set([...nm, ...np].filter(e => !isSiteEntry(e)))],
     noVideoPages: [...new Set([...nm, ...nv].filter(e => !isSiteEntry(e)))],
+    noSoundPages: [...new Set([...nm, ...ns].filter(e => !isSiteEntry(e)))],
+    mediaAllow: [...(data.mediaAllow || [])].map(String),
     temporary: Array.isArray(data.temporary) ? data.temporary.map(t => ({ ...t })) : [],
     homepage: data.homepage || '', refreshMinutes: Number(data.refreshMinutes) || 5, extra };
 }
 // Back to the file format. Returns { data } or { error }.
 function fromModel(L) {
-  const sites = [], seen = new Set(), bad = [], mediaOff = [], photosOff = [], videosOff = [];
+  const sites = [], seen = new Set(), bad = [], mediaOff = [], photosOff = [], videosOff = [], soundOff = [];
   for (const s of L.sites) {
     // The site itself: www.example.com and m.example.com are saved as example.com (which covers them).
     const domain = (normalize(s.domain) || '').replace(/^(www|m|mobile)\.(?=[^.]+\.[^.]+)/, '') || undefined;
@@ -557,24 +560,33 @@ function fromModel(L) {
     if (s.passThrough) site.passThrough = true;
     if (s.frames) site.frames = true;
     if (s.unfiltered) site.unfiltered = true;
-    if (s.noPhotos && s.noVideos) mediaOff.push(domain);
-    else if (s.noPhotos) photosOff.push(domain);
-    else if (s.noVideos) videosOff.push(domain);
+    if (s.noPhotos && s.noVideos && s.noSound) mediaOff.push(domain);
+    else {
+      if (s.noPhotos) photosOff.push(domain);
+      if (s.noVideos) videosOff.push(domain);
+      if (s.noSound) soundOff.push(domain);
+    }
     sites.push(site);
   }
-  const badBlock = [...L.block, ...L.noPhotoPages, ...L.noVideoPages].filter(l => !blockEntry(l));
+  const badBlock = [...L.block, ...L.noPhotoPages, ...L.noVideoPages, ...L.noSoundPages].filter(l => !blockEntry(l));
   if (bad.length || badBlock.length) return { error: `These don't look like website addresses: ${bad.concat(badBlock).join(', ')}` };
   let homepage = L.homepage.trim();
   if (homepage && !/^https?:\/\//i.test(homepage)) homepage = 'https://' + homepage;
   const data = { ...L.extra, refreshMinutes: Math.max(1, Math.round(L.refreshMinutes) || 5), sites, block: [...new Set(L.block.map(blockEntry))] };
-  // Pages in both boxes: "noMedia"; in one: "noPhotos" or "noVideos".
-  const P = new Set(L.noPhotoPages.map(blockEntry)), V = new Set(L.noVideoPages.map(blockEntry));
-  const noMedia = [...new Set([...mediaOff, ...[...P].filter(x => V.has(x))])];
-  const noPhotos = [...new Set([...photosOff, ...[...P].filter(x => !V.has(x))])];
-  const noVideos = [...new Set([...videosOff, ...[...V].filter(x => !P.has(x))])];
+  // Pages in all three boxes: "noMedia"; otherwise in the box's own section.
+  const P = new Set(L.noPhotoPages.map(blockEntry)), V = new Set(L.noVideoPages.map(blockEntry)), A = new Set(L.noSoundPages.map(blockEntry));
+  const inAll = x => P.has(x) && V.has(x) && A.has(x);
+  const noMedia = [...new Set([...mediaOff, ...[...P].filter(inAll)])];
+  const noPhotos = [...new Set([...photosOff, ...[...P].filter(x => !inAll(x))])];
+  const noVideos = [...new Set([...videosOff, ...[...V].filter(x => !inAll(x))])];
+  const noSound = [...new Set([...soundOff, ...[...A].filter(x => !inAll(x))])];
   if (noMedia.length) data.noMedia = noMedia;
   if (noPhotos.length) data.noPhotos = noPhotos;
   if (noVideos.length) data.noVideos = noVideos;
+  if (noSound.length) data.noSound = noSound;
+  // Single photos or videos allowed where they're otherwise off: host + path, no "?...".
+  const allowItems = [...new Set(L.mediaAllow.map(x => String(x).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('?')[0].split('#')[0]).filter(Boolean))];
+  if (allowItems.length) data.mediaAllow = allowItems;
   const live = L.temporary.filter(t => tempEnd(t) > Date.now());
   if (live.length) data.temporary = live;
   if (homepage) data.homepage = homepage;
@@ -791,11 +803,12 @@ function rowsToSites(rows) {
     const both = colWhere(x => (/photo/.test(x) && /video/.test(x)) || /media/.test(x));
     const photoCol = colWhere(x => /photo/.test(x) && !/video/.test(x));
     const videoCol = colWhere(x => /video/.test(x) && !/photo/.test(x));
-    const media = [both, photoCol, videoCol].find(n => n >= 0) ?? -1;
-    const pages = find(['pages', 'page', 'only'], [d, name, subs, both, photoCol, videoCol]);
-    const home = find(['home', 'tile', 'show'], [d, name, subs, pages, both, photoCol, videoCol]);
-    const url = find(['opens', 'start', 'link', 'url'], [d, name, home, subs, pages, both, photoCol, videoCol]);
-    col = { domain: d, name, home, url, subs, pages, both, photoCol, videoCol };
+    const soundCol = colWhere(x => /sound|audio/.test(x));
+    const media = [both, photoCol, videoCol, soundCol].find(n => n >= 0) ?? -1;
+    const pages = find(['pages', 'page', 'only'], [d, name, subs, both, photoCol, videoCol, soundCol]);
+    const home = find(['home', 'tile', 'show'], [d, name, subs, pages, both, photoCol, videoCol, soundCol]);
+    const url = find(['opens', 'start', 'link', 'url'], [d, name, home, subs, pages, both, photoCol, videoCol, soundCol]);
+    col = { domain: d, name, home, url, subs, pages, both, photoCol, videoCol, soundCol };
     rows = rows.slice(1);
   }
   const sites = [], bad = [];
@@ -811,7 +824,7 @@ function rowsToSites(rows) {
     const pages = col.pages >= 0 ? (r[col.pages] || '').split(/\s+/).filter(Boolean) : [];
     const yes = n => n !== undefined && n >= 0 && ['yes', 'y', 'true', '1', 'x', 'on'].includes((r[n] || '').toLowerCase().trim());
     sites.push({ domain, name: col.name >= 0 ? (r[col.name] || '') : '', url, home: !NO.includes(homeCell),
-      subdomains: !NO.includes(subsCell), pages, noPhotos: yes(col.both) || yes(col.photoCol), noVideos: yes(col.both) || yes(col.videoCol), passThrough: false });
+      subdomains: !NO.includes(subsCell), pages, noPhotos: yes(col.both) || yes(col.photoCol), noVideos: yes(col.both) || yes(col.videoCol), noSound: yes(col.both) || yes(col.soundCol), passThrough: false });
   });
   return { sites, bad };
 }
@@ -826,11 +839,11 @@ function loadSheetJs() {
 }
 function exportCsv() {
   const q = v => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
-  const lines = ['domain,name,home page,tile opens,subdomains,only these pages,no photos,no videos'];
+  const lines = ['domain,name,home page,tile opens,subdomains,only these pages,no photos,no videos,no sound'];
   S.L.sites.forEach(s => {
     if (!s.domain.trim()) return;
     lines.push([s.domain.trim(), s.name.trim(), s.home ? 'yes' : 'no', s.url.trim(), s.subdomains ? 'yes' : 'no', s.pages.join(' '),
-      s.noPhotos ? 'yes' : 'no', s.noVideos ? 'yes' : 'no'].map(q).join(','));
+      s.noPhotos ? 'yes' : 'no', s.noVideos ? 'yes' : 'no', s.noSound ? 'yes' : 'no'].map(q).join(','));
   });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\r\n') + '\r\n'], { type: 'text/csv' }));
@@ -1038,8 +1051,14 @@ async function loadInbox() {
     S.focusRequest = null;
   }
 }
-// "photos and videos", "photos" or "videos" (a request's mediaKind; not given: both).
-const mediaWords = k => k === 'photos' ? 'photos' : k === 'videos' ? 'videos' : 'photos and videos';
+// "photos", "photos and sound", "photos, videos and sound" (a request's mediaKind, e.g. "photos,sound"; not given: all).
+function mediaWords(k) {
+  const all = ['photos', 'videos', 'sound'];
+  let list = String(k || '').split(',').map(x => x.trim()).filter(x => all.includes(x));
+  if (!list.length) list = all;
+  list = all.filter(x => list.includes(x));
+  return list.length === 1 ? list[0] : list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1];
+}
 const capFirst = t => t.charAt(0).toUpperCase() + t.slice(1);
 function describe(req) {
   const site = req.domain || '?';
@@ -1050,6 +1069,7 @@ function describe(req) {
     return { title: page ? `Block one page on ${site}` : `Block ${site}`, page };
   }
   const mw = mediaWords(req.mediaKind);
+  if (req.media === 'on' && req.item) return { title: `One ${/video/.test(req.mediaKind || '') ? 'video' : 'photo'} on ${page ? 'a page of ' : ''}${site}`, page };
   if (req.media === 'on') return { title: page ? `${capFirst(mw)} on one page of ${site}` : `${capFirst(mw)} on ${site}`, page };
   return { title: page ? `Open one page on ${site}` : `Open ${site}`, page };
 }
@@ -1146,13 +1166,13 @@ function requestCard(issue) {
   } else {
     actions.append(h('button', { type: 'button', class: 'btn p grow approve', onclick: () => { if (confirmFiltered()) send('approve' + anyway, asked ? `Approved for ${fmtMin(asked)}` : 'Approved'); } },
       (asked ? `Approve for ${fmtMin(asked)}` : 'Approve') + (filtered.length ? ' anyway' : '')));
-    if (!frames.length) actions.append(h('button', { type: 'button', class: 'btn s while', onclick: openWhile }, asked ? 'Other time' : 'For a while'));
+    if (!frames.length) actions.append(h('button', { type: 'button', class: 'btn s while', onclick: openWhile }, asked ? 'Other time' : 'Temporary'));
   }
   actions.append(h('button', { type: 'button', class: 'btn d deny', onclick: openDeny }, 'Deny'));
   card.append(...[
     h('div', { class: 'who' }, h('span', null, h('span', { class: 'av' }, phone[0].toUpperCase()), h('b', null, phone), h('span', { class: 'muted small' }, '· ' + ago(issue.created_at))),
-      asked ? chip(fmtMin(asked), 'amber', 'clock') : !allow ? chip(req.media === 'off' ? capFirst(req.mediaKind === 'videos' ? 'videos' : req.mediaKind === 'photos' ? 'photos' : 'media') : 'Block', 'red', 'ban')
-        : req.media === 'on' ? chip(capFirst(req.mediaKind === 'videos' ? 'videos' : req.mediaKind === 'photos' ? 'photos' : 'media'), 'teal', 'photooff') : null),
+      asked ? chip(fmtMin(asked), 'amber', 'clock') : !allow ? chip(req.media === 'off' ? 'Only some' : 'Block', 'red', 'ban')
+        : req.media === 'on' ? chip(req.item ? 'One item' : 'Media', 'teal', 'photooff') : null),
     h('h3', null, title),
     page ? h('p', { class: 'mono muted', style: 'margin:0' }, page) : null,
     allow && req.media === 'off' ? h('p', { class: 'line' }, icon('photooff', 16), `Asked without ${mediaWords(req.mediaKind)}`) : null,
@@ -1196,7 +1216,8 @@ function siteChips(s) {
   c.push(s.home ? chip('On home page', 'teal') : chip('No tile'));
   if (s.pages.length) c.push(chip(s.pages.length === 1 ? '1 page only' : `${s.pages.length} pages only`));
   if (!s.subdomains) c.push(chip('Exact address'));
-  if (s.noPhotos || s.noVideos) c.push(chip(s.noPhotos && s.noVideos ? 'No photos or videos' : s.noPhotos ? 'No photos' : 'No videos', '', 'photooff'));
+  const offK = ['photos', 'videos', 'sound'].filter(k => s['no' + capFirst(k)]);
+  if (offK.length) c.push(chip(offK.length === 3 ? 'No photos, videos or sound' : 'No ' + offK.join(' or '), '', 'photooff'));
   if (s.passThrough) c.push(chip('Added automatically', '', 'link'));
   if (s.frames) c.push(chip('Embeds from anywhere', 'amber'));
   if (s.unfiltered) c.push(chip('Not filtered', 'red'));
@@ -1210,7 +1231,7 @@ function sitesScreen() {
     : users.length ? `${users.join(', ')}'s list. It adds to their other lists.` : 'Not given to any phone yet (see Phones).';
   const live = L.temporary.filter(t => tempEnd(t) > Date.now());
   const temps = live.map(t => h('div', { class: 'tempcard' }, icon('clock', 22),
-    h('span', { class: 'grow' }, h('b', null, t.entry), h('span', { class: 'small' }, `${t.what === 'media' ? 'Photos and videos on' : t.what === 'photos' ? 'Photos on' : t.what === 'videos' ? 'Videos on' : 'Open'} ${tempLeft(t)}${t.unfiltered ? ', despite a filter' : ''}`)),
+    h('span', { class: 'grow' }, h('b', null, t.entry), h('span', { class: 'small' }, `${t.what === 'media' ? 'Photos, videos and sound on' : t.what === 'photos' ? 'Photos on' : t.what === 'videos' ? 'Videos on' : t.what === 'sound' ? 'Sound on' : 'Open'} ${tempLeft(t)}${t.unfiltered ? ', despite a filter' : ''}`)),
     h('button', { type: 'button', onclick: () => { L.temporary = L.temporary.filter(x => x !== t); markList(); render(); say(`${t.entry} will close when you tap Save.`); } }, 'End now')));
   const rows = L.sites.map((s, i) => h('button', { type: 'button', class: 'row siterow', onclick: () => open({ name: 'site', index: i }) },
     h('span', { class: 'tile', style: `color:${tileColor(s.domain)}` }, (s.name || s.domain || '?').replace(/^www\./, '')[0].toUpperCase()),
@@ -1233,9 +1254,9 @@ function sitesScreen() {
     L.sites.length ? h('div', { class: 'group', id: 'siteList' }, rows)
       : h('div', { class: 'card empty' }, h('b', null, 'No sites yet'), 'Tap Add site, or import a spreadsheet below.'),
     h('div', { class: 'group' },
-      moreRow('clock', 'Open something for a while', null, () => open({ name: 'temp' }), 'openTemp'),
+      moreRow('clock', 'Open something temporarily', null, () => open({ name: 'temp' }), 'openTemp'),
       moreRow('ban', 'Always blocked', L.block.length, () => open({ name: 'block' }), 'openBlock'),
-      moreRow('photooff', 'No photos or videos on some pages', new Set([...L.noPhotoPages, ...L.noVideoPages]).size, () => open({ name: 'nomedia' }), 'openNoMedia'),
+      moreRow('photooff', 'No photos, videos or sound on some pages', new Set([...L.noPhotoPages, ...L.noVideoPages, ...L.noSoundPages]).size, () => open({ name: 'nomedia' }), 'openNoMedia'),
       moreRow('link', 'Embedded content allowed', Object.values((L.extra && L.extra.embeds) || {}).reduce((n, v) => n + (Array.isArray(v) ? v.length : 0), 0),
         () => open({ name: 'embeds' }), 'openEmbeds'),
       moreRow('table', 'Import from a spreadsheet', null, () => open({ name: 'import' }), 'openImport'),
@@ -1247,7 +1268,7 @@ function siteScreen() {
   const sub = S.sub;
   const isNew = sub.index < 0;
   if (!sub.draft) {
-    const s = isNew ? { domain: '', name: '', url: '', home: true, subdomains: true, pages: [], noPhotos: false, noVideos: false, passThrough: false, frames: false, unfiltered: false } : S.L.sites[sub.index];
+    const s = isNew ? { domain: '', name: '', url: '', home: true, subdomains: true, pages: [], noPhotos: false, noVideos: false, noSound: false, passThrough: false, frames: false, unfiltered: false } : S.L.sites[sub.index];
     sub.draft = { ...s, pages: [...s.pages], only: s.pages.length > 0 };
   }
   const d = sub.draft;
@@ -1280,7 +1301,7 @@ function siteScreen() {
     if (S.L.sites.some((s, i) => i !== sub.index && (normalize(s.domain) || '').replace(/^(www|m|mobile)\.(?=[^.]+\.[^.]+)/, '') === dom)) return say(`${dom} is already on this list.`, true);
     for (const p of d.pages) if (!pageOnSite(p, dom, d.subdomains)) return say(`The page ${p} isn't on ${dom}.`, true);
     const site = { domain: dom, name: d.name.trim(), url: d.url.trim(), home: d.home, subdomains: d.subdomains,
-      pages: d.only ? [...d.pages] : [], noPhotos: d.noPhotos, noVideos: d.noVideos, passThrough: d.passThrough, frames: d.frames, unfiltered: d.unfiltered };
+      pages: d.only ? [...d.pages] : [], noPhotos: d.noPhotos, noVideos: d.noVideos, noSound: d.noSound, passThrough: d.passThrough, frames: d.frames, unfiltered: d.unfiltered };
     if (isNew) S.L.sites.push(site); else S.L.sites[sub.index] = site;
     markList(); back();
     say(`${isNew ? 'Added' : 'Updated'} ${site.name || dom}. Tap Save to apply it.`);
@@ -1303,7 +1324,8 @@ function siteScreen() {
       toggle('sHome', 'Show on the home page', 'Gives it a tile', 'home'),
       toggle('sSubs', 'Include subdomains', `Also m.${bare}, and other addresses ending in ${bare}`, 'subdomains'),
       toggle('sNoPhotos', 'No photos', 'The pages open, pictures don\'t', 'noPhotos'),
-      toggle('sNoVideos', 'No videos', 'The pages open, videos and sound don\'t', 'noVideos'),
+      toggle('sNoVideos', 'No videos', 'The pages open, videos don\'t', 'noVideos'),
+      toggle('sNoSound', 'No sound', 'The pages open, sound doesn\'t (videos play muted)', 'noSound'),
       toggle('sOnly', 'Only some pages', 'Everything else on the site stays blocked', 'only')),
     pages,
     h('div', { class: 'group' },
@@ -1316,13 +1338,13 @@ function siteScreen() {
       h('div', { class: 'field', style: 'margin-top:8px' }, h('label', { for: 'sUrl' }, 'Where the tile opens (optional)'), url,
         h('p', { class: 'hint', style: 'margin:0' }, 'Leave empty to open the site\'s front page.'))),
     !isNew && normalize(d.domain) ? h('a', { href: '#', class: 'tempcard', onclick: e => { e.preventDefault(); open({ name: 'temp', entry: normalize(d.domain), what: 'site' }); } },
-      icon('clock', 20), h('span', { class: 'grow' }, 'Open it just for a while instead'), icon('chev', 18)) : null,
+      icon('clock', 20), h('span', { class: 'grow' }, 'Open it temporarily instead'), icon('chev', 18)) : null,
     h('button', { type: 'button', class: 'btn p wide', id: 'sDone', onclick: done }, isNew ? 'Add site' : 'Done'),
     !isNew ? h('button', { type: 'button', class: 'btn d', id: 'sRemove', onclick: remove }, 'Remove this site') : null);
 }
 
 // ---------- open something for a while ----------
-const MEDIA_T = ['media', 'photos', 'videos'];   // temporary access that turns photos and/or videos on
+const MEDIA_T = ['media', 'photos', 'videos', 'sound'];   // temporary access that turns photos, videos or sound on
 function tempScreen() {
   const sub = S.sub;
   sub.what = sub.what || 'site'; sub.mode = sub.mode || 'clock';
@@ -1338,7 +1360,7 @@ function tempScreen() {
     }));
   // Photos and videos back on for a while: which of them.
   const seg2 = MEDIA_T.includes(sub.what) ? h('div', { class: 'seg', role: 'group', 'aria-label': 'Which' },
-    [['photos', 'Photos'], ['videos', 'Videos'], ['media', 'Both']].map(([v, t]) =>
+    [['photos', 'Photos'], ['videos', 'Videos'], ['sound', 'Sound'], ['media', 'All']].map(([v, t]) =>
       h('button', { type: 'button', 'aria-pressed': String(sub.what === v), onclick: () => { sub.what = v; render(); } }, t))) : null;
   const radio = (v, t, s) => h('label', { class: 'radio' }, h('input', { type: 'radio', name: 'tMode', value: v, checked: sub.mode === v, onchange: () => { sub.mode = v; } }),
     h('span', null, h('b', { style: 'font-weight:600' }, t), h('span', { class: 'small muted', style: 'display:block' }, s)));
@@ -1356,8 +1378,8 @@ function tempScreen() {
   };
   return h('main', { class: 'stack', style: 'padding-bottom:24px' },
     backLink('Sites'),
-    screenTitle('Open for a while', `In ${listLabel(S.current)}. Even if it's otherwise blocked, and it closes by itself.`),
-    h('p', { class: 'hint' }, 'To answer a phone\'s request, use For a while on the request instead, so the phone is told.'),
+    screenTitle('Open temporarily', `In ${listLabel(S.current)}. Even if it's otherwise blocked, and it closes by itself.`),
+    h('p', { class: 'hint' }, 'To answer a phone\'s request, use Temporary on the request instead, so the phone is told.'),
     h('div', { class: 'field' }, h('label', { for: 'tAddr' }, sub.what === 'page' ? 'Page address' : 'Site or page'), addr),
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'What to open'), seg, seg2),
     h('div', { class: 'card', style: 'padding:12px 16px 4px' }, len, host),
@@ -1418,27 +1440,33 @@ const blockScreen = () => linesScreen({ backTo: 'Sites', title: 'Always blocked'
   hint: 'Parts of allowed sites to keep blocked, one per line: a site like maps.google.com, or a single page like en.wikipedia.org/wiki/Fortnite.',
   value: S.L.block.join('\n'), placeholder: 'maps.google.com', check: blockEntry,
   apply: lines => { if (lines.join('\n') !== S.L.block.join('\n')) { S.L.block = lines; markList(); } } });
-// Single pages without photos, and/or without videos: one box each (a page in both has both off).
+// Single pages without photos, videos and/or sound: one box each (a page in all three has them all off).
+// And single photos or videos allowed where they're otherwise off.
 function noMediaScreen() {
   const L = S.L;
-  const box = (id, label, value) => h('div', { class: 'field' }, h('label', { for: id }, label),
-    h('textarea', { class: 'inp', id, rows: 5, placeholder: 'en.wikipedia.org/wiki/Shark', autocapitalize: 'off', spellcheck: 'false',
-      style: 'min-height:120px;padding-top:12px;font-family:ui-monospace,Menlo,monospace;font-size:14px' }, value.join('\n')));
+  const box = (id, label, value, ph = 'en.wikipedia.org/wiki/Shark') => h('div', { class: 'field' }, h('label', { for: id }, label),
+    h('textarea', { class: 'inp', id, rows: 4, placeholder: ph, autocapitalize: 'off', spellcheck: 'false',
+      style: 'min-height:100px;padding-top:12px;font-family:ui-monospace,Menlo,monospace;font-size:14px' }, value.join('\n')));
   const apply = () => {
     const read = id => [...new Set($(id).value.split('\n').map(x => x.trim()).filter(Boolean))];
-    const photos = read('npText'), videos = read('nvText');
-    const bad = [...photos, ...videos].filter(l => !blockEntry(l));
+    const photos = read('npText'), videos = read('nvText'), sound = read('nsText'), items = read('maText');
+    const bad = [...photos, ...videos, ...sound].filter(l => !blockEntry(l));
     if (bad.length) return say(`These don't look like page addresses: ${bad.join(', ')}`, true);
-    if (photos.join('\n') !== L.noPhotoPages.join('\n') || videos.join('\n') !== L.noVideoPages.join('\n')) {
-      L.noPhotoPages = photos; L.noVideoPages = videos; markList();
+    const same = (a, b) => a.join('\n') === b.join('\n');
+    if (!same(photos, L.noPhotoPages) || !same(videos, L.noVideoPages) || !same(sound, L.noSoundPages) || !same(items, L.mediaAllow)) {
+      L.noPhotoPages = photos; L.noVideoPages = videos; L.noSoundPages = sound; L.mediaAllow = items; markList();
     }
     back();
   };
   return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Sites', apply),
-    screenTitle('No photos or videos on some pages', `In ${listLabel(S.current)}`),
+    screenTitle('No photos, videos or sound on some pages', `In ${listLabel(S.current)}`),
     h('p', { class: 'hint' }, 'Single pages of a site that\'s otherwise shown normally, one per line, e.g. en.wikipedia.org/wiki/Shark. ' +
-      'Put a page in both boxes to turn off both. For a whole site, use its No photos and No videos switches.'),
+      'Put a page in all three boxes to turn them all off. For a whole site, use its switches instead.'),
     box('npText', 'No photos on these pages', L.noPhotoPages), box('nvText', 'No videos on these pages', L.noVideoPages),
+    box('nsText', 'No sound on these pages', L.noSoundPages),
+    h('p', { class: 'hint' }, 'Single photos or videos to show anyway, where they\'re otherwise off, one address per line ' +
+      '(phones ask for these by tapping a blocked photo or video).'),
+    box('maText', 'Single photos and videos allowed', L.mediaAllow, 'ichef.bbci.co.uk/news/976/shark.jpg'),
     h('button', { type: 'button', class: 'btn p wide', id: 'npDone', onclick: apply }, 'Done'));
 }
 const neverBlockScreen = () => linesScreen({ backTo: 'Settings', title: 'Never block these', sub: 'Exceptions to all the filters, for every phone', id: 'neverText',

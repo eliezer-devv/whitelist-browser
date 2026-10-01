@@ -296,6 +296,50 @@ object Ui {
         }
     }
 
+    /**
+     * A row of on/off chips ("Photos · Videos · Sound"): side by side, or stacked when [vertical].
+     * [selected] holds the indexes that are on.
+     */
+    class Chips(ctx: Context, labels: List<String>, icons: List<Int>, on: Set<Int>, vertical: Boolean) {
+        val selected = on.toMutableSet()
+        val view = LinearLayout(ctx).apply { orientation = if (vertical) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL }
+        private val chips = labels.mapIndexed { i, label ->
+            Button(ctx).apply {
+                text = label
+                isAllCaps = false
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                typeface = Ui.bold
+                stateListAnimator = null
+                minHeight = Ui.dp(ctx, 44); minimumHeight = Ui.dp(ctx, 44)
+                setPadding(Ui.dp(ctx, 8), 0, Ui.dp(ctx, 8), 0)
+                compoundDrawablePadding = Ui.dp(ctx, 6)
+                val d = ctx.getDrawable(icons[i])?.mutate()
+                d?.setBounds(0, 0, Ui.dp(ctx, 18), Ui.dp(ctx, 18))
+                setCompoundDrawables(d, null, null, null)
+                setOnClickListener { if (!selected.remove(i)) selected.add(i); paint() }
+            }
+        }
+
+        init {
+            chips.forEachIndexed { i, b ->
+                val lp = if (vertical) LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(ctx, 44))
+                    else LinearLayout.LayoutParams(0, Ui.dp(ctx, 44), 1f)
+                if (i > 0) { if (vertical) lp.topMargin = Ui.dp(ctx, 6) else lp.marginStart = Ui.dp(ctx, 8) }
+                view.addView(b, lp)
+            }
+            paint()
+        }
+
+        private fun paint() = chips.forEachIndexed { i, b ->
+            val on = i in selected
+            val r = Ui.dp(b.context, 12).toFloat()
+            b.background = if (on) Ui.rounded(Ui.SOFT, r, Ui.ACCENT_TEXT, Ui.dp(b.context, 2)) else Ui.rounded(Ui.CARD, r, Ui.LINE, Ui.dp(b.context, 1))
+            val c = if (on) Ui.ACCENT_TEXT else Ui.INK2
+            b.setTextColor(c)
+            b.compoundDrawables[0]?.setTint(c)
+        }
+    }
+
     /** A round coloured badge with an icon (for titles and list rows). */
     fun badge(ctx: Context, icon: Int, bg: Int, fg: Int, sizeDp: Int = 44, radiusDp: Int = 14): ImageView = ImageView(ctx).apply {
         setImageResource(icon)

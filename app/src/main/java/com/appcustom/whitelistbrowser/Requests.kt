@@ -39,16 +39,30 @@ object Requests {
      * Returns the outbox id. [scope] PAGE = just [pageUrl]; SITE = all of [domain].
      */
     /** "photos and videos", "photos" or "videos". */
-    fun mediaWords(kind: String) = when (kind) { "photos" -> "photos"; "videos" -> "videos"; else -> "photos and videos" }
+    /** "photos", "photos and sound", "photos, videos and sound" (kinds: "photos,sound"; "both" or "": all). */
+    fun mediaWords(kinds: String): String {
+        val k = kindList(kinds)
+        return if (k.size <= 1) k.firstOrNull() ?: "photos, videos and sound" else k.dropLast(1).joinToString(", ") + " and " + k.last()
+    }
+
+    /** Photos, videos and/or sound, in that order ("both" or nothing: all three). */
+    fun kindList(kinds: String): List<String> {
+        val all = listOf("photos", "videos", "sound")
+        val k = kinds.split(',').map { it.trim() }.filter { it in all }
+        return if (k.isEmpty()) all else all.filter { it in k }
+    }
+
+    /** An address a link passes through: just that page or its whole site, and a home page tile or not. */
+    data class Hop(val url: String, var scope: String = "page", var tile: Boolean = false)
 
     /** What "already asked about this" remembers a request by. */
     fun sentKey(subject: String, media: Media, kind: String) =
         "$subject|${media.word}" + if (media != Media.UNCHANGED && kind != "both") ":$kind" else ""
 
     fun queue(ctx: Context, action: Action, scope: Scope, media: Media, domain: String, pageUrl: String?, note: String,
-              hops: List<String> = emptyList(), minutes: Int = 0, unverified: Boolean = false,
+              hops: List<Hop> = emptyList(), minutes: Int = 0, unverified: Boolean = false,
               filtered: List<String> = emptyList(), pin: String? = null, frames: List<String> = emptyList(),
-              mediaKind: String = "both"): String {
+              mediaKind: String = "both", tile: Boolean = true, timeMode: String? = null, item: String? = null): String {
         if (!isSetUp()) throw IOException("Requests aren't set up for this app yet")
 
         val page = if (scope == Scope.PAGE) pageUrl?.let { Whitelist.pageKey(it) } else null
@@ -76,12 +90,19 @@ object Requests {
             .apply { Device.name(ctx)?.let { put("name", it) } }
             .apply { Device.first(ctx)?.let { put("first", it) }; Device.last(ctx)?.let { put("last", it) } }
             .apply { if (media != Media.UNCHANGED) put("media", media.word) }
-            .apply { if (media != Media.UNCHANGED && mediaKind != "both") put("mediaKind", mediaKind) } // just photos, or just videos
+            .apply { if (media != Media.UNCHANGED && kindList(mediaKind).size < 3) put("mediaKind", kindList(mediaKind).joinToString(",")) } // not all of them
             .apply { if (minutes > 0) put("minutes", minutes) }
             .apply { if (unverified) put("unverified", true) } // the phone couldn't find this site
             .apply { if (filtered.isNotEmpty()) put("filtered", JSONArray(filtered)) } // on a content filter's list
             .apply { if (pin != null) put("pin", pin) } // approval PIN: checked by GitHub, then removed from the request
-            .apply { if (hops.isNotEmpty()) put("hops", JSONArray(hops.take(10))) }
+            .apply {
+                if (hops.isNotEmpty()) put("hops", JSONArray(hops.take(10).map {
+                    JSONObject().put("url", it.url).put("scope", it.scope).put("tile", it.tile)
+                }))
+            }
+            .apply { if (!tile) put("tile", false) }              // no home page tile, please
+            .apply { if (timeMode != null) put("timeMode", timeMode) } // "use": count time on the site only
+            .apply { if (item != null) put("item", item) }          // one photo or video
             .apply { if (frames.isNotEmpty()) put("frames", JSONArray(frames.take(10))) } // blocked embedded content on this site
             .apply { if (!pageUrl.isNullOrBlank()) put("url", pageUrl) }
             .toString()
@@ -90,7 +111,9 @@ object Requests {
             if (!pageUrl.isNullOrBlank()) appendLine("**Page:** $pageUrl")
             if (hops.isNotEmpty()) {
                 appendLine("**Passes through on the way:**")
-                hops.take(10).forEachIndexed { i, h -> appendLine("${i + 1}. $h") }
+                hops.take(10).forEachIndexed { i, h ->
+                    appendLine("${i + 1}. ${h.url} (${if (h.scope == "site") "whole site" else "this page"}${if (h.tile) ", with a tile" else ""})")
+                }
             }
             if (note.isNotBlank()) appendLine("**Note:** ${note.replace("-->", "")}")
             if (unverified) appendLine("**⚠️ The phone couldn't find this site when asking.** It may be a typo.")

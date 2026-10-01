@@ -176,19 +176,23 @@ You can keep something blocked but open it **for a while**: a whole site, a sing
   - **When time runs out,** the page is replaced by **"Time's up"**, with **Ask to open** to ask for more.
 - **Expired entries are removed from the lists** by the daily check.
 
-### No photos, no videos
-Sites or pages can be set to open **without photos**, **without videos**, or without both. The text, links and buttons
-work as usual, but pictures don't load and/or videos (and sound) don't play. This is off by default. It can be turned on
+### No photos, no videos, no sound
+Sites or pages can be set to open **without photos**, **without videos**, **without sound**, or any mix of them. The
+text, links and buttons work as usual, but pictures don't load, videos don't play, and/or there's no sound (videos
+that are allowed play muted). This is off by default. It can be turned on
 in three ways:
-- **For a whole site:** the **No photos** and **No videos** switches on the site's screen on the admin page.
+- **For a whole site:** the **No photos**, **No videos** and **No sound** switches on the site's screen on the admin page.
 - **For single pages** of a site that's otherwise shown normally: admin page → **Sites** → **No photos or videos on
-  some pages**, which has one box for pages without photos and one for pages without videos (a page in both has both off).
+  some pages**, which has a box each for pages without photos, videos and sound (a page in all three has them all off).
+- **One photo or video anyway:** on a page where they're off, tapping a blocked one asks for **just that one** (or the
+  page, or the site). Approved ones go in the list's `mediaAllow`, also shown on that admin screen.
 - **By approving a request** (section 3).
 
 - **On the phone:**
   - **The status line** says which: *"Photos are off on this page."*, *"Videos are off…"* or *"Photos and videos are off…"*
   - **Each blocked picture or video becomes a small placeholder,** *🖼️ Photo blocked · tap to ask* or *🎬 Video blocked · tap to ask*,
-    so it's clear something is there. Tapping a photo placeholder asks for photos, and a video one for videos.
+    so it's clear something is there (and *🔇 Sound blocked* for audio players). Tapping one asks for that kind,
+    and offers **Just this one**, **This page** or **Whole site**.
     **⋮ → Ask for photos** (or videos, or both) does the same.
   - **Tiny images** like icons and logos are simply hidden rather than given placeholders.
 - **What's covered:**
@@ -294,13 +298,16 @@ page; otherwise their space shows *"Blocked: content from vimeo.com"*.
 | Home page, or ⋮ menu | **Ask for a new site** | open a site they type in |
 
 Every request uses the same single screen:
-- **For how long?** (asking to open, or for photos or videos back): **Always** (the default), or **Just for a while**,
+- **Show on the home page:** a switch, on to start with, for whether it gets a tile.
+- **Links through other addresses:** each address the link passes through gets its own **This page** / **Whole site**
+  choice and **Home page tile** switch (off to start with).
+- **For how long?** (asking to open, or for photos, videos or sound back): **Always** or **Temporary**, with **Only count
+  time while the site is open** under the time wheels. The rest is as before: **Always** (the default), or **Just for a while**,
   which shows two scroll wheels, like the admin page: **hours** (0 to 24) and **minutes** (0 to 55, in steps of 5).
   Flick them up or down to choose. This is what they ask for. You decide the actual time when you answer.
-- **Photos and videos, separately:**
-  - When asking to **open**, there are **Without photos** and **Without videos** switches.
-  - When asking to **block**: **Completely** (the default), **Only photos**, **Only videos**, or **Photos and videos**,
-    where the page stays open.
+- **Photos, videos and sound, separately:**
+  - When asking to **open**, **Without** has a chip each for **Photos**, **Videos** and **Sound** (any of them).
+  - When asking to **block**: **Completely** (the default), or **Only some of it**, then the chips for which.
   - On a page where they're off, **⋮ → Ask for photos** (or videos) asks for them back. Where both are off, the request
     screen asks which: **Photos**, **Videos** or **Both**.
 - **Just this page / Whole site:** the user picks one. **Just this page** is selected by default.
@@ -356,7 +363,7 @@ All open requests are in the repo's **Issues** tab.
 **The easiest way is the admin page, with a tap.** At the top of the admin page, **Requests** lists every open request:
 who asked, what for, when, and their note. Each one has three buttons:
 - **Approve:** does what was asked, including any time they asked for. It then says e.g. *"Approve (30 min, as asked)"*.
-- **For a while:** shows the **hours** and **minutes** scroll wheels and a tick box, *"Only count time while it's open on the phone"*.
+- **Temporary:** shows the **hours** and **minutes** scroll wheels and a tick box, *"Only count time while the site is open"*.
   Then tap **Approve for 1 h 30 min**.
 - **Deny:** shows a box for an optional reason, which is shown on their phone. Then tap **Deny**.
 
@@ -387,7 +394,8 @@ How replies are read, so nothing happens by accident:
 | `approve` | Does exactly what was asked: opens or blocks that page, or the whole site |
 | `approve hidden` | For open requests: the same, but without a home page tile |
 | `approve no media` | For open requests: open it, but without photos and videos. For block requests: only block its photos and videos (the same as `approve media only`). |
-| `approve no photos` / `approve no videos` | The same, for just photos, or just videos. For block requests, `approve photos only` / `approve videos only` also work. |
+| `approve no photos` / `approve no videos` / `approve no sound` | The same, for just that one. Mix them: `approve no photos and sound`. For block requests, `approve photos only`, `videos only`, `sound only` (or e.g. `photos and sound only`). |
+| `approve tile` | Give it a home page tile, even if the phone asked for none |
 | `approve with media` | For a "without photos/videos" open request: open it with them |
 | `approve fully` | For an "only photos/videos" block request: block it completely |
 | `approve for 30m`, `approve for 1h30m`, `approve for 2h` | Open it only for that long, from now (or give that long instead of what they asked for) |
@@ -778,7 +786,7 @@ nothing without your token.
   through other addresses, or a typed site the phone couldn't find).
 - **Answering:**
   - **Approve**, which says e.g. **Approve for 30 min** when they asked for a time.
-  - **For a while** (or **Other time**): the hour and minute wheels, with *Only count time while it's open on the phone*.
+  - **Temporary** (or **Other time**): the hour and minute wheels, with *Only count time while it's open on the phone*.
   - **Deny**, with an optional reason shown on their phone.
   - **Change it for every phone** (a tick box on each card) changes the Everyone list instead of theirs.
 - **Phones with no name yet** are listed below the requests, with a box to type one.
@@ -794,7 +802,7 @@ nothing without your token.
   - **Allow content embedded from other sites** (see [Embedded content](#embedded-content-from-other-sites)), with a warning to use it only for sites you trust
   - **Open even if a filter lists it**, for a site a content filter blocks that you've checked yourself
   - **More options** → where the tile opens
-  - **Open it just for a while instead**
+  - **Open it temporarily instead**
   - **Remove this site**
 - **Add site** adds one the same way.
 - **The rows at the bottom:**
@@ -937,10 +945,12 @@ updated by a version with the same seal. This stops anyone else from pushing a f
 |---|---|---|
 | `sites` | The allowed sites (see section 4 for the fields of each). | none (everything blocked) |
 | `block` | Sites (`maps.google.com`) or pages (`en.wikipedia.org/wiki/Fortnite`) to always block, even inside allowed sites. | `[]` |
-| `noMedia` | Sites or pages that open without photos and videos. If any of a phone's lists includes a page, it applies on that phone. | `[]` |
+| `noMedia` | Sites or pages that open without photos, videos and sound. If any of a phone's lists includes a page, it applies on that phone. | `[]` |
 | `noPhotos` | Sites or pages that open without photos only (the same format). | `[]` |
-| `noVideos` | Sites or pages that open without videos (and sound) only. | `[]` |
-| `temporary` | Temporary access. `what`: `site`, `page`, `media` (photos and videos on), `photos` or `videos`. `mode`: `clock` (from `from`) or `use` (time on it, within 7 days). `minutes`: how long. Easiest to add on the admin page. | none |
+| `noVideos` | Sites or pages that open without videos only. | `[]` |
+| `noSound` | Sites or pages that open without sound only (videos that are allowed play muted). | `[]` |
+| `mediaAllow` | Single photos or videos shown anyway where they're off: host and path, e.g. `ichef.bbci.co.uk/news/976/shark.jpg`. | `[]` |
+| `temporary` | Temporary access. `what`: `site`, `page`, `media` (photos, videos and sound on), `photos`, `videos` or `sound`. `mode`: `clock` (from `from`) or `use` (time on it, within 7 days). `minutes`: how long. Easiest to add on the admin page. | none |
 | `homepage` | A web address to start on instead of the home page with tiles. | the home page |
 | `refreshMinutes` | How often open apps check for changes (minimum 1). | `5` |
 
