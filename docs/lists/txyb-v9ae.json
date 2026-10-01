@@ -59,6 +59,11 @@
       "domain": "spotify.com",
       "name": "spotify.com",
       "home": true
+    },
+    {
+      "domain": "music.youtube.com",
+      "name": "music.youtube.com",
+      "home": true
     }
   ],
   "block": [
@@ -92,6 +97,7 @@
     }
   ],
   "noSound": [
-    "spotify.com"
+    "spotify.com",
+    "music.youtube.com"
   ]
 }
