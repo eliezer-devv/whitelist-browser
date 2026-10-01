@@ -41,6 +41,11 @@
         "accounts.google.co.il/accounts/SetSID"
       ],
       "passThrough": true
+    },
+    {
+      "domain": "jepqueens.com",
+      "name": "jepqueens.com",
+      "home": false
     }
   ],
   "block": [
@@ -50,5 +55,8 @@
   "noMedia": [
     "torahanytime.com",
     "youtube.com"
+  ],
+  "noPhotos": [
+    "jepqueens.com"
   ]
 }
