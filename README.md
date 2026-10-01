@@ -473,10 +473,15 @@ So it's live about **1 to 2 minutes** after you save or reply. Then the phone ha
   once an approval arrives), so an approved site opens within moments of being published.
 - **Otherwise,** it checks every few minutes while the app is open (**List settings** → **Phones check for changes
   every**; the files are tiny, so 1 or 2 minutes is fine), and straight away whenever the app is opened.
-- **To check now,** tap the status line under the top bar.
+- **To check now,** tap the list button (a list with a tick) in the top bar.
 
 ### How the person who asked hears back
 Every request gets an answer on the phone, whether it's approved or not.
+- **An approval is shown once the change has reached the phone** (its lists show it), not before, so *"can now be
+  opened"* is true when it's read. The phone keeps checking quickly meanwhile. If it hasn't arrived after 10 minutes,
+  the answer is shown anyway, saying it may take a few more minutes. **Denials** and notices come straight away.
+- **If the open page is the one the answer is about,** the answer offers **Refresh now** (a page without photos, or
+  with embedded parts blocked, only changes once it's reloaded).
 - **How it gets there:** your final reply (or the bot's, on your behalf) includes a short, plain-language answer for the phone.
   The phone checks its unanswered requests every few minutes while the app is open.
 - **When answers arrive,** a pop-up shows **"Answer to your request"** with the result. Examples:

@@ -1440,12 +1440,61 @@ class MainActivity : Activity() {
     private fun shortDate(t: Long): String =
         java.text.SimpleDateFormat("d MMM, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(t))
 
-    /** Pops up answers that arrived since the user last looked. */
+    /** Where a request was about: its page, or its site's front page. */
+    private fun requestAddress(r: org.json.JSONObject): String? {
+        val url = r.optString("url").takeIf { it.startsWith("http") }
+        val domain = r.optString("domain").takeIf { it.isNotBlank() }
+        return if (r.optString("scope") == "page" && url != null) url else url ?: domain?.let { "https://$it/" }
+    }
+
+    /**
+     * Has an approved change reached this phone (do its lists show it yet)? Asked each time the list is
+     * checked; until then, the answer is held back, so "can now be opened" is true when it's read.
+     */
+    private fun changeArrived(item: MyRequests.Item): Boolean {
+        val r = item.request ?: return true                    // asked by an older app: nothing to check
+        val at = requestAddress(r) ?: return true
+        val kinds = Requests.kindList(r.optString("mediaKind"))
+        fun kindOff(kind: String) = when (kind) {
+            "photos" -> Whitelist.photosBlocked(at); "videos" -> Whitelist.videosBlocked(at); else -> Whitelist.soundBlocked(at)
+        }
+        val frames = r.optJSONArray("frames")
+        return when {
+            // Embedded parts: each one allowed inside that site now.
+            frames != null && frames.length() > 0 -> (0 until frames.length()).all { i ->
+                Whitelist.embedAllowed(at, "https://" + frames.optString(i).removePrefix("https://").removePrefix("http://")) }
+            // One photo or video.
+            r.optString("media") == "on" && r.optString("item").isNotBlank() -> Whitelist.mediaAllowed(r.optString("item"))
+            // Photos, videos or sound back on.
+            r.optString("media") == "on" -> kinds.none { kindOff(it) }
+            // Blocking only some of it, or all of it.
+            r.optString("action") == "block" && r.optString("media") == "off" -> kinds.all { kindOff(it) }
+            r.optString("action") == "block" -> !Whitelist.isAllowed(at)
+            // Opening it.
+            else -> Whitelist.isAllowed(at)
+        }
+    }
+
+    /** Is the open page the one [item] was about (so reloading it shows the change)? */
+    private fun aboutThisPage(item: MyRequests.Item): Boolean {
+        val r = item.request ?: return false
+        val cur = web.url ?: return false
+        if (HomePage.isHome(cur) || cur.startsWith(BLOCKED_PAGE)) return false
+        val at = requestAddress(r) ?: return false
+        return if (r.optString("scope") == "page") Whitelist.pageKey(cur) == Whitelist.pageKey(at)
+        else siteScope(cur) != null && siteScope(cur) == siteScope(at)
+    }
+
+    /**
+     * Pops up answers that arrived since the user last looked. Approvals only once the change has reached
+     * the phone; if the open page is the one it's about, with "Refresh now".
+     */
     private fun showNewAnswers() {
-        val fresh = MyRequests.takeNewAnswers(this)
+        val fresh = MyRequests.takeNewAnswers(this) { changeArrived(it) }
+        // Approvals still on their way to the phone: keep checking quickly until they arrive.
+        if (MyRequests.anyHeld(this)) fastChecks(5)
         if (fresh.isEmpty()) return
-        // Approved: the updated list may still be on its way (a minute or two), so keep checking quickly.
-        if (fresh.any { it.status == "approved" }) fastChecks(5)
+        val refresh = fresh.any { it.status == "approved" && aboutThisPage(it) }
         Ui.AppDialog(this, sheet = false).apply {
             title(if (fresh.size == 1) "Answer to your request" else "Answers to your requests")
             val list = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
@@ -1455,8 +1504,14 @@ class MainActivity : Activity() {
                 })
             }
             add(list)
-            button("My requests", Ui.Kind.SECONDARY) { it.dismiss(); showMyRequests() }
-            button("OK", Ui.Kind.PRIMARY) { it.dismiss() }
+            if (refresh) {
+                add(Ui.text(this@MainActivity, "Refresh this page to see the change.", 14.5f, Ui.INK2), 10)
+                button("Later", Ui.Kind.GHOST) { it.dismiss() }
+                button("Refresh now", Ui.Kind.PRIMARY) { it.dismiss(); web.reload() }
+            } else {
+                button("My requests", Ui.Kind.SECONDARY) { it.dismiss(); showMyRequests() }
+                button("OK", Ui.Kind.PRIMARY) { it.dismiss() }
+            }
         }.show()
     }
 

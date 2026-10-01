@@ -20,7 +20,8 @@ object MyRequests {
     /** One request. [status]: waiting, approved, denied, closed, failed. [archived]: in the archive (by
      *  hand, or answered more than 30 days ago). [asked] also identifies it. */
     class Item(val number: Int, val summary: String, val asked: Long, val status: String,
-               val message: String, val answered: Long, val seen: Boolean, val archived: Boolean = false)
+               val message: String, val answered: Long, val seen: Boolean, val archived: Boolean = false,
+               val request: JSONObject? = null)   // what was asked (to tell when the change has reached the phone)
 
     @Synchronized private fun read(ctx: Context): JSONArray =
         runCatching { JSONArray(ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("items", "[]")) }
@@ -38,13 +39,16 @@ object MyRequests {
         val answered = o.optLong("answered")
         val old = status != "waiting" && answered > 0 && System.currentTimeMillis() - answered > AUTO_ARCHIVE_MS
         return Item(o.optInt("number"), o.optString("summary"), o.optLong("asked"), status, o.optString("message"),
-            answered, o.optBoolean("seen", true), o.optBoolean("archived", false) || (old && !o.optBoolean("restored", false)))
+            answered, o.optBoolean("seen", true), o.optBoolean("archived", false) || (old && !o.optBoolean("restored", false)),
+            o.optJSONObject("request"))
     }
 
-    /** A request was sent (as GitHub issue [number]). */
-    @Synchronized fun sent(ctx: Context, number: Int, summary: String, asked: Long) {
+    /** A request was sent (as GitHub issue [number]). [request]: what it asked for. */
+    @Synchronized fun sent(ctx: Context, number: Int, summary: String, asked: Long, request: JSONObject? = null) {
         val items = read(ctx)
-        items.put(JSONObject().put("number", number).put("summary", summary).put("asked", asked).put("status", "waiting"))
+        val o = JSONObject().put("number", number).put("summary", summary).put("asked", asked).put("status", "waiting")
+        if (request != null) o.put("request", request)
+        items.put(o)
         write(ctx, items)
     }
 
@@ -112,16 +116,37 @@ object MyRequests {
         write(ctx, kept)
     }
 
-    /** Answers the user hasn't seen yet; marks them seen. */
-    @Synchronized fun takeNewAnswers(ctx: Context): List<Item> {
+    // An approval is held until the change reaches the phone, but not longer than this.
+    private const val HOLD_MAX_MS = 10 * 60_000L
+
+    /**
+     * Answers the user hasn't seen yet; marks them seen. An approval is held back until [arrived] says the
+     * change has reached the phone (its lists show it), so the answer is true when it's read; after 10
+     * minutes it's shown anyway, saying it may take a little longer. Denials and notices come at once.
+     */
+    @Synchronized fun takeNewAnswers(ctx: Context, arrived: (Item) -> Boolean = { true }): List<Item> {
         val items = read(ctx)
         val fresh = ArrayList<Item>()
+        val now = System.currentTimeMillis()
         for (i in 0 until items.length()) {
             val o = items.getJSONObject(i)
-            if (!o.optBoolean("seen", true)) { fresh += toItem(o); o.put("seen", true) }
+            if (o.optBoolean("seen", true)) continue
+            val item = toItem(o)
+            if (item.status == "approved" && !arrived(item)) {
+                if (now - item.answered < HOLD_MAX_MS) continue          // not on the phone yet: keep it back
+                o.put("message", item.message + " It may take a few more minutes to reach this phone.")
+            }
+            o.put("seen", true)
+            fresh += toItem(o)
         }
         if (fresh.isNotEmpty()) write(ctx, items)
         return fresh
+    }
+
+    /** Are approvals being held back, waiting for the change to reach the phone? */
+    @Synchronized fun anyHeld(ctx: Context): Boolean {
+        val items = read(ctx)
+        return (0 until items.length()).any { val o = items.getJSONObject(it); !o.optBoolean("seen", true) && o.optString("status") == "approved" }
     }
 
     /**
