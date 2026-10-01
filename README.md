@@ -277,6 +277,11 @@ page; otherwise their space shows *"Blocked: content from vimeo.com"*.
 
 ### What's allowed
 - **Downloads.** Files are saved to the phone's **Downloads** folder, with a notification when they finish.
+  - **Files kept on another site** work too, when the download starts on an allowed page. GitHub, for example, keeps its
+    downloads on `objects.githubusercontent.com` and `codeload.github.com`. The app checks the address first: if it's
+    a file, it downloads it; if it's a web page, it's blocked as usual and never shown, so this can't be used to open
+    other sites.
+  - **Never from a site on the malware, adult or gambling list.**
 - **Camera and microphone,** for example for video calls. The first time a site asks, the app shows
   *"example.com wants to use your camera. Allow / Block"*. Android then asks once for the app itself.
   The answer for each site is remembered until the app is closed.

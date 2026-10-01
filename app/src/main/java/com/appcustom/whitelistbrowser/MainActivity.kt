@@ -282,6 +282,15 @@ class MainActivity : Activity() {
                 // Frames inside a page on a site with "Allow content embedded from other sites" may come
                 // from anywhere (the ad and adult filters still apply). Leaving the page is still checked.
                 if (!request.isForMainFrame && frameOk(url, request.url.host ?: "", view?.url)) return false
+                // A download from an allowed page, kept on another site (e.g. GitHub's files): if it's a
+                // file, download it; if it turns out to be a page, it's blocked as usual (never shown).
+                if (request.isForMainFrame) {
+                    val from = if (request.isRedirect) trail.getOrNull(trail.size - 2) else view?.url
+                    if (from != null && Whitelist.isAllowed(from) && (request.isRedirect || (request.hasGesture() && looksLikeFile(url)))) {
+                        downloadIfFile(url)
+                        return true
+                    }
+                }
                 if (request.isForMainFrame) showBlocked(url) else request.url.host?.let { noteBlockedFrame(it) }
                 return true
             }
@@ -734,6 +743,65 @@ class MainActivity : Activity() {
     }
 
     // ---------- downloads ----------
+
+    private val FILE_EXT = setOf("apk", "zip", "rar", "7z", "tar", "gz", "tgz", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+        "odt", "ods", "odp", "rtf", "txt", "csv", "epub", "ics", "vcf", "json", "xml", "mp3", "m4a", "wav", "mp4", "mov",
+        "jpg", "jpeg", "png", "gif", "webp", "svg", "exe", "msi", "dmg", "iso")
+
+    /** Does this address look like a file (by its ending, or a "download" in it)? */
+    private fun looksLikeFile(url: String): Boolean {
+        val u = Uri.parse(url)
+        val name = (u.path ?: "").substringAfterLast('/')
+        return name.substringAfterLast('.', "").lowercase() in FILE_EXT || "/download" in (u.path ?: "").lowercase() ||
+            (u.query ?: "").contains("attachment", ignoreCase = true)
+    }
+
+    /**
+     * Checks in the background whether [url] is a file (the server says "download this", or it isn't a web
+     * page): then it's downloaded. If it's a page, it's blocked as usual. (A file stored on a site that isn't
+     * on the list, reached from an allowed page, such as GitHub's downloads.)
+     */
+    private fun downloadIfFile(url: String) {
+        // Never from a site on the malware, adult or gambling list.
+        val host = Uri.parse(url).host ?: return showBlocked(url)
+        if (Whitelist.filteredAs(host).isNotEmpty() && !Whitelist.isUnfiltered(host)) return showBlocked(url)
+        val agent = web.settings.userAgentString
+        toast("Checking the download")
+        io.execute {
+            val found = runCatching { fileInfo(url, agent) }.getOrNull()
+            main.post {
+                if (isDestroyed) return@post
+                if (found != null) startDownload(url, agent, found.first, found.second) else showBlocked(url)
+            }
+        }
+    }
+
+    /** The file's "Content-Disposition" and type, or null if [url] is a web page (or can't be reached). */
+    private fun fileInfo(url: String, agent: String): Pair<String?, String?>? {
+        fun ask(method: String): java.net.HttpURLConnection {
+            val c = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+            c.requestMethod = method
+            c.instanceFollowRedirects = true
+            c.connectTimeout = 10_000
+            c.readTimeout = 10_000
+            c.setRequestProperty("User-Agent", agent)
+            CookieManager.getInstance().getCookie(url)?.let { c.setRequestProperty("Cookie", it) }
+            if (method == "GET") c.setRequestProperty("Range", "bytes=0-0")   // just the start: the headers are enough
+            return c
+        }
+        // Some file stores only answer GET (their links are signed for it), so fall back to that.
+        var c = ask("HEAD")
+        if (c.responseCode !in 200..399) { c.disconnect(); c = ask("GET") }
+        try {
+            if (c.responseCode !in 200..399 && c.responseCode != 416) return null
+            val disposition = c.getHeaderField("Content-Disposition")
+            val type = c.contentType?.substringBefore(';')?.trim()?.lowercase()
+            val page = type == null || type == "text/html" || type == "application/xhtml+xml"
+            return if (disposition?.contains("attachment", ignoreCase = true) == true || !page) disposition to type else null
+        } finally {
+            c.disconnect()
+        }
+    }
 
     private fun startDownload(url: String, userAgent: String?, contentDisposition: String?, mimeType: String?) {
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
