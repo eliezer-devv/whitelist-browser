@@ -54,6 +54,11 @@
       "pages": [
         "theyeshivaworld.com/news/category/photos"
       ]
+    },
+    {
+      "domain": "spotify.com",
+      "name": "spotify.com",
+      "home": true
     }
   ],
   "block": [
@@ -85,5 +90,8 @@
       "minutes": 30,
       "from": "2026-10-01T15:53:03.394Z"
     }
+  ],
+  "noSound": [
+    "spotify.com"
   ]
 }
