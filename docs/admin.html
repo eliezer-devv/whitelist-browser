@@ -1163,6 +1163,17 @@ async function loadInbox() {
   try {
     const reqs = await apiGet('issues?labels=' + encodeURIComponent('site request') + '&state=open&per_page=50');
     const phones = await apiGet('issues?labels=' + encodeURIComponent('new phone') + '&state=open&per_page=50');
+    // Sealed requests (nothing readable on GitHub): their details are in this repository's private record,
+    // written when GitHub's automation unlocks them. Not written yet: it shows up a moment later.
+    await Promise.all([...reqs, ...phones].map(async i => {
+      if (!/whitelist-sealed/.test(i.body || '')) return;
+      const f = await getJson(`requests/${i.number}.json`).catch(() => null);
+      const r = f && f.data && f.data.request;
+      const who = r && (r.name || (S.D.devices[String(r.device || r.id || '').toUpperCase()] || {}).name);
+      i.body = r ? (who ? `**Phone:** ${who} (\`${r.device || r.id || ''}\`)\n` : '') +
+        (r.note ? `**Note:** ${String(r.note).replace(/\n/g, ' ')}\n` : '') + `<!-- whitelist-request\n${JSON.stringify(r)}\n-->` : '';
+      i._log = (f && f.data && f.data.log) || [];
+    }));
     S.requests = reqs.filter(i => !i.pull_request && marker(i.body));
     S.newPhones = phones.filter(i => !i.pull_request && (marker(i.body) || {}).type === 'register');
     S.inboxError = null;
@@ -1380,7 +1391,8 @@ function requestDetailsScreen() {
       kv('Note', field(issue.body, 'Note') ? `“${field(issue.body, 'Note')}”` : null),
       kv('Passes through', hopText.length ? hopText.join('\n') : null),
       kv('On a filter list', Array.isArray(req.filtered) && req.filtered.length ? req.filtered.join(', ') : null),
-      kv('Unverified', req.unverified ? 'The phone couldn\'t find this site when asking: check for a typo' : null)),
+      kv('Unverified', req.unverified ? 'The phone couldn\'t find this site when asking: check for a typo' : null),
+      kv('History', (issue._log || []).length ? issue._log.map(e => `${new Date(e.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: ${String(e.text).replace(/\*\*/g, '').replace(/\n+/g, ' ').slice(0, 300)}`).join('\n') : null)),
     h('a', { class: 'btn s wide', href: issue.html_url, target: '_blank', rel: 'noopener' }, 'Open it on GitHub', icon('ext', 16)),
     h('div', { class: 'flabel', style: 'margin-top:8px' }, 'Answer it'),
     requestCard(issue));

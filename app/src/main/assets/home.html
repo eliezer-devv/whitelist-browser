@@ -131,13 +131,14 @@
     empty.hidden = d.tiles.length > 0;
     document.getElementById('hello').hidden = !d.tiles.length;
     if (!d.tiles.length) {
-      document.getElementById('emptyTitle').textContent =
-        !d.loaded ? 'Loading the list of sites' : d.siteCount ? 'No sites on the home page' : 'No sites are allowed yet';
-      document.getElementById('emptyText').textContent =
-        !d.loaded ? 'This needs an internet connection the first time.'
+      document.getElementById('emptyTitle').textContent = d.settingUp ? 'Setting up this phone…'
+        : !d.loaded ? 'Loading the list of sites' : d.siteCount ? 'No sites on the home page' : 'No sites are allowed yet';
+      document.getElementById('emptyText').textContent = d.settingUp
+        ? 'This takes a minute or two the first time, and needs an internet connection. Its sites appear here by themselves.'
+        : !d.loaded ? 'This needs an internet connection the first time.'
         : d.siteCount ? 'None of your sites have a tile yet. Ask for a site below.' : 'Ask for a site below.';
     }
-    document.getElementById('ask').hidden = !d.canRequest;
+    document.getElementById('ask').hidden = !d.canRequest || !!d.settingUp;   // asking waits until it's set up
   }
   // ---------- holding a tile: a menu (let go), or drag it to move it ----------
   const grid = document.getElementById('grid');

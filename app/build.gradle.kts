@@ -22,6 +22,11 @@ android {
         // Key that lets the app create request issues (GitHub secret REQUESTS_TOKEN). Stored reversed.
         val requestsToken = (System.getenv("REQUESTS_TOKEN") ?: "").trim().reversed()
         buildConfigField("String", "REQUESTS_TOKEN_REV", "\"$requestsToken\"")
+        // The request key's public half (request-key.pem, published by the private repository): requests are
+        // sealed with it, so only GitHub's automation can read them. Not secret: it can only lock, not unlock.
+        val requestKey = rootProject.file("request-key.pem").takeIf { it.exists() }?.readText()
+            ?.lines()?.filter { it.isNotBlank() && !it.startsWith("-----") }?.joinToString("")?.trim() ?: ""
+        buildConfigField("String", "REQUEST_KEY", "\"$requestKey\"")
     }
 
     // The release key comes from GitHub secrets (see the "Create signing key" workflow).

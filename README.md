@@ -87,9 +87,10 @@ The publishing token lets the private repository copy the lists to the public on
 into the app, and can only create and read requests. The admin token is for you.
 
 ### Step 6: Set up the lists
-In the private repo: **Actions** → **Publish lists** → **Run workflow**. It publishes the starting list
-(`docs/whitelist.json`, from the private zip) for the phones. When it's green, check that this link opens:
-`https://YOUR_USERNAME.github.io/whitelist-browser/whitelist.json`
+In the private repo: **Actions** → **Publish lists** → **Run workflow**. The first time, it makes the **request key
+pair** (see [Who can see what](#10-who-can-see-what)): it keeps the private half in the private repo's `keys` folder
+and publishes the public half to the public repo as `request-key.pem`, which starts **Build APK** there by itself, so
+the app is built with it. When both are green, `request-key.pem` is in the public repo.
 
 Turn on notifications so you hear about requests: in the **GitHub** app's settings, turn on push notifications for
 **Participating**, and check under github.com → **Settings** → **Notifications** that **Email** is ticked.
@@ -369,9 +370,12 @@ so the request then names the address where the link was stopped.
 
 ### How you're told
 Each request becomes an **issue** (GitHub's name for a to-do item) in your repository, labelled **site request**.
-Its title says exactly what was asked, e.g. **Open page: youtube.com/watch?v=abc123** or **Block site: scratch.mit.edu**.
-A moment later a reply appears on it, and **that reply is what notifies you**, by email and by push notification in the GitHub app.
-All open requests are in the repo's **Issues** tab.
+**It's sealed:** its title is *Request from a phone* and it says only *"🔒 A request from a phone"*, because what was
+asked, by whom, and the note are locked so only GitHub's automation can read them (see
+[Who can see what](#10-who-can-see-what)). A moment later a reply appears on it, *"🟢 A new request: answer it on the
+admin page, or reply approve or deny"*, and **that reply is what notifies you**, by email and by push notification in
+the GitHub app. **The details are on the admin page** (and under **All the details**, with every reply in full).
+Replying `approve` or `deny` on the issue, or by email, still works. All open requests are in the repo's **Issues** tab.
 
 ### How you answer
 **The easiest way is the admin page, with a tap.** At the top of the admin page, **Requests** lists every open request:
@@ -555,8 +559,11 @@ and fetches the latest lists. It notices the connection coming back by itself, s
 1. The app gives the phone an ID like `K7M4-Q2XP`. It's worked out from Android's own ID for this app on this phone,
    so **it stays the same even if the app is uninstalled and reinstalled**. It's a scrambled form, so Android's ID itself isn't shared.
 2. **If requests are set up** (setup step 5), the phone registers itself, straight away if it's online, otherwise as
-   soon as it is. It's added to the private repo's `devices.json` with its name and the lists for new phones, and
-   (without the name) to the public `phones.json`. You get a notification: *"📱 New phone registered: Emma (samsung SM-A155F), ID K7M4-Q2XP."*
+   soon as it is, sending its **public key** (made on the phone; the private half never leaves it). It's added to the
+   private repo's `devices.json` with its name, its key and the lists for new phones, and its lists are published
+   **sealed** for it (see [Who can see what](#10-who-can-see-what)). Until then, which takes a minute or two, it shows
+   *"Setting up this phone…"* and opens nothing. You get a notification: *"📱 A phone registered."*, with the details
+   on the admin page.
 3. **Without requests,** add the phone by hand. On the phone, open **⋮ → About this phone** (it shows the ID and has a
    **Copy ID** button), then use **Add a phone by ID** on the admin page.
 4. **When the ID does change:** after a **factory reset**, in a **different user profile** on the same phone, and of course on a
@@ -699,7 +706,8 @@ There are three ways to change it:
   **Commit changes**. Its **Publish lists** workflow then copies it to the public repo for the phones.
 - **Git on a computer:** only worth it if you already use git.
 
-**Don't edit the lists in the public repository:** they're copies, replaced every time something is published.
+**The public repository has no readable lists:** each phone's lists are published there sealed (see
+[Who can see what](#10-who-can-see-what)). Edit them in the private repository, or on the admin page.
 
 ### The file format
 ```json
@@ -1016,23 +1024,39 @@ updated by a version with the same seal. This stops anyone else from pushing a f
 
 | Thing | Where | Who can see it |
 |---|---|---|
-| **Requests, notes and your replies** | Private repo (issues) | **Only you** |
-| **Phone names, models, dates, archive** | Private repo (`devices.json`) | **Only you** |
-| The lists (which sites each list allows or blocks) | Both. The private copy is the real one, the public copy is what phones read | Anyone with the link |
-| Which lists each phone ID uses (`phones.json`, **no names**) | Public repo | Anyone with the link |
+| **Lists and phone settings** (readable) | Private repo (`docs`, `devices.json`) | **Only you** |
+| **Each phone's lists, as the phone gets them** | Public repo (`docs/p/`), **sealed** | **Only that phone** can open its file |
+| **Requests, notes and names** | Private repo issues, **sealed**; details in the private `requests` folder | **Only you** (and the automation) |
+| **Bot replies on requests** | Private repo issues | You; they say only what kind of update it is. The full text is in the private record |
+| **The request key** | Private half: private repo `keys/`. Public half: `request-key.pem` in the public repo, and in the app | The public half can only lock, not unlock, so it's fine to be seen |
 | The status page and the admin page | Public repo | Anyone can open them, but the admin page does nothing without your token |
 | App code and releases | Public repo | Anyone |
 | Signing key file | Public repo | Anyone, but it's locked by your password |
 | Secrets and tokens | Repo settings | Nobody, not even you |
 
-**Why part of it has to stay public:** GitHub Pages (where phones read their lists) is only free on public
-repositories, and on paid plans the published site is public anyway. And the app downloads its lists and updates
-without logging in: doing that from a private repository would need a password built into the app, and anyone
-could dig it out.
+**How the sealing works:**
+- **Each phone has its own key pair.** The phone makes it in Android's secure key storage the first time it runs; the
+  private half never leaves the phone (not even the app can read it out). It sends the public half when it registers.
+- **Lists:** when lists are published, the private repo makes one file per phone (named from its ID, without showing
+  it) with that phone's settings and every list it uses, locked with that phone's key. Only that phone can open it.
+  Nothing readable is published: no list names, no sites, no phone IDs.
+- **Requests:** the app locks each request (and registrations, check-ins and PIN notes) with the **request key**'s
+  public half. Only the private repo's automation has the private half. It unlocks each request, keeps the details in
+  a private record (`requests/` in the private repo) for the admin page, and locks its answer to the phone with the
+  phone's own key. Someone who digs `REQUESTS_TOKEN` out of the app sees only *"🔒 A request from a phone"*.
+- **The locking:** AES-256-GCM for the message, with its key locked by RSA-OAEP: the same standard methods on the
+  phone and on GitHub.
 
-**What's still public, then:** the site lists themselves, and phone IDs. The IDs are random codes that don't say
-whose phone it is. List names are visible too. A phone's own list is named after its ID (e.g. `k7m4-q2xp`), so no
-names show there either. Lists you name yourself (like `year-5`) show as you named them.
+**A new phone, in its first minute or two:** until its registration is processed and its sealed file published, it
+shows *"Setting up this phone…"* and opens nothing. **A phone whose key changed** (e.g. after a reinstall, which
+clears Android's key storage) notices its file won't open and registers its new key by itself.
+
+**Why part of it is in a public repository at all:** GitHub Pages (where phones get their files) is only free on
+public repositories, and the app downloads them without logging in. Sealing each phone's file means that doesn't
+matter: what's published can't be read.
+
+**Requests from before sealing** (made by an older app version) stay readable in their issues; close or delete them
+if you want them gone.
 
 ---
 
@@ -1168,7 +1192,7 @@ The app, its dialogs, the home page, the blocked page and the admin page all wor
 docs/                          Published by GitHub Pages
   whitelist.json               Copy of the public list (published from the private repo: don't edit here)
   lists/                       Copies of the other lists (e.g. emma.json)
-  phones.json                  Which lists each phone ID uses, and ad settings. No names.
+  p/<code>.json                One per phone: its settings and lists, sealed so only that phone can read them
   .source                      Which private version the copies came from
   admin.html                   The admin page
   index.html                   Status page: current list and app download link

@@ -30,11 +30,12 @@ object Outbox {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("items", items.toString()).apply()
 
     /** Saves an item to send. [kind]: "register" or "issue" ([summary] = how My requests shows it). Returns its id. */
-    @Synchronized fun add(ctx: Context, kind: String, payload: JSONObject, summary: String? = null): String {
+    @Synchronized fun add(ctx: Context, kind: String, payload: JSONObject, summary: String? = null, request: JSONObject? = null): String {
         val id = UUID.randomUUID().toString()
         val items = read(ctx)
         items.put(JSONObject().put("id", id).put("kind", kind).put("payload", payload)
-            .put("summary", summary ?: "").put("created", System.currentTimeMillis()))
+            .put("summary", summary ?: "").put("created", System.currentTimeMillis())
+            .apply { if (request != null) put("request", request) })   // what it asks for (kept on the phone)
         write(ctx, items)
         return id
     }
@@ -94,7 +95,7 @@ object Outbox {
                 val payload = item.getJSONObject("payload")
                 if (item.optString("kind") == "register") Requests.deliverRegistration(ctx, payload)
                 else MyRequests.sent(ctx, Requests.deliverIssue(payload), item.optString("summary"), item.optLong("created"),
-                    requestOf(payload))
+                    item.optJSONObject("request") ?: requestOf(payload))
                 remove(ctx, id)
                 sent += id
                 lastProblem = null

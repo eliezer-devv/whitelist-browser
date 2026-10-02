@@ -297,25 +297,35 @@ object Whitelist {
         }
     }
 
+    /** This phone's sealed bundle couldn't be opened (its key changed): it registers its key again. */
+    @Volatile var keyMismatch = false
+
     /**
      * Blocking network call. Run off the main thread. Throws on failure and keeps the old lists.
-     * 1. phones.json says which lists this phone uses (or the default lists for unknown phones).
-     *    It's the public part of the private repository's devices.json: IDs and lists, no names.
-     * 2. Each list is downloaded and they're combined.
+     * This phone's lists come sealed, so only it can read them: one bundle in the public repository (named
+     * from its ID, without showing it) with its settings and every list it uses. No bundle yet: the phone
+     * isn't set up, so it opens nothing until it is (its registration, with its key, makes one).
      */
     fun refresh(ctx: Context) {
         val id = Device.id(ctx)
-        val devices = fetch("${Config.PAGES_BASE}phones.json")?.let { JSONObject(it) }
+        val sealed = fetch("${Config.PAGES_BASE}p/${Seal.bundleName(id)}.json")
+        val opened = sealed?.let {
+            runCatching { Seal.open(JSONObject(it)) }.getOrElse { e ->
+                if (e is org.json.JSONException) throw IOException("The lists file is broken") // keep the old lists
+                keyMismatch = true; null                    // not for this key: register the key again
+            }
+        }
+        if (opened != null) keyMismatch = false
+        val devices = opened?.optJSONObject("phones")
+        val listData = opened?.optJSONObject("lists") ?: JSONObject()
         val device = devices?.optJSONObject("devices")?.optJSONObject(id)
-        val listArr = device?.optJSONArray("lists") ?: devices?.optJSONArray("default")
+        val listArr = device?.optJSONArray("lists")
         val names = (0 until (listArr?.length() ?: 0)).map { listArr!!.optString(it) }
             .filter { LIST_NAME.matches(it) }.distinct()
-            .ifEmpty { if (listArr == null) listOf("public") else emptyList() }
 
         val lists = JSONArray()
         for (name in names) {
-            val json = fetch(listUrl(name)) ?: continue // a deleted list is simply skipped
-            JSONObject(json) // throws on a broken file, so a bad edit never replaces a good list
+            val json = listData.optJSONObject(name)?.toString() ?: continue // a deleted list is simply skipped
             lists.put(JSONObject().put("name", name).put("json", json))
         }
         // Ad blocking: on for all phones unless the admin page says otherwise; a phone's own
@@ -569,6 +579,8 @@ object Whitelist {
         return JSONObject()
             .put("tiles", tiles)
             .put("siteCount", s.sites.size)
+            // Not set up yet: its sealed lists aren't there yet (only the first minute or two, after registering).
+            .put("settingUp", !s.registered && Requests.isSetUp())
             .put("loaded", s.updatedAt != 0L || s.sites.isNotEmpty())
             .put("canRequest", Requests.isSetUp())
             .toString()
