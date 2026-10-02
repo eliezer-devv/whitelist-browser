@@ -1147,8 +1147,8 @@ People never see it.
 - **A slim line under the top bar** appears only when there's something to say: time left on something open for a
   while, photos, videos or sound being off (tap it to ask for them), or the list couldn't be checked (tap it to try
   again). Otherwise it's hidden.
-- **The ⋮ menu** is a compact card: asking about this page (**Ask for blocked parts**, with how many; **Ask for
-  photos/videos/sound** where they're off; **Ask to block** and the site's name), **Ask for a new site**,
+- **The ⋮ menu** is a compact card, as wide as its items need: asking about this page (**Blocked parts**, with how
+  many; **Ask for photos/videos/sound** where they're off; **Ask to block**), **Ask for a new site**,
   **My requests** (with how many are waiting), and **Settings**. On tiny screens, **Forward**, **Reload** and **Check
   the list** are a row of buttons at its top.
 - **⋮ → Settings** holds **Appearance**, **Phone's browser**, **Cookies and site data**, **Clear cache**, **App update**

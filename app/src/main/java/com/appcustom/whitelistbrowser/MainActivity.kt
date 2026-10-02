@@ -807,7 +807,7 @@ class MainActivity : Activity() {
             background = Ui.rounded(Ui.CARD, dp(18).toFloat(), Ui.LINE, dp(1))
             setPadding(0, dp(4), 0, dp(6))
         }
-        val pop = android.widget.PopupWindow(card, dp(if (compact) 212 else 264), LinearLayout.LayoutParams.WRAP_CONTENT, true)
+        val pop = android.widget.PopupWindow(card, LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT, true)
         fun divider() = card.addView(View(this).apply { setBackgroundColor(Ui.LINE) },
             LinearLayout.LayoutParams(-1, dp(1)).apply { topMargin = dp(2); bottomMargin = dp(2) })
         fun item(icon: Int, label: String, badge: String? = null, warn: Boolean = false, enabled: Boolean = true,
@@ -867,7 +867,7 @@ class MainActivity : Activity() {
         val partsCount = synchronized(blockedFrames) { blockedFrames.size }
         var asked = false
         if (partsCount > 0 && Requests.isSetUp()) {
-            item(R.drawable.ic_d_parts, if (compact) "Blocked parts" else "Ask for blocked parts", partsCount.toString(), warn = true) { showFramesRequest() }
+            item(R.drawable.ic_d_parts, "Blocked parts", partsCount.toString(), warn = true) { showFramesRequest() }
             asked = true
         }
         if (mediaOffHere && onRealSite) {
@@ -875,9 +875,7 @@ class MainActivity : Activity() {
             asked = true
         }
         if (onRealSite) {
-            // Names the site, so it's clear what it's about.
-            val site = cur?.let { Uri.parse(it).host }?.removePrefix("www.") ?: "this site"
-            item(R.drawable.ic_d_ban, if (compact) "Ask to block" else "Ask to block $site") { showRequestDialog(Requests.Action.BLOCK, cur) }
+            item(R.drawable.ic_d_ban, "Ask to block") { showRequestDialog(Requests.Action.BLOCK, cur) }   // this site (the request screen names it)
             asked = true
         }
         if (asked) divider()
@@ -888,6 +886,9 @@ class MainActivity : Activity() {
         divider()
         item(R.drawable.ic_d_gear, "Settings") { showSettings() }
 
+        // As wide as its widest item needs, within limits (long labels end in "…").
+        card.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+        pop.width = card.measuredWidth.coerceIn(dp(176), dp(232))
         // Shown just under the ⋮, which is highlighted while it's open.
         pop.elevation = dp(12).toFloat()
         pop.isOutsideTouchable = true
