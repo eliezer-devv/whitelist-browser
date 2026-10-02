@@ -610,7 +610,7 @@ const S = {
 };
 
 // The open list, as an editable model. Unknown keys in the file are kept as they are.
-const KNOWN = ['sites', 'block', 'noMedia', 'noPhotos', 'noVideos', 'noSound', 'mediaAllow', 'temporary', 'homepage', 'refreshMinutes'];
+const KNOWN = ['sites', 'block', 'noMedia', 'noPhotos', 'noVideos', 'noSound', 'mediaAllow', 'photosOn', 'videosOn', 'soundOn', 'temporary', 'homepage', 'refreshMinutes'];
 function toModel(data) {
   const sites = (data.sites || []).map(s => ({ domain: s.domain || '', name: s.name || '', url: s.url || '',
     home: s.home !== false, subdomains: s.subdomains !== false, pages: Array.isArray(s.pages) ? [...s.pages] : [],
@@ -631,6 +631,8 @@ function toModel(data) {
     noVideoPages: [...new Set([...nm, ...nv].filter(e => !isSiteEntry(e)))],
     noSoundPages: [...new Set([...nm, ...ns].filter(e => !isSiteEntry(e)))],
     mediaAllow: [...(data.mediaAllow || [])].map(String),
+    // "Back on": turned back on whatever other lists say (and, for a page, over its whole site's "off").
+    photosOn: [...(data.photosOn || [])].map(String), videosOn: [...(data.videosOn || [])].map(String), soundOn: [...(data.soundOn || [])].map(String),
     temporary: Array.isArray(data.temporary) ? data.temporary.map(t => ({ ...t })) : [],
     homepage: data.homepage || '', refreshMinutes: Number(data.refreshMinutes) || 5, extra };
 }
@@ -687,6 +689,13 @@ function fromModel(L) {
   // Single photos or videos allowed where they're otherwise off: host + path, no "?...".
   const allowItems = [...new Set(L.mediaAllow.map(x => String(x).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('?')[0].split('#')[0]).filter(Boolean))];
   if (allowItems.length) data.mediaAllow = allowItems;
+  // "Back on" entries; a site switched to "No photos" (etc.) here loses its own "back on", so the switch works.
+  for (const [k, field] of [['Photos', 'photosOn'], ['Videos', 'videosOn'], ['Sound', 'soundOn']]) {
+    const offHere = new Set(L.sites.filter(x => x['no' + k]).map(x => (normalize(x.domain) || '').replace(/^www\./, '')));
+    const list = [...new Set((L[field] || []).map(x => hasPath(x) ? blockEntry(x) : (normalize(x) || '').replace(/^www\./, '')).filter(Boolean))]
+      .filter(x => hasPath(x) || !offHere.has(x));
+    if (list.length) data[field] = list;
+  }
   const live = L.temporary.filter(t => tempEnd(t) > Date.now());
   if (live.length) data.temporary = live;
   if (homepage) data.homepage = homepage;
@@ -1770,11 +1779,16 @@ function noMediaScreen() {
   const apply = () => {
     const read = id => [...new Set($(id).value.split('\n').map(x => x.trim()).filter(Boolean))];
     const photos = read('npText'), videos = read('nvText'), sound = read('nsText'), items = read('maText');
+    const onP = read('onpText'), onV = read('onvText'), onS = read('onsText');
     const bad = [...photos, ...videos, ...sound].filter(l => !blockEntry(l));
+    const badOn = [...onP, ...onV, ...onS].filter(l => !(hasPath(l) ? blockEntry(l) : normalize(l)));
+    if (badOn.length) return say(`These don't look like site or page addresses: ${badOn.join(', ')}`, true);
     if (bad.length) return say(`These don't look like page addresses: ${bad.join(', ')}`, true);
     const same = (a, b) => a.join('\n') === b.join('\n');
-    if (!same(photos, L.noPhotoPages) || !same(videos, L.noVideoPages) || !same(sound, L.noSoundPages) || !same(items, L.mediaAllow)) {
-      L.noPhotoPages = photos; L.noVideoPages = videos; L.noSoundPages = sound; L.mediaAllow = items; markList();
+    if (!same(photos, L.noPhotoPages) || !same(videos, L.noVideoPages) || !same(sound, L.noSoundPages) || !same(items, L.mediaAllow) ||
+        !same(onP, L.photosOn) || !same(onV, L.videosOn) || !same(onS, L.soundOn)) {
+      L.noPhotoPages = photos; L.noVideoPages = videos; L.noSoundPages = sound; L.mediaAllow = items;
+      L.photosOn = onP; L.videosOn = onV; L.soundOn = onS; markList();
     }
     back();
   };
@@ -1787,6 +1801,10 @@ function noMediaScreen() {
     h('p', { class: 'hint' }, 'Single photos or videos to show anyway, where they\'re otherwise off, one address per line ' +
       '(phones ask for these by tapping a blocked photo or video).'),
     box('maText', 'Single photos and videos allowed', L.mediaAllow, 'ichef.bbci.co.uk/news/976/shark.jpg'),
+    h('p', { class: 'hint' }, 'Turned back on: sites or pages where they show for the phones using this list, whatever other lists ' +
+      'say (and, for a page, even if its whole site has them off). Approving a request to turn them back on adds these.'),
+    box('onpText', 'Photos back on for', L.photosOn || [], 'nasa.gov  or  nasa.gov/moon'),
+    box('onvText', 'Videos back on for', L.videosOn || []), box('onsText', 'Sound back on for', L.soundOn || []),
     h('button', { type: 'button', class: 'btn p wide', id: 'npDone', onclick: apply }, 'Done'));
 }
 const neverBlockScreen = () => linesScreen({ backTo: 'Settings', title: 'Never block these', sub: 'Exceptions to all the filters, for every phone', id: 'neverText',

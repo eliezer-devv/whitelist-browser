@@ -79,13 +79,22 @@ object Whitelist {
         val noSound: List<String> = emptyList(),
         val noSoundPages: List<String> = emptyList(),
         // Single photos or videos allowed where they're otherwise off: host + path, no "?..." (lowercase).
-        val mediaAllow: List<String> = emptyList()
+        val mediaAllow: List<String> = emptyList(),
+        // "Back on" (sites, and pages): turned back on, whatever any list's "off" says (also over the whole site's).
+        val photosOn: List<String> = emptyList(),
+        val photosOnPages: List<String> = emptyList(),
+        val videosOn: List<String> = emptyList(),
+        val videosOnPages: List<String> = emptyList(),
+        val soundOn: List<String> = emptyList(),
+        val soundOnPages: List<String> = emptyList()
     ) {
         val allow: List<String> get() = sites.map { it.domain }
         fun sameContent(o: State) = sites == o.sites && block == o.block && blockPages == o.blockPages &&
             noMedia == o.noMedia && noMediaPages == o.noMediaPages && temps == o.temps && homepage == o.homepage && embeds == o.embeds &&
             noPhotos == o.noPhotos && noPhotosPages == o.noPhotosPages && noVideos == o.noVideos && noVideosPages == o.noVideosPages &&
-            noSound == o.noSound && noSoundPages == o.noSoundPages && mediaAllow == o.mediaAllow
+            noSound == o.noSound && noSoundPages == o.noSoundPages && mediaAllow == o.mediaAllow &&
+            photosOn == o.photosOn && photosOnPages == o.photosOnPages && videosOn == o.videosOn && videosOnPages == o.videosOnPages &&
+            soundOn == o.soundOn && soundOnPages == o.soundOnPages
     }
 
     @Volatile var state = State()
@@ -198,6 +207,9 @@ object Whitelist {
         val (noPhotos, noPhotosPages) = sitesAndPages("noPhotos")
         val (noVideos, noVideosPages) = sitesAndPages("noVideos")
         val (noSound, noSoundPages) = sitesAndPages("noSound")
+        val (photosOn, photosOnPages) = sitesAndPages("photosOn")
+        val (videosOn, videosOnPages) = sitesAndPages("videosOn")
+        val (soundOn, soundOnPages) = sitesAndPages("soundOn")
         val allowA = o.optJSONArray("mediaAllow") ?: JSONArray()
         val mediaAllow = (0 until allowA.length()).map { allowA.optString(it).trim().lowercase().removePrefix("www.") }.filter { it.isNotEmpty() }
         val home = o.optString("homepage").takeIf { it.startsWith("http://") || it.startsWith("https://") }
@@ -227,7 +239,9 @@ object Whitelist {
         }
         return State(sites, block, blockPages, noMedia, noMediaPages, temps, home, maxOf(1, o.optInt("refreshMinutes", 5)), fetchedAt,
             embeds = embeds, noPhotos = noPhotos, noPhotosPages = noPhotosPages, noVideos = noVideos, noVideosPages = noVideosPages,
-            noSound = noSound, noSoundPages = noSoundPages, mediaAllow = mediaAllow)
+            noSound = noSound, noSoundPages = noSoundPages, mediaAllow = mediaAllow,
+            photosOn = photosOn, photosOnPages = photosOnPages, videosOn = videosOn, videosOnPages = videosOnPages,
+            soundOn = soundOn, soundOnPages = soundOnPages)
     }
 
     /** Where a list lives: "public" is whitelist.json, others are lists/<name>.json. */
@@ -257,6 +271,12 @@ object Whitelist {
             noSound = states.flatMap { it.noSound }.distinct(),
             noSoundPages = states.flatMap { it.noSoundPages }.distinct(),
             mediaAllow = states.flatMap { it.mediaAllow }.distinct(),
+            photosOn = states.flatMap { it.photosOn }.distinct(),
+            photosOnPages = states.flatMap { it.photosOnPages }.distinct(),
+            videosOn = states.flatMap { it.videosOn }.distinct(),
+            videosOnPages = states.flatMap { it.videosOnPages }.distinct(),
+            soundOn = states.flatMap { it.soundOn }.distinct(),
+            soundOnPages = states.flatMap { it.soundOnPages }.distinct(),
             temps = states.flatMap { it.temps }.distinctBy { it.id },
             embeds = states.flatMap { it.embeds.entries }.groupBy({ it.key }, { it.value })
                 .mapValues { (_, v) -> v.flatten().distinct() },
@@ -493,6 +513,12 @@ object Whitelist {
     /** [kind] ("photos" or "videos") off by the lists, ignoring temporary access. */
     private fun kindBlockedForGood(url: String, host: String, kind: String): Boolean {
         val s = state
+        // Turned back on ("back on") in any list: that wins over every "off" (and over the whole site's, for a page).
+        val onSites = when (kind) { "photos" -> s.photosOn; "videos" -> s.videosOn; else -> s.soundOn }
+        val onPages = when (kind) { "photos" -> s.photosOnPages; "videos" -> s.videosOnPages; else -> s.soundOnPages }
+        if (covers(onSites, host)) return false
+        val here = pageKey(url)
+        if (here != null && onPages.any { pageMatches(here, it) }) return false
         val sites = s.noMedia + when (kind) { "photos" -> s.noPhotos; "videos" -> s.noVideos; else -> s.noSound }
         if (covers(sites, host)) return true
         val key = pageKey(url) ?: return false

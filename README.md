@@ -233,7 +233,12 @@ podcasts, sound files, audio players) doesn't play. Videos that are allowed keep
   (YouTube, Vimeo…), and anything labelled as video or audio. While videos are off, players stay out of sight until
   they've been judged, so no picture shows.
 - **Sound made without a player** (the browser's sound system, used by games and many sites) stays silent when sound
-  is off too. (A few sites send a
+  is off too.
+- **Turning them back on for one phone, or one page:** "off" anywhere wins, so approving them back on adds a **back
+  on** entry to the list it goes into (`photosOn`, `videosOn`, `soundOn`) whenever another of the phone's lists, or the
+  whole site, still has them off. A "back on" wins over every "off", for the phones using that list. Switching a
+  site's **No photos** (etc.) on in a list removes that list's "back on" for the site. See and edit them on the admin
+  page → **Sites** → **No photos, videos or sound on some pages**. (A few sites send a
 video's sound as a separate .m4a or .aac file, so while videos are allowed, those two formats aren't blocked.) This is off by default. It can be turned on
 in three ways:
 - **For a whole site:** the **No photos**, **No videos** and **No sound** switches on the site's screen on the admin page.
@@ -1054,6 +1059,7 @@ updated by a version with the same seal. This stops anyone else from pushing a f
 | `noVideos` | Sites or pages that open without videos only. | `[]` |
 | `noSound` | Sites or pages where sound on its own (music, podcasts, sound files) is blocked. Allowed videos keep their sound. | `[]` |
 | `mediaAllow` | Single photos or videos shown anyway where they're off: host and path, e.g. `ichef.bbci.co.uk/news/976/shark.jpg`. | `[]` |
+| `photosOn`, `videosOn`, `soundOn` | Sites or pages where they're turned **back on** for the phones using this list, whatever other lists say (and, for a page, over its whole site's "off"). | `[]` |
 | `temporary` | Temporary access. `what`: `site`, `page`, `media` (photos, videos and sound on), `photos`, `videos` or `sound`. `mode`: `clock` (from `from`) or `use` (time on it, within 7 days). `minutes`: how long. Easiest to add on the admin page. | none |
 | `homepage` | A web address to start on instead of the home page with tiles. | the home page |
 | `refreshMinutes` | How often open apps check for changes (minimum 1). | `5` |
