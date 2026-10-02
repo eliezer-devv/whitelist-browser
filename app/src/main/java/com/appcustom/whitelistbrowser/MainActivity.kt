@@ -18,6 +18,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -45,6 +46,7 @@ class MainActivity : Activity() {
     companion object {
         const val BLOCKED_PAGE = "file:///android_asset/blocked.html"
         private const val REQ_PERMISSIONS = 42
+        private const val FILE_REQUEST = 43          // choosing files to upload to a website
     }
 
     private lateinit var web: WebView
@@ -409,6 +411,34 @@ class MainActivity : Activity() {
         }
 
         web.webChromeClient = object : WebChromeClient() {
+            // A website's own pop-ups (alert, confirm, prompt, "Leave this page?"): in the app's look, headed with
+            // the site's name. The site always gets an answer (closing the card counts as Cancel / Stay).
+            override fun onJsAlert(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean =
+                siteDialog(url, message, result, "alert", null)
+            override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean =
+                siteDialog(url, message, result, "confirm", null)
+            override fun onJsPrompt(view: WebView?, url: String?, message: String?, defaultValue: String?, result: android.webkit.JsPromptResult?): Boolean =
+                siteDialog(url, message, result, "prompt", defaultValue)
+            override fun onJsBeforeUnload(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean =
+                siteDialog(url, message, result, "leave", null)
+
+            // "Choose file" / "Upload" on a website: the phone's own file picker (one file, or several).
+            override fun onShowFileChooser(view: WebView?, callback: android.webkit.ValueCallback<Array<Uri>>?, params: FileChooserParams?): Boolean {
+                pendingFiles?.onReceiveValue(null)
+                pendingFiles = callback
+                val pick: Intent = runCatching { params?.createIntent() }.getOrNull()
+                    ?: Intent(Intent.ACTION_GET_CONTENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE)
+                if (params?.mode == FileChooserParams.MODE_OPEN_MULTIPLE) pick.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                try {
+                    startActivityForResult(pick, FILE_REQUEST)
+                } catch (e: Exception) {
+                    pendingFiles = null
+                    callback?.onReceiveValue(null)
+                    toast("There's no app on this phone for choosing files.")
+                }
+                return true
+            }
+
             override fun onPermissionRequest(request: PermissionRequest?) {
                 if (request != null) handleMediaRequest(request)
             }
@@ -441,6 +471,77 @@ class MainActivity : Activity() {
             text = "https://$text"
         }
         if (Whitelist.isAllowed(text)) web.loadUrl(text) else showBlocked(text)
+    }
+
+    // ---------- websites' own pop-ups ----------
+
+    private val siteDialogTimes = ArrayList<Long>()
+
+    /**
+     * A website's alert / confirm / prompt / "Leave this page?", as the app's own card headed "<site> says".
+     * Always answers the site exactly once. A site firing pop-ups over and over (some do, to trap people) has
+     * the rest quietly dismissed after a few.
+     */
+    private fun siteDialog(url: String?, message: String?, result: android.webkit.JsResult?, kind: String, defaultValue: String?): Boolean {
+        if (result == null) return false
+        val now = System.currentTimeMillis()
+        siteDialogTimes.removeAll { now - it > 10_000 }
+        siteDialogTimes.add(now)
+        if (siteDialogTimes.size > 4 || isFinishing) {
+            if (kind == "leave") result.confirm() else result.cancel()
+            if (siteDialogTimes.size == 5) toast("This site keeps showing messages, so they're hidden for now.")
+            return true
+        }
+        val host = url?.let { Uri.parse(it).host?.removePrefix("www.") }?.takeIf { it.isNotBlank() } ?: "This page"
+        var answered = false
+        val answer = { ok: Boolean, typed: String? ->
+            if (!answered) {
+                answered = true
+                if (ok && result is android.webkit.JsPromptResult) result.confirm(typed ?: "")
+                else if (ok) result.confirm()
+                else result.cancel()
+            }
+        }
+        val field: EditText? = if (kind == "prompt") Ui.field(this, "", defaultValue ?: "") else null
+        val d = Ui.AppDialog(this, sheet = false)
+        d.title(if (kind == "leave") "Leave this page?" else "$host says", icon = R.drawable.ic_d_globe)
+        val text = message?.takeIf { it.isNotBlank() }
+        if (kind == "leave") d.add(Ui.text(this, text ?: "Changes you made here may not be saved.", 15f, Ui.INK2))
+        else if (text != null) d.add(Ui.text(this, text.take(2000), 15f, Ui.INK2))
+        if (field != null) d.add(field, 10)
+        when (kind) {
+            "alert" -> d.button("OK", Ui.Kind.PRIMARY) { it.dismiss(); answer(true, null) }
+            "leave" -> {
+                d.button("Stay", Ui.Kind.GHOST) { it.dismiss(); answer(false, null) }
+                d.button("Leave", Ui.Kind.PRIMARY) { it.dismiss(); answer(true, null) }
+            }
+            else -> {
+                d.button("Cancel", Ui.Kind.GHOST) { it.dismiss(); answer(false, null) }
+                d.button("OK", Ui.Kind.PRIMARY) { val typed = field?.text?.toString(); it.dismiss(); answer(true, typed) }
+            }
+        }
+        d.onDismiss { answer(kind == "alert", null) }      // closed another way: OK for an alert, otherwise Cancel / Stay
+        d.show()
+        return true
+    }
+
+    // ---------- choosing files to upload ----------
+
+    private var pendingFiles: android.webkit.ValueCallback<Array<Uri>>? = null
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != FILE_REQUEST) return
+        val cb = pendingFiles ?: return
+        pendingFiles = null
+        // One file, or several (picked together).
+        val clip = data?.clipData
+        val files: Array<Uri>? = when {
+            resultCode != RESULT_OK -> null
+            clip != null && clip.itemCount > 0 -> Array(clip.itemCount) { clip.getItemAt(it).uri }
+            else -> WebChromeClient.FileChooserParams.parseResult(resultCode, data)
+        }
+        cb.onReceiveValue(files)
     }
 
     // ---------- a browser for the phone ----------
@@ -691,15 +792,14 @@ class MainActivity : Activity() {
     // ---------- menu ----------
 
     /**
-     * The ⋮ menu: a card in the app's look. A header for the page it's about, then asking about this page,
-     * then new sites and requests (with counts), then Settings. On tiny screens, Forward, Reload and
+     * The ⋮ menu: a compact card in the app's look. Asking about this page (blocking names the site), then new
+     * sites and requests (with counts), then Settings. On tiny screens, Forward, Reload and
      * "Check the list" are a row of buttons at the top (they're not in the top bar there).
      */
     private fun showMenu(anchor: View) {
         val cur = web.url
         val onRealSite = cur != null && !HomePage.isHome(cur) && blockedTarget(cur) == null &&
             (cur.startsWith("https://") || cur.startsWith("http://"))
-        val onHome = HomePage.isHome(cur)
         val compact = tinyBar
         fun dp(v: Int) = Ui.dp(this, v)
         val card = LinearLayout(this).apply {
@@ -707,16 +807,16 @@ class MainActivity : Activity() {
             background = Ui.rounded(Ui.CARD, dp(18).toFloat(), Ui.LINE, dp(1))
             setPadding(0, dp(4), 0, dp(6))
         }
-        val pop = android.widget.PopupWindow(card, dp(if (compact) 212 else 286), LinearLayout.LayoutParams.WRAP_CONTENT, true)
+        val pop = android.widget.PopupWindow(card, dp(if (compact) 212 else 264), LinearLayout.LayoutParams.WRAP_CONTENT, true)
         fun divider() = card.addView(View(this).apply { setBackgroundColor(Ui.LINE) },
-            LinearLayout.LayoutParams(-1, dp(1)).apply { topMargin = dp(4); bottomMargin = dp(4) })
+            LinearLayout.LayoutParams(-1, dp(1)).apply { topMargin = dp(2); bottomMargin = dp(2) })
         fun item(icon: Int, label: String, badge: String? = null, warn: Boolean = false, enabled: Boolean = true,
                  sub: String? = null, action: () -> Unit) {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
-                minimumHeight = dp(if (compact) 44 else 48)
-                setPadding(dp(if (compact) 12 else 16), dp(6), dp(if (compact) 12 else 16), dp(6))
+                minimumHeight = dp(44)                    // the comfortable minimum for tapping
+                setPadding(dp(if (compact) 12 else 14), dp(4), dp(if (compact) 12 else 14), dp(4))
                 isEnabled = enabled
                 alpha = if (enabled) 1f else 0.55f
                 background = android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(Ui.SEG), null,
@@ -727,9 +827,11 @@ class MainActivity : Activity() {
             row.addView(android.widget.ImageView(this).apply {
                 setImageResource(icon)
                 imageTintList = android.content.res.ColorStateList.valueOf(if (enabled) Ui.ACCENT_TEXT else Ui.MUTED)
-            }, LinearLayout.LayoutParams(dp(21), dp(21)).apply { marginEnd = dp(14) })
+            }, LinearLayout.LayoutParams(dp(20), dp(20)).apply { marginEnd = dp(12) })
             val words = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            words.addView(Ui.text(this, label, if (compact) 14f else 15.5f, if (enabled) Ui.INK else Ui.MUTED, "bold"))
+            words.addView(Ui.text(this, label, if (compact) 14f else 15f, if (enabled) Ui.INK else Ui.MUTED, "bold").apply {
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            })
             if (sub != null) words.addView(Ui.text(this, sub, 12f, Ui.MUTED))
             row.addView(words, LinearLayout.LayoutParams(0, -2, 1f))
             if (badge != null) row.addView(Ui.text(this, badge, 12.5f, if (warn) Ui.AMBER_INK else android.graphics.Color.WHITE, "bold").apply {
@@ -759,34 +861,6 @@ class MainActivity : Activity() {
             iconButton(R.drawable.ic_d_listcheck, "Check the list now", true) { checkListNow() }
             card.addView(bar)
             divider()
-        } else {
-            // The page it's about: its name and address.
-            val host = cur?.let { Uri.parse(it).host }?.removePrefix("www.")
-            val title = when {
-                onHome -> "Home"
-                onRealSite && host != null -> Whitelist.siteNameFor(host) ?: web.title?.takeIf { it.isNotBlank() && !it.startsWith("http") } ?: host
-                else -> "This page"
-            }
-            val address = when {
-                onHome -> "Your sites"
-                onRealSite -> Whitelist.pageKey(cur!!)?.substringBefore('?') ?: host ?: ""
-                else -> blockedTarget(cur)?.let { Uri.parse(it).host } ?: ""
-            }
-            val head = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(dp(16), dp(10), dp(16), dp(8))
-            }
-            head.addView(Ui.text(this, if (onHome) "⌂" else title.take(1).uppercase(), 16f, Ui.ACCENT_TEXT, "display").apply {
-                gravity = android.view.Gravity.CENTER
-                background = Ui.rounded(Ui.SOFT, dp(10).toFloat())
-            }, LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginEnd = dp(12) })
-            val hw = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            hw.addView(Ui.text(this, title, 15f, Ui.INK, "bold").apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-            if (address.isNotBlank()) hw.addView(Ui.text(this, address, 12.5f, Ui.MUTED).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-            head.addView(hw, LinearLayout.LayoutParams(0, -2, 1f))
-            card.addView(head)
-            divider()
         }
 
         // Asking about this page.
@@ -800,10 +874,10 @@ class MainActivity : Activity() {
             item(R.drawable.ic_d_photo, "Ask for ${Requests.mediaWords(offKinds)}") { showRequestDialog(Requests.Action.ALLOW, cur, mediaBack = true, mediaKind = offKinds) }
             asked = true
         }
-        if (!compact || onRealSite) {
-            item(R.drawable.ic_d_ban, "Ask to block this site", enabled = onRealSite, sub = if (onRealSite) null else "Open a site first") {
-                showRequestDialog(Requests.Action.BLOCK, cur)
-            }
+        if (onRealSite) {
+            // Names the site, so it's clear what it's about.
+            val site = cur?.let { Uri.parse(it).host }?.removePrefix("www.") ?: "this site"
+            item(R.drawable.ic_d_ban, if (compact) "Ask to block" else "Ask to block $site") { showRequestDialog(Requests.Action.BLOCK, cur) }
             asked = true
         }
         if (asked) divider()
@@ -888,7 +962,46 @@ class MainActivity : Activity() {
         updateBanner.visibility = View.VISIBLE
     }
 
-    private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
+    /**
+     * A short message: a small rounded bar near the bottom, in the app's colours, for a few seconds. While one of
+     * the app's dialogs is open, it shows inside that dialog instead (it would be hidden behind it).
+     */
+    private var messageBar: TextView? = null
+    private val hideMessage = Runnable {
+        val bar = messageBar
+        if (bar != null) bar.animate().alpha(0f).setDuration(200).withEndAction {
+            (bar.parent as? ViewGroup)?.removeView(bar)
+            if (messageBar === bar) messageBar = null
+        }.start()
+    }
+    private fun toast(text: String) {
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) { main.post { toast(text) }; return }
+        if (isFinishing || isDestroyed) return
+        val open = Ui.AppDialog.showing
+        if (open != null && open.isShowing) { open.note(text); return }
+        val host = window?.decorView as? android.widget.FrameLayout
+        if (host == null) { Toast.makeText(this, text, Toast.LENGTH_LONG).show(); return }
+        main.removeCallbacks(hideMessage)
+        messageBar?.let { host.removeView(it) }
+        val bar = Ui.text(this, text, 14.5f, if (Ui.dark) Ui.INK else android.graphics.Color.WHITE).apply {
+            background = if (Ui.dark) Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 14).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
+                else Ui.rounded(Ui.INK, Ui.dp(this@MainActivity, 14).toFloat())
+            setPadding(Ui.dp(this@MainActivity, 16), Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 16), Ui.dp(this@MainActivity, 12))
+            elevation = Ui.dp(this@MainActivity, 8).toFloat()
+            gravity = android.view.Gravity.CENTER
+            alpha = 0f
+            setOnClickListener { main.removeCallbacks(hideMessage); hideMessage.run() }
+        }
+        @Suppress("DEPRECATION")
+        val bottomInset = host.rootWindowInsets?.systemWindowInsetBottom ?: 0
+        val side = Ui.dp(this, 16)
+        host.addView(bar, android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL).apply { setMargins(side, 0, side, bottomInset + Ui.dp(this@MainActivity, 28)) })
+        bar.animate().alpha(1f).setDuration(150).start()
+        bar.announceForAccessibility(text)
+        messageBar = bar
+        main.postDelayed(hideMessage, 3500)
+    }
 
     // ---------- links for other apps ----------
 
@@ -1363,15 +1476,25 @@ class MainActivity : Activity() {
             wrapSelectorWheel = false
             descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
         }
-        val wheels = LinearLayout(this).apply {
+        Ui.styleWheel(hoursWheel)
+        Ui.styleWheel(minutesWheel)
+        val wheelRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER
-            background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 14).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
             val gap = Ui.dp(this@MainActivity, if (narrow) 6 else 10)
             addView(hoursWheel)
             addView(Ui.text(this@MainActivity, if (narrow) "h" else "hours", 13f, Ui.MUTED).apply { setPadding(gap / 2, 0, gap * 2, 0) })
             addView(minutesWheel)
             addView(Ui.text(this@MainActivity, "min", 13f, Ui.MUTED).apply { setPadding(gap / 2, 0, 0, 0) })
+        }
+        // The wheels on a card, with a soft band behind the chosen numbers (in place of grey lines).
+        val wheels = android.widget.FrameLayout(this).apply {
+            background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 14).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
+            val band = View(this@MainActivity).apply { background = Ui.rounded(Ui.SOFT, Ui.dp(this@MainActivity, 10).toFloat()) }
+            val bandLp = android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this@MainActivity, 46), android.view.Gravity.CENTER_VERTICAL)
+            bandLp.setMargins(Ui.dp(this@MainActivity, 10), 0, Ui.dp(this@MainActivity, 10), 0)
+            addView(band, bandLp)
+            addView(wheelRow, android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             visibility = View.GONE
         }
         // Temporary: count only the time the site is open, or from when it's approved.

@@ -532,9 +532,62 @@ object Ui {
             return b
         }
 
-        fun onDismiss(f: () -> Unit): AppDialog { dialog.setOnDismissListener { f() }; return this }
+        private var dismissAction: (() -> Unit)? = null
+        fun onDismiss(f: () -> Unit): AppDialog { dismissAction = f; return this }
         val isShowing get() = dialog.isShowing
-        fun show(): AppDialog { if (!activity.isFinishing) dialog.show(); return this }
+
+        fun show(): AppDialog {
+            if (activity.isFinishing) return this
+            dialog.setOnDismissListener {
+                if (showing === this) showing = null
+                dismissAction?.invoke()
+            }
+            dialog.show()
+            showing = this
+            return this
+        }
         fun dismiss() { if (dialog.isShowing) dialog.dismiss() }
+
+        /**
+         * A short message inside this dialog, above its buttons (for a few seconds). Messages go here while a
+         * dialog is open, since one at the bottom of the screen would be hidden behind it.
+         */
+        private var noteView: TextView? = null
+        fun note(text: String) {
+            val parent = buttons.parent as? LinearLayout ?: return
+            noteView?.let { parent.removeView(it) }
+            val v = Ui.text(ctx, text, 14f, Ui.AMBER_INK, "bold").apply {
+                background = Ui.rounded(Ui.AMBER_BG, Ui.dp(ctx, 12).toFloat())
+                setPadding(Ui.dp(ctx, 14), Ui.dp(ctx, 10), Ui.dp(ctx, 14), Ui.dp(ctx, 10))
+            }
+            parent.addView(v, parent.indexOfChild(buttons), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                val m = Ui.dp(ctx, 16); setMargins(m, Ui.dp(ctx, 6), m, 0)
+            })
+            v.announceForAccessibility(text)
+            noteView = v
+            v.postDelayed({ if (noteView === v) { parent.removeView(v); noteView = null } }, 4500)
+        }
+
+        companion object {
+            /** The app's dialog that's open now, if any. */
+            var showing: AppDialog? = null
+                private set
+        }
+    }
+
+    /** The time wheels in the app's look: numbers in its colours and fonts, no grey lines. */
+    fun styleWheel(np: android.widget.NumberPicker) {
+        np.background = null
+        if (Build.VERSION.SDK_INT >= 29) {
+            np.textColor = MUTED
+            np.selectionDividerHeight = 0
+        }
+        for (i in 0 until np.childCount) {
+            (np.getChildAt(i) as? android.widget.EditText)?.apply {
+                setTextColor(ACCENT_TEXT)
+                typeface = Ui.bold
+                background = null
+            }
+        }
     }
 }

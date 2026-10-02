@@ -1141,8 +1141,8 @@ People never see it.
 - **A slim line under the top bar** appears only when there's something to say: time left on something open for a
   while, photos, videos or sound being off (tap it to ask for them), or the list couldn't be checked (tap it to try
   again). Otherwise it's hidden.
-- **The ⋮ menu** names the page it's about at the top, then: asking about this page (**Ask for blocked parts**, with
-  how many; **Ask for photos/videos/sound** where they're off; **Ask to block this site**), **Ask for a new site**,
+- **The ⋮ menu** is a compact card: asking about this page (**Ask for blocked parts**, with how many; **Ask for
+  photos/videos/sound** where they're off; **Ask to block** and the site's name), **Ask for a new site**,
   **My requests** (with how many are waiting), and **Settings**. On tiny screens, **Forward**, **Reload** and **Check
   the list** are a row of buttons at its top.
 - **⋮ → Settings** holds **Appearance**, **Phone's browser**, **Cookies and site data**, **Clear cache**, **App update**
@@ -1150,6 +1150,14 @@ People never see it.
 - **Sheets that slide up from the bottom** can be dragged by their handle: down to close, up to fill the screen.
 - **First launch** asks for the person's **first and last name**. **About this phone** shows the phone's own list by
   the person's name.
+
+### Websites' own messages, and uploading files
+- **A website's own pop-ups** (an alert, *"Are you sure?"*, a box to type in, or *"Leave this page?"*) show in the
+  app's look, headed *"nasa.gov says"*, so it's clear they come from the site. A site that keeps firing them has the
+  rest quietly dismissed after a few.
+- **Uploading files:** **Choose file** / **Upload** on a website opens the phone's file picker (one file, or several).
+- **Short messages** (*"Request sent"*, *"Saved to Downloads"*…) appear as a small bar near the bottom, or inside
+  a dialog if one is open.
 
 ### The phone's browser (links from other apps)
 - **Web links from other apps** (WhatsApp, email, Messages, a PDF…) can open in Whitelist Browser: it's offered in
