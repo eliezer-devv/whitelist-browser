@@ -1048,7 +1048,8 @@ updated by a version with the same seal. This stops anyone else from pushing a f
   phone and on GitHub.
 
 **A new phone, in its first minute or two:** until its registration is processed and its sealed file published, it
-shows *"Setting up this phone…"* and opens nothing. **A phone whose key changed** (e.g. after a reinstall, which
+shows *"Setting up this phone…"* and opens nothing. **⋮ → Settings → About this phone → Setting up** shows where it's got to (e.g. *"Key
+sent: waiting for its lists"*, or what's wrong). **A phone whose key changed** (e.g. after a reinstall, which
 clears Android's key storage) notices its file won't open and registers its new key by itself.
 
 **Why part of it is in a public repository at all:** GitHub Pages (where phones get their files) is only free on

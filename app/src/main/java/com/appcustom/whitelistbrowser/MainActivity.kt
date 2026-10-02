@@ -2351,6 +2351,7 @@ class MainActivity : Activity() {
         val phone = mutableListOf(
             row("Phone ID", id),
             row("Name", (st.deviceName ?: Device.name(this) ?: "Not set") + if (st.registered) "" else " (not registered yet)"),
+            row("Setting up", Requests.setupStatus(this)),
             row("Lists", st.listNames.ifEmpty { listOf("none") }.joinToString(", ") { n ->
                 // A phone's own list is named after its ID: show the person's name instead.
                 if (n.equals(id, ignoreCase = true)) "${st.deviceName ?: Device.name(this) ?: "This phone"} (own list)"

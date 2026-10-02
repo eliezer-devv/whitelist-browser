@@ -249,10 +249,15 @@ object Requests {
         if (!isSetUp() || Whitelist.state.registered || Outbox.has(ctx, "register")) return
         if (Device.name(ctx) == null) return // registers once they've entered their name (asked on first launch)
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        // (Its sealed lists didn't open with its key: send the key again now, not after the wait.)
-        if (System.currentTimeMillis() < p.getLong("registerNext", 0L) && !Whitelist.keyMismatch) return
+        val now = System.currentTimeMillis()
+        // Send at once, without waiting, if this phone hasn't sent its current key yet (e.g. just updated, or
+        // reinstalled), or its sealed lists didn't open with it. A wait left by an older version (a day) is ignored.
+        val keyNow = runCatching { Seal.publicKey() }.getOrNull()
+        val keyNotSent = keyNow != null && p.getString("keySent", null) != keyNow
+        val waitUntil = p.getLong("registerNext", 0L).coerceAtMost(now + 30 * 60_000L)
+        if (now < waitUntil && !Whitelist.keyMismatch && !keyNotSent) return
         // Not set up yet means it can't open anything, so try again after half an hour (not a day).
-        p.edit().putLong("registerNext", System.currentTimeMillis() + 30 * 60_000L).apply()
+        p.edit().putLong("registerNext", now + 30 * 60_000L).apply()
         Outbox.add(ctx, "register", JSONObject())
     }
 
@@ -262,8 +267,24 @@ object Requests {
             .put("title", if (Seal.canSeal) "New phone" else "New phone: ${Device.name(ctx) ?: Device.model()} (${Device.id(ctx)})")
             .put("body", statusBody(ctx, register = true))
             .put("labels", JSONArray().put("new phone")))
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putInt("statusIssue", number).putLong("lastCheckIn", System.currentTimeMillis()).apply()
+        val keyJustSent = runCatching { Seal.publicKey() }.getOrNull()       // this key has gone (if there is one)
+        val e = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putInt("statusIssue", number).putLong("lastCheckIn", System.currentTimeMillis())
+        if (keyJustSent != null) e.putString("keySent", keyJustSent)
+        e.apply()
+    }
+
+    /** Where setting up has got to (for About this phone): set up, waiting, or what's wrong. */
+    fun setupStatus(ctx: Context): String {
+        if (!isSetUp()) return "Requests aren't set up in this app"
+        if (Whitelist.state.registered) return "Set up"
+        val key = runCatching { Seal.publicKey() }
+        if (key.isFailure) return "Can't make this phone's key: ${key.exceptionOrNull()?.message ?: "unknown problem"}"
+        if (Whitelist.keyMismatch) return "Its lists are locked with an old key: sending the new one"
+        if (Device.name(ctx) == null) return "Waiting for a name"
+        if (Outbox.has(ctx, "register")) return "Waiting to send its key (needs internet)" + (Outbox.lastProblem?.let { ": $it" } ?: "")
+        val sent = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("keySent", null) == key.getOrNull()
+        return if (sent) "Key sent: waiting for its lists (a minute or two)" else "About to send its key"
     }
 
     /**
