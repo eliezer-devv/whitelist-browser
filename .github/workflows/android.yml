@@ -7,7 +7,7 @@ on:
   push:
     branches: [main]
     # docs/admin.html too: it's packed into the app (the hidden in-app admin).
-    paths: ['app/**', '*.gradle.kts', 'gradle.properties', '.github/workflows/android.yml', 'docs/admin.html']
+    paths: ['app/**', '*.gradle.kts', 'gradle.properties', '.github/workflows/android.yml', 'docs/admin.html', 'request-key.pem']
     # (List changes don't start a build: phones download lists themselves. The starter list is
     #  whatever the public list is when the app is next built.)
 
