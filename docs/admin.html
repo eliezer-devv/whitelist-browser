@@ -178,10 +178,14 @@
   .tg .grow { flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; }
   .tg .t { font-weight: 600; font-size: 15.5px; }
   .tg .s { font-size: 13px; color: var(--muted); }
-  .sw { appearance: none; -webkit-appearance: none; width: 46px; height: 28px; border-radius: 14px; background: #CFCBC2; position: relative; margin: 0; flex: none; cursor: pointer; transition: background .15s; }
-  .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: left .15s; }
-  .sw:checked { background: var(--accent); }
-  .sw:checked::after { left: 21px; }
+  /* Switches: off = an outlined track with a smaller dark knob; on = solid green with a big white knob. */
+  .sw { appearance: none; -webkit-appearance: none; width: 46px; height: 28px; border-radius: 14px; box-sizing: border-box;
+    background: #EAE7E0; border: 2px solid var(--muted); position: relative; margin: 0; flex: none; cursor: pointer; transition: background .15s, border-color .15s; }
+  .sw::after { content: ""; position: absolute; top: 4px; left: 4px; width: 16px; height: 16px; border-radius: 50%; background: var(--muted);
+    transition: left .15s, top .15s, width .15s, height .15s, background .15s; }
+  .sw:checked { background: var(--accent); border-color: var(--accent); }
+  .sw:checked::after { top: 1px; left: 19px; width: 22px; height: 22px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+  .sw:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   .radio { display: flex; align-items: flex-start; gap: 12px; min-height: 52px; padding: 12px 14px; border-bottom: 1px solid var(--line2); cursor: pointer; }
   .group > .radio:last-child { border-bottom: 0; }
   .radio input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
@@ -288,7 +292,7 @@
   :root[data-theme="dark"] .seg button[aria-pressed="true"] { background: #435657; color: var(--ink); }
   :root[data-theme="dark"] .chip.amber { color: var(--amber-ink); }
   :root[data-theme="dark"] .chip.red { color: var(--red); }
-  :root[data-theme="dark"] .sw { background: #56696A; }
+  :root[data-theme="dark"] .sw { background: #364748; }
   :root[data-theme="dark"] .sw:checked { background: var(--accent); }
   :root[data-theme="dark"] .wheel div { color: #8EA19D; }
   :root[data-theme="dark"] .wheel div.sel { color: var(--ink); }
@@ -539,6 +543,54 @@ async function apiGet(path) {
   if (!res.ok) throw new Error(explain(res.status, 'It'));
   return res.json();
 }
+// ---------- old readable requests (from before sealing) ----------
+// Every issue still in the old, readable form: requests, new phones and phone records whose text shows what was
+// asked or whose phone it is. Editing them isn't enough (GitHub keeps the edit history and old titles), so they're
+// deleted. Deleting issues needs the repository owner, and a token GitHub allows to do it.
+async function oldReadableIssues() {
+  const all = [];
+  for (let page = 1; page <= 20; page++) {
+    const batch = await apiGet(`issues?state=all&per_page=100&page=${page}`);
+    all.push(...batch.filter(i => !i.pull_request));
+    if (batch.length < 100) break;
+  }
+  return all.filter(i => /<!-- whitelist-request/.test(i.body || '') && !/<!-- whitelist-sealed/.test(i.body || ''));
+}
+async function deleteIssue(nodeId) {
+  const res = await fetch('https://api.github.com/graphql', { method: 'POST', headers: headers(),
+    body: JSON.stringify({ query: 'mutation($id: ID!) { deleteIssue(input: { issueId: $id }) { clientMutationId } }', variables: { id: nodeId } }) });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok || out.errors) throw new Error((out.errors && out.errors[0] && out.errors[0].message) || `HTTP ${res.status}`);
+}
+async function cleanOldRequests() {
+  try {
+    say('Looking for old readable requests…');
+    const old = await oldReadableIssues();
+    if (!old.length) return say('There are no old readable requests. Everything is sealed.');
+    const ok = await uiConfirmDanger(`Delete ${old.length} old readable request${old.length === 1 ? '' : 's'}?`,
+      'These are from before sealing: their text shows what was asked and whose phone it is. They\'re deleted for good ' +
+      '(open ones too). Phones that use one as their record make a new, sealed one by themselves.', 'Delete them');
+    if (!ok) return;
+    let done = 0;
+    for (const i of old) {
+      try { await deleteIssue(i.node_id); done++; say(`Deleting… ${done} of ${old.length}`); }
+      catch (e) {
+        if (done === 0) {
+          await uiDialog({ title: 'GitHub didn\'t allow deleting', icon: 'warn', red: true, cancel: null, ok: 'OK',
+            text: `GitHub said: "${e.message}". Only the repository's owner can delete issues, and your admin token may not be ` +
+              'allowed to. Either delete them on GitHub (open each one → "Delete issue", at the bottom of the right-hand column), ' +
+              'or make a new admin token that also has "Administration: Read and write", and try again.' });
+          return say('Nothing was deleted.', true);
+        }
+        return say(`Deleted ${done} of ${old.length}, then GitHub stopped it: ${e.message}`, true);
+      }
+    }
+    S.requests = S.requests.filter(r => !old.some(o => o.number === r.number));
+    say(`Deleted ${done} old readable request${done === 1 ? '' : 's'}.`);
+    render();
+  } catch (e) { say(e.message === 'NO_ISSUES' ? NO_ISSUES_MSG : e.message, true); }
+}
+
 async function reply(number, text) {
   const res = await fetch(`${repoBase()}/issues/${number}/comments`, { method: 'POST', headers: headers(), body: JSON.stringify({ body: text }) });
   if (res.status === 403 || res.status === 404) throw new Error('NO_ISSUES');
@@ -2094,6 +2146,11 @@ function settingsScreen() {
       h('button', { type: 'button', class: 'row', id: 'openApprovalPin', onclick: () => open({ name: 'approvalpin', scope: 'all' }) }, h('span', { class: 'ic' }, icon('shield', 20)),
         h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'PIN for all phones'),
           h('span', { class: 'dom' }, D.approvalPin ? 'Set: type it on a phone to approve a request there' : 'Not set')),
+        h('span', { class: 'chev' }, icon('chev', 18))))),
+    section('Privacy', h('div', { class: 'group' },
+      h('button', { type: 'button', class: 'row', id: 'cleanOld', onclick: cleanOldRequests }, h('span', { class: 'ic' }, icon('trash', 20)),
+        h('span', { class: 'grow' }, h('span', { class: 't' }, 'Old readable requests'),
+          h('span', { class: 's' }, 'Delete requests from before sealing, whose text shows what was asked and by whom')),
         h('span', { class: 'chev' }, icon('chev', 18))))),
     section('GitHub', h('div', { class: 'group' },
       h('div', { class: 'row' }, h('span', { class: 'ic', style: 'color:#2E8B57' }, icon('check', 20, 2.2)),

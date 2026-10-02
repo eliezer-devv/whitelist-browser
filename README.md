@@ -20,6 +20,7 @@ work in a phone's web browser.
 
 ## Contents
 
+0. [Checklist: still to do](#checklist-still-to-do)
 1. [One-time setup](#1-one-time-setup)
 2. [Using the app](#2-using-the-app)
 3. [Requests to allow or block a site](#3-requests-to-allow-or-block-a-site)
@@ -34,6 +35,51 @@ work in a phone's web browser.
 11. [Limits and tips](#11-limits-and-tips)
 12. [Troubleshooting](#12-troubleshooting)
 13. [What's in this repository](#13-whats-in-this-repository)
+
+---
+
+## Checklist: still to do
+
+Tick these off as you go (edit this file, and change `[ ]` to `[x]`).
+
+**Before 2027 (important)**
+- [ ] **Register with Google's Android developer verification** (Google's developer console). From 2027, apps from
+      unverified developers won't install on most Android phones. It's free for apps you don't publish on the Play
+      Store, but takes some days to be approved, so don't leave it late.
+
+**Try on a real phone, once**
+- [ ] **A sealed request:** ask for a site from the phone. The issue should say only *"🔒 A request from a phone"*,
+      and the admin page should show the full details (and **All the details** → **History**).
+- [ ] **Approving from the admin page:** the answer should appear on the phone only once the change has arrived.
+- [ ] **Refresh now:** stay on a page while an embedded part (or one single photo) you asked for is approved: the
+      answer should offer **Refresh now**.
+- [ ] **Approval mode:** tap the **My requests** title 7 times, tick a waiting request, approve it with the PIN.
+      Also try a wrong PIN: it should say how many tries are left.
+- [ ] **Embedded content:** open a page with an embedded video or map from another site. Check the *"Parts of this
+      page were blocked"* bar, the **Ask for it** button inside the blocked part, and **Just this one**.
+- [ ] **Single photos, videos and sound:** on a page with photos off, tap a blocked photo → **Just this one**.
+- [ ] **Downloads from GitHub:** a file's download button, a release file, and **Download ZIP**.
+- [ ] **Home tiles:** hold one (the menu shows while still holding), and drag one to a new place.
+- [ ] **My requests:** swipe right to archive, left to delete; swipe a waiting one left to cancel it.
+- [ ] **Look and feel:** the dialogs, dark mode, and (Android 12 and newer) **Use my phone's colours**.
+- [ ] **The public repository:** `docs` should hold only the admin page, the status page and the sealed files in
+      `docs/p`. No readable lists, no `phones.json`.
+
+**Once**
+- [ ] **Old requests from before sealing** are still readable in their issues: admin page → **Settings** →
+      **Privacy** → **Old readable requests** deletes them (editing isn't enough: GitHub keeps edit history). If GitHub
+      doesn't allow your admin token to delete issues, the page says how to do it instead.
+- [ ] **Get notified:** in the private repository, **Watch** → **All activity**, and in the GitHub app turn on push
+      notifications for **Participating** (see setup step 6).
+- [ ] **Install the latest version on every phone** that uses the app.
+- [ ] **Make it each phone's browser:** ⋮ → **Settings** → **Phone's browser**. For a locked-down phone, also block
+      the other browsers (Family Link or the phone's parental controls).
+
+**Keep in mind**
+- **Keep `keys/request-private.pem` (private repository) private,** like a password: it unlocks the requests. If it
+  ever leaks, delete the `keys` folder and run **Publish lists**: it makes a new pair and the app is rebuilt with it.
+- **Keep `KEYSTORE_PASSWORD` safe** (a password manager), and a copy of `signing/release.p12`: without them you can
+  never publish an update the installed apps accept.
 
 ---
 
@@ -180,7 +226,14 @@ You can keep something blocked but open it **for a while**: a whole site, a sing
 ### No photos, no videos, no sound
 Sites or pages can be set to open **without photos**, **without videos**, **without sound**, or any mix of them. The
 text, links and buttons work as usual, but pictures don't load, videos don't play, and/or sound on its own (music,
-podcasts, sound files, audio players) doesn't play. Videos that are allowed keep their own sound. (A few sites send a
+podcasts, sound files, audio players) doesn't play. Videos that are allowed keep their own sound.
+- **How it tells sound from video:** by the media itself, as it starts to play: **a picture means video, no picture
+  means sound**, wherever it comes from (so a music service streaming songs counts as sound, and a film counts as
+  video). Only what's unmistakable is stopped before it downloads: video and sound files, video players' own servers
+  (YouTube, Vimeo…), and anything labelled as video or audio. While videos are off, players stay out of sight until
+  they've been judged, so no picture shows.
+- **Sound made without a player** (the browser's sound system, used by games and many sites) stays silent when sound
+  is off too. (A few sites send a
 video's sound as a separate .m4a or .aac file, so while videos are allowed, those two formats aren't blocked.) This is off by default. It can be turned on
 in three ways:
 - **For a whole site:** the **No photos**, **No videos** and **No sound** switches on the site's screen on the admin page.
@@ -280,7 +333,8 @@ page; otherwise their space shows *"Blocked: content from vimeo.com"*.
   blocked either way.
 
 ### What's allowed
-- **Downloads.** Files are saved to the phone's **Downloads** folder, with a notification when they finish.
+- **Downloads.** Files are saved to the phone's **Downloads** folder, with a notification when they finish. Each keeps its real
+  name (the one the site gives, or the end of its address), never a made-up "….bin".
   - **Files kept on another site** work too, when the download starts on an allowed page. GitHub, for example, keeps its
     downloads on `objects.githubusercontent.com` and `codeload.github.com`. The app checks the address first: if it's
     a file, it downloads it; if it's a web page, it's blocked as usual and never shown, so this can't be used to open
@@ -484,8 +538,9 @@ Every request gets an answer on the phone, whether it's approved or not.
 - **An approval is shown once the change has reached the phone** (its lists show it), not before, so *"can now be
   opened"* is true when it's read. The phone keeps checking quickly meanwhile. If it hasn't arrived after 10 minutes,
   the answer is shown anyway, saying it may take a few more minutes. **Denials** and notices come straight away.
-- **If the open page is the one the answer is about,** the answer offers **Refresh now** (a page without photos, or
-  with embedded parts blocked, only changes once it's reloaded).
+- **Most approvals apply to the open page by themselves:** a site you asked for from its blocked page opens by itself,
+  and photos, videos or sound switched on or off reload the page. **An embedded part or one single photo or video**
+  only shows once the page is reloaded, so if you're on that page, the answer offers **Refresh now**.
 - **How it gets there:** your final reply (or the bot's, on your behalf) includes a short, plain-language answer for the phone.
   The phone checks its unanswered requests every few minutes while the app is open.
 - **When answers arrive,** a pop-up shows **"Answer to your request"** with the result. Examples:
@@ -1086,11 +1141,27 @@ People never see it.
 - **A slim line under the top bar** appears only when there's something to say: time left on something open for a
   while, photos, videos or sound being off (tap it to ask for them), or the list couldn't be checked (tap it to try
   again). Otherwise it's hidden.
-- **⋮ → Settings** holds **Appearance**, **Cookies and site data**, **Clear cache**, **App update** and **About this
-  phone**.
+- **The ⋮ menu** names the page it's about at the top, then: asking about this page (**Ask for blocked parts**, with
+  how many; **Ask for photos/videos/sound** where they're off; **Ask to block this site**), **Ask for a new site**,
+  **My requests** (with how many are waiting), and **Settings**. On tiny screens, **Forward**, **Reload** and **Check
+  the list** are a row of buttons at its top.
+- **⋮ → Settings** holds **Appearance**, **Phone's browser**, **Cookies and site data**, **Clear cache**, **App update**
+  and **About this phone**.
 - **Sheets that slide up from the bottom** can be dragged by their handle: down to close, up to fill the screen.
 - **First launch** asks for the person's **first and last name**. **About this phone** shows the phone's own list by
   the person's name.
+
+### The phone's browser (links from other apps)
+- **Web links from other apps** (WhatsApp, email, Messages, a PDF…) can open in Whitelist Browser: it's offered in
+  "Open with". Each link is checked like anything typed or tapped: not on the list, and it shows the blocked page with
+  **Ask to open**.
+- **Make it the phone's default browser:** ⋮ → **Settings** → **Phone's browser** (Android asks *"Set as default
+  browser?"*; on older phones it opens the right settings page: choose **Whitelist Browser** under **Browser**). Then
+  every web link from every app opens here, through the lists.
+- **For a locked-down phone,** also hide or block the other browsers (Google Family Link, the phone's own parental
+  controls, or a device-management app): then this is the only way onto the web. Being the default alone doesn't stop
+  someone opening another browser directly.
+- **Sign-ins in other apps** that go through a website (and then back to the app) need that website on the list.
 
 ### Home page tiles
 - **Tap a tile** to open the site.

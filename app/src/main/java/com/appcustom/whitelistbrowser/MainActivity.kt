@@ -177,7 +177,7 @@ class MainActivity : Activity() {
         setupToolbar()
 
         if (savedInstanceState != null) web.restoreState(savedInstanceState)
-        else goHome()
+        else if (!openLinkFrom(intent)) goHome()                // opened with a link from another app: that link
         updateUi()
     }
 
@@ -443,6 +443,54 @@ class MainActivity : Activity() {
         if (Whitelist.isAllowed(text)) web.loadUrl(text) else showBlocked(text)
     }
 
+    // ---------- a browser for the phone ----------
+
+    /**
+     * A web link handed over by another app (WhatsApp, email, a news app…), when this app opens web links or is
+     * the phone's browser. It goes through the same checks as anything typed or tapped: not on the list, and it
+     * shows the blocked page with "Ask to open". True if there was one.
+     */
+    private fun openLinkFrom(i: Intent?): Boolean {
+        if (i?.action != Intent.ACTION_VIEW) return false
+        val link = i.data?.toString() ?: return false
+        if (!link.startsWith("http://") && !link.startsWith("https://")) return false
+        i.data = null                                           // handled: not again (e.g. when the screen turns)
+        navigate(link)
+        return true
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        openLinkFrom(intent)                                    // a link from another app while this one is open
+    }
+
+    /** Is this app the phone's default browser? */
+    private fun isPhonesBrowser(): Boolean {
+        if (Build.VERSION.SDK_INT >= 29) {
+            val rm = getSystemService(android.app.role.RoleManager::class.java)
+            if (rm != null && rm.isRoleAvailable(android.app.role.RoleManager.ROLE_BROWSER)) return rm.isRoleHeld(android.app.role.RoleManager.ROLE_BROWSER)
+        }
+        val probe = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com"))
+        @Suppress("DEPRECATION")
+        val best = packageManager.resolveActivity(probe, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+        return best?.activityInfo?.packageName == packageName
+    }
+
+    /** Asks Android to make this the phone's browser (its own question), or opens the right settings page. */
+    private fun becomePhonesBrowser() {
+        if (isPhonesBrowser()) { toast("It's already the phone's browser"); return }
+        if (Build.VERSION.SDK_INT >= 29) {
+            val rm = getSystemService(android.app.role.RoleManager::class.java)
+            if (rm != null && rm.isRoleAvailable(android.app.role.RoleManager.ROLE_BROWSER)) {
+                runCatching { startActivityForResult(rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_BROWSER), 7341); return }
+            }
+        }
+        val settings = Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+        if (runCatching { startActivity(settings) }.isFailure) runCatching { startActivity(Intent(android.provider.Settings.ACTION_SETTINGS)) }
+        toast("Choose Whitelist Browser under Browser")
+    }
+
     private fun goHome() {
         val custom = Whitelist.state.homepage
         if (custom != null) navigate(custom) else web.loadUrl(HomePage.URL)
@@ -642,45 +690,137 @@ class MainActivity : Activity() {
 
     // ---------- menu ----------
 
+    /**
+     * The ⋮ menu: a card in the app's look. A header for the page it's about, then asking about this page,
+     * then new sites and requests (with counts), then Settings. On tiny screens, Forward, Reload and
+     * "Check the list" are a row of buttons at the top (they're not in the top bar there).
+     */
     private fun showMenu(anchor: View) {
-        PopupMenu(this, anchor).apply {
-            val cur = web.url
-            val onRealSite = cur != null && !HomePage.isHome(cur) && blockedTarget(cur) == null &&
-                (cur.startsWith("https://") || cur.startsWith("http://"))
-            if (tinyBar) {                         // on tiny screens, Forward and Reload live here
-                menu.add(0, 10, 0, "Forward").isEnabled = web.canGoForward()
-                menu.add(0, 11, 0, "Reload")
-            }
-            if (blockedFrames.isNotEmpty() && Requests.isSetUp()) {
-                menu.add(0, 13, 0, "Ask for blocked parts (${blockedFrames.size})")
-            }
-            menu.add(0, 4, 0, "Ask for a new site")
-            menu.add(0, 9, 0, "My requests")
-            menu.add(0, 5, 1, "Ask to block").isEnabled = onRealSite
-            if (mediaOffHere && onRealSite) menu.add(0, 8, 1, "Ask for ${Requests.mediaWords(offKinds)}")
-            if (tinyBar) menu.add(0, 2, 5, "Check the list now")   // the list button is hidden on tiny screens
-            menu.add(0, 14, 6, "Settings")
-            setOnMenuItemClickListener {
-                when (it.itemId) {
-                    4 -> showRequestDialog(Requests.Action.ALLOW, null)
-                    13 -> showFramesRequest()
-                    9 -> showMyRequests()
-                    10 -> if (web.canGoForward()) web.goForward()
-                    11 -> web.reload()
-                    6 -> clearCache()
-                    3 -> showAbout()
-                    12 -> showAppearance()
-                    7 -> confirmClearCookies()
-                    5 -> showRequestDialog(Requests.Action.BLOCK, cur)
-                    8 -> showRequestDialog(Requests.Action.ALLOW, cur, mediaBack = true, mediaKind = offKinds)
-                    1 -> checkForUpdate(manual = true)
-                    2 -> checkListNow()
-                    14 -> showSettings()
-                }
-                true
-            }
-            show()
+        val cur = web.url
+        val onRealSite = cur != null && !HomePage.isHome(cur) && blockedTarget(cur) == null &&
+            (cur.startsWith("https://") || cur.startsWith("http://"))
+        val onHome = HomePage.isHome(cur)
+        val compact = tinyBar
+        fun dp(v: Int) = Ui.dp(this, v)
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.rounded(Ui.CARD, dp(18).toFloat(), Ui.LINE, dp(1))
+            setPadding(0, dp(4), 0, dp(6))
         }
+        val pop = android.widget.PopupWindow(card, dp(if (compact) 212 else 286), LinearLayout.LayoutParams.WRAP_CONTENT, true)
+        fun divider() = card.addView(View(this).apply { setBackgroundColor(Ui.LINE) },
+            LinearLayout.LayoutParams(-1, dp(1)).apply { topMargin = dp(4); bottomMargin = dp(4) })
+        fun item(icon: Int, label: String, badge: String? = null, warn: Boolean = false, enabled: Boolean = true,
+                 sub: String? = null, action: () -> Unit) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                minimumHeight = dp(if (compact) 44 else 48)
+                setPadding(dp(if (compact) 12 else 16), dp(6), dp(if (compact) 12 else 16), dp(6))
+                isEnabled = enabled
+                alpha = if (enabled) 1f else 0.55f
+                background = android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(Ui.SEG), null,
+                    android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE))
+                contentDescription = label + (badge?.let { " ($it)" } ?: "")
+                if (enabled) setOnClickListener { pop.dismiss(); action() }
+            }
+            row.addView(android.widget.ImageView(this).apply {
+                setImageResource(icon)
+                imageTintList = android.content.res.ColorStateList.valueOf(if (enabled) Ui.ACCENT_TEXT else Ui.MUTED)
+            }, LinearLayout.LayoutParams(dp(21), dp(21)).apply { marginEnd = dp(14) })
+            val words = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            words.addView(Ui.text(this, label, if (compact) 14f else 15.5f, if (enabled) Ui.INK else Ui.MUTED, "bold"))
+            if (sub != null) words.addView(Ui.text(this, sub, 12f, Ui.MUTED))
+            row.addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+            if (badge != null) row.addView(Ui.text(this, badge, 12.5f, if (warn) Ui.AMBER_INK else android.graphics.Color.WHITE, "bold").apply {
+                gravity = android.view.Gravity.CENTER
+                minWidth = dp(22); minimumWidth = dp(22)
+                setPadding(dp(7), dp(1), dp(7), dp(1))
+                background = Ui.rounded(if (warn) Ui.AMBER_BG else Ui.ACCENT, dp(11).toFloat())
+            })
+            card.addView(row, LinearLayout.LayoutParams(-1, -2))
+        }
+
+        // Tiny screens: Forward, Reload and Check the list, as a row of buttons.
+        if (compact) {
+            val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(10), dp(6), dp(10), dp(4)) }
+            fun iconButton(icon: Int, label: String, enabled: Boolean, action: () -> Unit) =
+                bar.addView(android.widget.ImageButton(this).apply {
+                    setImageResource(icon)
+                    imageTintList = android.content.res.ColorStateList.valueOf(Ui.ACCENT_TEXT)
+                    background = Ui.rounded(Ui.SOFT, dp(12).toFloat())
+                    contentDescription = label
+                    isEnabled = enabled
+                    alpha = if (enabled) 1f else 0.45f
+                    setOnClickListener { pop.dismiss(); action() }
+                }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { if (bar.childCount > 0) marginStart = dp(6) })
+            iconButton(R.drawable.ic_d_fwd, "Forward", web.canGoForward()) { if (web.canGoForward()) web.goForward() }
+            iconButton(R.drawable.ic_d_reload, "Reload", true) { web.reload() }
+            iconButton(R.drawable.ic_d_listcheck, "Check the list now", true) { checkListNow() }
+            card.addView(bar)
+            divider()
+        } else {
+            // The page it's about: its name and address.
+            val host = cur?.let { Uri.parse(it).host }?.removePrefix("www.")
+            val title = when {
+                onHome -> "Home"
+                onRealSite && host != null -> Whitelist.siteNameFor(host) ?: web.title?.takeIf { it.isNotBlank() && !it.startsWith("http") } ?: host
+                else -> "This page"
+            }
+            val address = when {
+                onHome -> "Your sites"
+                onRealSite -> Whitelist.pageKey(cur!!)?.substringBefore('?') ?: host ?: ""
+                else -> blockedTarget(cur)?.let { Uri.parse(it).host } ?: ""
+            }
+            val head = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(dp(16), dp(10), dp(16), dp(8))
+            }
+            head.addView(Ui.text(this, if (onHome) "⌂" else title.take(1).uppercase(), 16f, Ui.ACCENT_TEXT, "display").apply {
+                gravity = android.view.Gravity.CENTER
+                background = Ui.rounded(Ui.SOFT, dp(10).toFloat())
+            }, LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginEnd = dp(12) })
+            val hw = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            hw.addView(Ui.text(this, title, 15f, Ui.INK, "bold").apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+            if (address.isNotBlank()) hw.addView(Ui.text(this, address, 12.5f, Ui.MUTED).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+            head.addView(hw, LinearLayout.LayoutParams(0, -2, 1f))
+            card.addView(head)
+            divider()
+        }
+
+        // Asking about this page.
+        val partsCount = synchronized(blockedFrames) { blockedFrames.size }
+        var asked = false
+        if (partsCount > 0 && Requests.isSetUp()) {
+            item(R.drawable.ic_d_parts, if (compact) "Blocked parts" else "Ask for blocked parts", partsCount.toString(), warn = true) { showFramesRequest() }
+            asked = true
+        }
+        if (mediaOffHere && onRealSite) {
+            item(R.drawable.ic_d_photo, "Ask for ${Requests.mediaWords(offKinds)}") { showRequestDialog(Requests.Action.ALLOW, cur, mediaBack = true, mediaKind = offKinds) }
+            asked = true
+        }
+        if (!compact || onRealSite) {
+            item(R.drawable.ic_d_ban, "Ask to block this site", enabled = onRealSite, sub = if (onRealSite) null else "Open a site first") {
+                showRequestDialog(Requests.Action.BLOCK, cur)
+            }
+            asked = true
+        }
+        if (asked) divider()
+        // New sites, and requests (with how many are waiting for an answer).
+        item(R.drawable.ic_d_plus, "Ask for a new site") { showRequestDialog(Requests.Action.ALLOW, null) }
+        val waiting = MyRequests.all(this).count { it.status == "waiting" && !it.archived } + Outbox.waitingRequests(this).size
+        item(R.drawable.ic_d_inbox, "My requests", if (waiting > 0) waiting.toString() else null) { showMyRequests() }
+        divider()
+        item(R.drawable.ic_d_gear, "Settings") { showSettings() }
+
+        // Shown just under the ⋮, which is highlighted while it's open.
+        pop.elevation = dp(12).toFloat()
+        pop.isOutsideTouchable = true
+        val before = anchor.background
+        anchor.background = Ui.rounded(0x29FFFFFF, dp(22).toFloat())
+        pop.setOnDismissListener { anchor.background = before }
+        pop.showAsDropDown(anchor, 0, -dp(2), android.view.Gravity.END)
     }
 
     // ---------- app updates ----------
@@ -855,9 +995,9 @@ class MainActivity : Activity() {
                 return@withAndroidPermissions
             }
             try {
-                val name = URLUtil.guessFileName(url, contentDisposition, mimeType)
+                val name = downloadName(url, contentDisposition, mimeType)
                 val req = DownloadManager.Request(Uri.parse(url)).apply {
-                    if (mimeType != null) setMimeType(mimeType)
+                    typeFor(name, mimeType)?.let { setMimeType(it) }   // from the name if the server only said "binary"
                     CookieManager.getInstance().getCookie(url)?.let { addRequestHeader("Cookie", it) }
                     if (userAgent != null) addRequestHeader("User-Agent", userAgent)
                     setTitle(name)
@@ -891,7 +1031,7 @@ class MainActivity : Activity() {
     /** Saves a "blob:" or "data:" file from the page into Downloads. */
     private fun saveFromPage(url: String, contentDisposition: String?, mimeType: String?) {
         val type = mimeType?.takeIf { it.isNotBlank() } ?: "application/octet-stream"
-        val name = URLUtil.guessFileName(if (url.startsWith("data:")) "file" else url, contentDisposition, type)
+        val name = downloadName(if (url.startsWith("data:")) "" else url, contentDisposition, type)
         val perms = if (Build.VERSION.SDK_INT < 29) arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE) else emptyArray()
         withAndroidPermissions(perms) { granted ->
             if (perms.isNotEmpty() && granted.isEmpty()) {
@@ -909,6 +1049,36 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * A downloaded file's name. Android's own guess (URLUtil.guessFileName) turns names into "….bin" when a server
+     * says only "binary" (application/octet-stream), as GitHub does. So, in order: the name the server gives
+     * (Content-Disposition, including the filename*= form for names with accents), else the last part of the
+     * address, and only if that has no ending, one from the file's type.
+     */
+    private fun downloadName(url: String, contentDisposition: String?, mimeType: String?): String {
+        fun clean(n: String) = n.trim().trim('"', '\'').substringAfterLast('/').substringAfterLast('\\')
+            .replace(Regex("[\\x00-\\x1f<>:\"|?*]"), "_").take(150)
+        val cd = contentDisposition.orEmpty()
+        val fromHeader = Regex("filename\\*\\s*=\\s*([^']*)'[^']*'([^;]+)", RegexOption.IGNORE_CASE).find(cd)?.let { m ->
+            runCatching { java.net.URLDecoder.decode(m.groupValues[2].trim().replace("+", "%2B"), m.groupValues[1].ifBlank { "UTF-8" }) }.getOrNull()
+        } ?: Regex("filename\\s*=\\s*(\"[^\"]*\"|[^;]+)", RegexOption.IGNORE_CASE).find(cd)?.groupValues?.get(1)
+        val fromUrl = runCatching { Uri.parse(url).lastPathSegment }.getOrNull()
+        var name = listOfNotNull(fromHeader, fromUrl).map { clean(it) }.firstOrNull { it.isNotBlank() && it != "." && it != ".." } ?: "download"
+        if (!name.contains('.')) {
+            val ext = mimeType?.let { android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it.substringBefore(';').trim()) }
+            if (ext != null && ext != "bin") name += ".$ext"
+        }
+        return name
+    }
+
+    /** The file's type: from its name's ending when the server only said "binary" (so the phone knows how to open it). */
+    private fun typeFor(name: String, mimeType: String?): String? {
+        val m = mimeType?.substringBefore(';')?.trim()?.lowercase()
+        if (m != null && m.isNotEmpty() && m != "application/octet-stream" && m != "binary/octet-stream") return m
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: m
+    }
+
     /** Writes a "data:" address's contents into the phone's Downloads folder. */
     private fun writeDownload(name: String, type: String, dataUrl: String) {
         try {
@@ -921,7 +1091,7 @@ class MainActivity : Activity() {
             if (Build.VERSION.SDK_INT >= 29) {
                 val values = android.content.ContentValues().apply {
                     put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
-                    put(android.provider.MediaStore.Downloads.MIME_TYPE, type)
+                    put(android.provider.MediaStore.Downloads.MIME_TYPE, typeFor(name, type) ?: type)
                 }
                 val uri = contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                     ?: throw IllegalStateException("no place to save")
@@ -1494,7 +1664,13 @@ class MainActivity : Activity() {
         // Approvals still on their way to the phone: keep checking quickly until they arrive.
         if (MyRequests.anyHeld(this)) fastChecks(5)
         if (fresh.isEmpty()) return
-        val refresh = fresh.any { it.status == "approved" && aboutThisPage(it) }
+        // "Refresh now" only where the app can't apply it to the open page by itself: an embedded part, or one
+        // photo or video. (A site that was blocked opens by itself; photos, videos and sound reload the page.)
+        val refresh = fresh.any { item ->
+            val r = item.request
+            item.status == "approved" && r != null && aboutThisPage(item) &&
+                ((r.optJSONArray("frames")?.length() ?: 0) > 0 || r.optString("item").isNotBlank())
+        }
         Ui.AppDialog(this, sheet = false).apply {
             title(if (fresh.size == 1) "Answer to your request" else "Answers to your requests")
             val list = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
@@ -2169,6 +2345,9 @@ class MainActivity : Activity() {
         val name = Device.name(this) ?: "Not registered yet"
         val rows = listOf(
             row(R.drawable.ic_d_theme, "Appearance", look) { showAppearance() },
+            row(R.drawable.ic_d_globe, "Phone's browser",
+                if (isPhonesBrowser()) "This is the phone's browser: links from other apps open here"
+                else "Make it the phone's browser, so links from other apps open here") { becomePhonesBrowser() },
             row(R.drawable.ic_d_cookie, "Cookies and site data", "Sign out of sites, reset camera and location answers") { confirmClearCookies() },
             row(R.drawable.ic_d_broom, "Clear cache", "Frees space; pages load fresh") { clearCache() },
             row(R.drawable.ic_d_update, "App update", "Version ${BuildConfig.VERSION_NAME}. Check for a new one") { checkForUpdate(manual = true) },

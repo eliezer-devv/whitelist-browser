@@ -41,11 +41,17 @@ object MediaBlock {
      */
     fun isSound(request: WebResourceRequest, videosAllowed: Boolean = false): Boolean {
         val e = ext(request)
-        if (videosAllowed && e in SOUNDTRACK_EXT) return false
+        val host = request.url.host?.lowercase() ?: ""
+        // A video's own soundtrack, where videos are allowed: it plays with the video.
+        if (videosAllowed && (e in SOUNDTRACK_EXT || VIDEO_HOSTS.any { host == it || host.endsWith(".$it") })) return false
         return e in SOUND_EXT || accept(request).startsWith("audio/")
     }
 
-    /** Is this request a video: a file, a stream, or an embedded player? */
+    /**
+     * Is this request unmistakably a video: a video file, a video player's own server, an embedded player, or
+     * labelled as video? Anything less certain (e.g. a stream fetched in pieces, which may be a song or a film)
+     * isn't decided here: the page script judges it as it plays, by whether it has a picture.
+     */
     fun isVideo(request: WebResourceRequest): Boolean {
         val url = request.url
         val host = url.host?.lowercase() ?: return false
@@ -54,9 +60,7 @@ object MediaBlock {
         if ((host == "youtube.com" || host.endsWith(".youtube.com")) && path.startsWith("/embed")) return true
         if (path.contains("videoplayback")) return true
         if (ext(request) in VIDEO_EXT) return true
-        if (accept(request).startsWith("video/")) return true
-        if (isSound(request)) return false
-        return (request.requestHeaders ?: emptyMap()).keys.any { it.equals("Range", ignoreCase = true) } // players fetch in ranges
+        return accept(request).startsWith("video/")
     }
 
     /** Is this allowed item (host + path) an embedded video player, like YouTube's or Vimeo's? */
@@ -107,7 +111,9 @@ object MediaBlock {
     '.wlb-ph{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;max-width:100%;' +
     'min-height:40px;padding:6px 10px;margin:2px 0;border:1px dashed #8aa9a4;border-radius:8px;background:#eef4f2;' +
     'color:#1f3a3d;font:13px/1.3 system-ui,sans-serif;text-align:center;cursor:pointer;overflow:hidden}' +
-    (off.videos ? 'object,embed{display:none!important}' : '') + (off.photos ? '*{background-image:none!important}' : '');
+    // Videos off: a video player stays out of sight until it's known to have no picture (then it's sound).
+    (off.videos ? 'object,embed{display:none!important}video:not([data-wlb-ok]){visibility:hidden!important}' : '') +
+    (off.photos ? '*{background-image:none!important}' : '');
   (document.head || document.documentElement).appendChild(style);
 
   var LABEL = { photo: '\uD83D\uDDBC\uFE0F Photo blocked', video: '\uD83C\uDFAC Video blocked', sound: '\uD83D\uDD07 Sound blocked' };
@@ -134,28 +140,76 @@ object MediaBlock {
     if (el.offsetWidth >= 48) return false;
     return /icon|logo|sprite|avatar|emoji|badge|pixel|spacer|favicon/i.test((el.getAttribute('src') || '') + ' ' + (el.className || ''));
   }
+  // Takes a player off the page: stopped, emptied, and replaced with a placeholder (if it was visible).
+  function takeOff(el, kind) {
+    if (el.__wlbOff) return;
+    el.__wlbOff = true;
+    var src = srcOf(el), s = size(el), tag = el.tagName.toLowerCase();
+    if (tag === 'video' || tag === 'audio') {
+      try { el.pause(); el.removeAttribute('src'); el.querySelectorAll('source').forEach(function (x) { x.remove(); }); el.load(); } catch (e) {}
+    }
+    el.style.setProperty('display', 'none', 'important');
+    var visible = s[0] > 0 || s[1] > 0 || el.hasAttribute('controls');
+    if (!visible || (kind === 'sound' && !el.hasAttribute('controls'))) return;   // hidden players: no placeholder
+    var known = s[0] >= 48;
+    var ph = placeholder(kind, known ? s[0] : 0, known ? s[1] : 0, src);
+    el.__wlbPh = ph;
+    if (el.parentNode) el.parentNode.insertBefore(ph, el);
+  }
+  // Sound or video, judged by the media itself: an audio player is sound; a video player is video if it has
+  // a picture, and sound if it doesn't (e.g. a music service's player). Known once it has loaded its first
+  // details; until then: unknown.
+  function kindOf(el) {
+    var tag = (el.tagName || '').toLowerCase();
+    if (tag === 'audio') return 'sound';
+    if (tag !== 'video') return '';
+    if (el.videoWidth > 0) return 'video';
+    return el.readyState >= 1 ? 'sound' : '';
+  }
+  function decide(el) {
+    if (!el || !el.tagName || allowed(el)) { if (el && el.setAttribute) el.setAttribute('data-wlb-ok', '1'); return; }
+    var k = kindOf(el);
+    if (!k) return;
+    if ((k === 'video' && off.videos) || (k === 'sound' && off.sound)) takeOff(el, k);
+    else el.setAttribute('data-wlb-ok', '1');                     // allowed: shown and left to play
+  }
+  function judge(e) { decide(e.target); }
   function swap() {
-    var what = [off.photos ? 'img:not([data-wlb])' : '', off.videos ? 'video:not([data-wlb]),iframe:not([data-wlb])' : '',
-      off.sound ? 'audio:not([data-wlb])' : ''].filter(Boolean).join(',');
-    if (what) document.querySelectorAll(what).forEach(function (el) {
+    var what = [off.photos ? 'img:not([data-wlb])' : '', off.videos ? 'iframe:not([data-wlb])' : '',
+      off.sound ? 'audio:not([data-wlb])' : '', 'video:not([data-wlb])'].filter(Boolean).join(',');
+    document.querySelectorAll(what).forEach(function (el) {
       el.setAttribute('data-wlb', '1');
       var tag = el.tagName.toLowerCase();
       if (tag === 'iframe' && !/youtube|vimeo|dailymotion|player|video|wistia|twitch/i.test(el.src || '')) return;
-      if (allowed(el)) return;                                   // allowed one by one
-      var src = srcOf(el);
-      if (tag === 'video' || tag === 'audio') {
-        try { el.pause(); el.removeAttribute('src'); el.querySelectorAll('source').forEach(function (x) { x.remove(); }); el.load(); } catch (e) {}
+      if (allowed(el)) { el.setAttribute('data-wlb-ok', '1'); return; }   // allowed one by one
+      if (tag === 'video') {
+        // Both off: nothing to judge. Otherwise it's judged by the media itself, so it needs its first details:
+        // a player that was told not to load anything until tapped is asked for just those.
+        if (off.videos && off.sound) { takeOff(el, 'video'); return; }
+        if (!off.videos && !off.sound) return;
+        // Already failed to load (its video was blocked on the way, maybe before this script ran): with videos off,
+        // replaced, so there's something to tap to ask for it.
+        if (off.videos && (el.error || el.networkState === 3)) { takeOff(el, 'video'); return; }
+        if (el.readyState >= 1) { decide(el); return; }
+        try { if (el.preload === 'none') { el.preload = 'metadata'; if (srcOf(el)) el.load(); } } catch (e) {}
+        return;
       }
-      var kind = tag === 'img' ? 'photo' : tag === 'audio' ? 'sound' : 'video';
-      if (kind === 'sound' && !el.hasAttribute('controls')) { el.style.setProperty('display', 'none', 'important'); return; }
+      if (tag === 'audio' || tag === 'iframe') { takeOff(el, tag === 'audio' ? 'sound' : 'video'); return; }
+      // Photos.
       var s = size(el);
-      var icon = tag === 'img' && isIcon(el);
       var known = s[0] >= 48; // a real size to copy; otherwise a small placeholder
       el.style.setProperty('display', 'none', 'important');
-      if (icon) return;
-      var ph = placeholder(kind, known ? s[0] : 0, known ? s[1] : 0, src);
+      if (isIcon(el)) return;
+      var ph = placeholder('photo', known ? s[0] : 0, known ? s[1] : 0, srcOf(el));
       el.__wlbPh = ph;
       if (el.parentNode) el.parentNode.insertBefore(ph, el);
+    });
+    // Players in frames from the same site: judged the same way.
+    document.querySelectorAll('iframe').forEach(function (f) {
+      try {
+        var d = f.contentDocument;
+        if (d && !d.__wlbHooked) { d.__wlbHooked = true; ['play', 'playing', 'loadedmetadata'].forEach(function (ev) { d.addEventListener(ev, judge, true); }); }
+      } catch (e) {}
     });
   }
   // Many sites give an image its real address later (as it's scrolled to): check again when it changes,
@@ -172,14 +226,27 @@ object MediaBlock {
     changes.forEach(function (c) { if (c.type === 'attributes') recheck(c.target); });
     swap();
   }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'srcset'] });
-  document.addEventListener('play', function (e) {
-    var el = e.target, tag = (el.tagName || '').toLowerCase();
-    if (allowed(el)) return;
-    try {
-      if (tag === 'video' && off.videos) el.pause();
-      else if (tag === 'audio' && off.sound) el.pause();
-    } catch (x) {}
+  document.addEventListener('play', judge, true);
+  document.addEventListener('playing', judge, true);
+  document.addEventListener('loadedmetadata', judge, true);
+  // A video player that couldn't load (its video was blocked on the way): it can't be judged, so with videos off
+  // it's replaced too, so there's something to tap to ask for it.
+  document.addEventListener('error', function (e) {
+    var el = e.target && e.target.tagName === 'SOURCE' ? e.target.parentNode : e.target;
+    if (el && el.tagName === 'VIDEO' && off.videos && !el.hasAttribute('data-wlb-ok') && !allowed(el)) takeOff(el, 'video');
   }, true);
+  // Sound off: sound made without a player (the browser's sound system, used by games and many sites) stays
+  // silent too: new sound "contexts" start paused, and can't be started.
+  if (off.sound) ['AudioContext', 'webkitAudioContext'].forEach(function (n) {
+    var C = window[n];
+    if (!C || C.__wlb) return;
+    try {
+      C.prototype.resume = function () { return Promise.resolve(); };
+      var W = function (a) { var c = a === undefined ? new C() : new C(a); try { c.suspend(); } catch (e) {} return c; };
+      W.prototype = C.prototype; W.__wlb = true;
+      window[n] = W;
+    } catch (e) {}
+  });
 })();
 """
 }

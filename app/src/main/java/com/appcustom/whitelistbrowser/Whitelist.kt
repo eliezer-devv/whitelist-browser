@@ -112,6 +112,15 @@ object Whitelist {
 
     fun defaultName(domain: String) = domain.removePrefix("www.")
 
+    /** The name a site was given in the lists (e.g. "Khan Academy" for khanacademy.org), if any. */
+    fun siteNameFor(host: String): String? {
+        val h = host.lowercase().removePrefix("www.")
+        val site = state.sites.firstOrNull { val d = it.domain.removePrefix("www."); h == d || h.endsWith(".$d") } ?: return null
+        val name = site.name.trim()
+        // Just its address again (no name of its own): no name.
+        return name.takeIf { it.isNotEmpty() && it.lowercase().removePrefix("www.") != site.domain.lowercase().removePrefix("www.") }
+    }
+
     /**
      * A page address in comparable form: no scheme, no #part, lower-case host without
      * "www.", "m." or "mobile." (so mobile redirects still match), then path and query as typed.

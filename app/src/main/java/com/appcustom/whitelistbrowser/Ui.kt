@@ -229,18 +229,25 @@ object Ui {
         val sw = Switch(ctx).apply {
             isChecked = checked
             val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
-            // Drawn by the app: Android's own track is pale when on. Solid green when on, grey when off.
+            // Drawn by the app, so it's always clear. On: a solid green track with a big white knob. Off: an outlined
+            // track (a clear dark outline) with a smaller dark knob, so it stands out even on a white card.
             val on = intArrayOf(android.R.attr.state_checked)
             trackDrawable = android.graphics.drawable.StateListDrawable().apply {
                 addState(on, GradientDrawable().apply { setColor(ACCENT); cornerRadius = dp(ctx, 14).toFloat(); setSize(dp(ctx, 46), dp(ctx, 28)) })
-                addState(intArrayOf(), GradientDrawable().apply { setColor(TRACK_OFF); cornerRadius = dp(ctx, 14).toFloat(); setSize(dp(ctx, 46), dp(ctx, 28)) })
+                addState(intArrayOf(), GradientDrawable().apply {
+                    setColor(SEG); setStroke(dp(ctx, 2), MUTED); cornerRadius = dp(ctx, 14).toFloat(); setSize(dp(ctx, 46), dp(ctx, 28))
+                })
             }
-            // The white knob, with a 3dp gap around it inside the track.
-            thumbDrawable = android.graphics.drawable.InsetDrawable(GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.WHITE)
-                setSize(dp(ctx, 22), dp(ctx, 22))
-            }, dp(ctx, 3))
+            thumbDrawable = android.graphics.drawable.StateListDrawable().apply {
+                // On: white, 22dp (a 3dp gap inside the track).
+                addState(on, android.graphics.drawable.InsetDrawable(GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL; setColor(Color.WHITE); setSize(dp(ctx, 22), dp(ctx, 22))
+                }, dp(ctx, 3)))
+                // Off: dark grey, 16dp (a 6dp gap), the outline's colour.
+                addState(intArrayOf(), android.graphics.drawable.InsetDrawable(GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL; setColor(MUTED); setSize(dp(ctx, 16), dp(ctx, 16))
+                }, dp(ctx, 6)))
+            }
             trackTintList = null
             thumbTintList = null
             switchMinWidth = dp(ctx, 46)
