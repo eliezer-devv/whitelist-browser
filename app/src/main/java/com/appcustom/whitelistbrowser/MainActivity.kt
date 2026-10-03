@@ -1607,8 +1607,8 @@ class MainActivity : Activity() {
                 toast("Storage permission is needed to download files")
                 return@withAndroidPermissions
             }
+            val name = runCatching { downloadName(url, contentDisposition, mimeType) }.getOrDefault("download")   // (also for the log below)
             try {
-                val name = downloadName(url, contentDisposition, mimeType)
                 val req = DownloadManager.Request(Uri.parse(url)).apply {
                     typeFor(name, mimeType)?.let { setMimeType(it) }   // from the name if the server only said "binary"
                     CookieManager.getInstance().getCookie(url)?.let { addRequestHeader("Cookie", it) }
