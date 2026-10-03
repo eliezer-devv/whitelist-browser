@@ -159,6 +159,7 @@ class MainActivity : Activity() {
 
         TempTime.load(this)       // time already used on "time on the site" temporary access
         Whitelist.loadCache(this) // last known list, so it works offline
+        io.execute { AdRules.load(applicationContext); AdRules.update(applicationContext) }   // AdGuard's rules (updated daily)
         // Ad list: load the saved copy (or the one in the app) first, then fetch a fresh one if a week
         // has passed. In that order, so an old copy can never overwrite a fresh one.
         io.execute {
@@ -187,6 +188,7 @@ class MainActivity : Activity() {
         super.onResume()
         isResumedNow = true
         refreshWhitelist() // check GitHub every time the app comes to the front
+        io.execute { AdRules.update(applicationContext) }   // AdGuard's ad rules: once a day (checked at most hourly)
         maybeAutoCheckForUpdate()
         if (Config.LOCK_TASK) runCatching { startLockTask() }
         main.removeCallbacks(tempTask)
@@ -238,7 +240,9 @@ class MainActivity : Activity() {
             setGeolocationEnabled(true)
             builtInZoomControls = true
             displayZoomControls = false
+            useWideViewPort = true                  // lets a desktop site lay out at desktop width
         }
+        phoneAgent = web.settings.userAgentString
 
         web.webViewClient = object : WebViewClient() {
             // Links, form posts, JS navigation and server redirects.
@@ -293,7 +297,16 @@ class MainActivity : Activity() {
                     if (trail.lastOrNull() != url) trail += url
                     while (trail.size > 20) trail.removeAt(0)
                 }
-                if (Whitelist.isAllowed(url, request.isForMainFrame)) return false
+                if (Whitelist.isAllowed(url, request.isForMainFrame)) {
+                    // Opening a page: its tracking codes (utm_source, fbclid…) are taken out of its address first.
+                    if (request.isForMainFrame && request.method.equals("GET", ignoreCase = true)) {
+                        val clean = AdRules.cleanUrl(url, adGroups())
+                        if (clean != url) { view?.loadUrl(clean); return true }
+                    }
+                    // Going to a site with the other version (desktop or phone): open it again as that.
+                    if (request.isForMainFrame && !request.isRedirect && useAgentFor(url)) { view?.loadUrl(url); return true }
+                    return false
+                }
                 // Frames inside a page on a site with "Allow content embedded from other sites" may come
                 // from anywhere (the ad and adult filters still apply). Leaving the page is still checked.
                 if (!request.isForMainFrame && frameOk(url, request.url.host ?: "", view?.url)) return false
@@ -317,9 +330,13 @@ class MainActivity : Activity() {
                     return HomePage.respond(this@MainActivity, request.url.path ?: "")
                 }
                 // "No photos or videos" pages: media files and players get an empty answer.
+                // Picture and sound separately: with videos off but sound on, a video's stream still downloads (its
+                // sound plays; the page script hides the picture). An embedded player from another site can't have
+                // its picture hidden, so it's blocked whenever videos are off.
                 if (request != null && !request.isForMainFrame && mediaOffHere &&
                     ((photosOffHere && MediaBlock.isImage(request)) ||
-                        (videosOffHere && MediaBlock.isVideo(request) && !(Whitelist.hasAllowedPlayer() && MediaBlock.isStream(request))) ||
+                        (videosOffHere && MediaBlock.isVideo(request) && !MediaBlock.isStream(request)) ||
+                        (videosOffHere && soundOffHere && MediaBlock.isVideo(request) && !(Whitelist.hasAllowedPlayer() && MediaBlock.isStream(request))) ||
                         (soundOffHere && MediaBlock.isSound(request, videosAllowed = !videosOffHere))) &&
                     !Whitelist.mediaAllowed(request.url.toString())) {        // a single photo or video allowed anyway
                     return MediaBlock.emptyResponse()
@@ -328,6 +345,14 @@ class MainActivity : Activity() {
                 if (request != null && !request.isForMainFrame && Whitelist.state.adblock) {
                     val host = request.url.host
                     if (host != null && AdBlock.isAd(host, Whitelist.state.adblockExceptions)) return AdBlock.blockedResponse()
+                }
+                // AdGuard's lists, by group (ads, trackers, annoyances): particular addresses and paths. A harmless
+                // empty answer (also for its "stand-in" rules). Not for sites on the "Never block these" list.
+                if (request != null && !request.isForMainFrame) {
+                    val groups = adGroups()
+                    val host = request.url.host
+                    if (groups.isNotEmpty() && host != null && !adExcepted(host) &&
+                        AdRules.blocks(request.url, topUrl?.let { Uri.parse(it).host }, groups)) return AdBlock.blockedResponse()
                 }
                 // Content filters (adult, gambling, malware): anything a page loads from a listed site gets an
                 // empty answer, even from sites on the phone's lists, unless that site was approved "anyway".
@@ -370,6 +395,7 @@ class MainActivity : Activity() {
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 topUrl = url
+                addAdScripts(view, url, early = true)    // YouTube's: as early as possible (before its player reads its data)
                 blockedFrames.clear()
                 frameNoteClosedFor = null      // closing the bar only lasts until the page loads again
                 hideFrameNote()
@@ -384,12 +410,14 @@ class MainActivity : Activity() {
 
             override fun onPageCommitVisible(view: WebView?, url: String?) {
                 if (mediaOffHere) view?.evaluateJavascript(MediaBlock.script(photosOffHere, videosOffHere, soundOffHere, Whitelist.mediaAllowList()), null)
+                addAdScripts(view, url)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 // Where this site was left off (the home page's "Open where you left off").
                 if (url != null && Whitelist.isAllowed(url)) siteScope(url)?.let { Tiles.rememberPage(this@MainActivity, it, url, view?.title) }
                 if (mediaOffHere) view?.evaluateJavascript(MediaBlock.script(photosOffHere, videosOffHere, soundOffHere, Whitelist.mediaAllowList()), null)
+                addAdScripts(view, url)
                 updateUi()
             }
 
@@ -470,7 +498,78 @@ class MainActivity : Activity() {
         if (!Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://").containsMatchIn(text) && !text.startsWith("about:")) {
             text = "https://$text"
         }
-        if (Whitelist.isAllowed(text)) web.loadUrl(text) else showBlocked(text)
+        if (Whitelist.isAllowed(text)) {
+            val clean = AdRules.cleanUrl(text, adGroups())            // without tracking codes
+            useAgentFor(clean); web.loadUrl(clean)
+        } else showBlocked(text)
+    }
+
+    // ---------- fuller ad blocking ----------
+
+    /** On the "Never block these" list (admin page): no ad blocking for it. */
+    private fun adExcepted(host: String): Boolean {
+        val h = host.lowercase().removePrefix("www.")
+        return Whitelist.state.adblockExceptions.any { h == it || h.endsWith(".$it") }
+    }
+
+    /** Hides ad elements on the page, and on YouTube removes its ads from the player's data (when ads are blocked). */
+    /** AdGuard's groups switched on for this phone (admin page: Block ads, Block trackers, Hide annoyances). */
+    private fun adGroups(): Set<String> {
+        val s = Whitelist.state
+        return buildSet { if (s.adblock) add("ads"); if (s.trackers) add("trackers"); if (s.annoyances) add("annoyances") }
+    }
+
+    private fun addAdScripts(view: WebView?, url: String?, early: Boolean = false) {
+        val groups = adGroups()
+        if (view == null || url == null || groups.isEmpty()) return
+        if (!url.startsWith("http://") && !url.startsWith("https://")) return
+        val host = Uri.parse(url).host ?: return
+        if (adExcepted(host)) return
+        AdRules.pageScript(host, groups)?.let { view.evaluateJavascript(it, null) }                // scripts and scriptlets
+        if (!early) {                                                                               // once the page is there
+            AdRules.hideScript(host, groups)?.let { view.evaluateJavascript(it, null) }
+            AdRules.extendedScript(host, groups)?.let { view.evaluateJavascript(it, null) }       // advanced element rules
+        }
+    }
+
+    // ---------- desktop site ----------
+
+    private var phoneAgent = ""
+    private val desktopPrefs by lazy { getSharedPreferences("desktop", Context.MODE_PRIVATE) }
+
+    /** The sites shown as their desktop version (remembered per site, until switched off). */
+    private fun desktopSites(): Set<String> = desktopPrefs.getStringSet("sites", emptySet()) ?: emptySet()
+    private fun siteKeyOf(url: String?): String? = url?.let { Uri.parse(it).host }?.lowercase()?.removePrefix("www.")?.takeIf { it.isNotBlank() }
+    private fun isDesktop(url: String?): Boolean = siteKeyOf(url)?.let { k -> desktopSites().any { k == it || k.endsWith(".$it") } } ?: false
+
+    /** How a desktop browser introduces itself (the phone's own, without "Android" and "Mobile"). */
+    private fun desktopAgent(): String {
+        val chrome = Regex("Chrome/[\\d.]+").find(phoneAgent)?.value ?: "Chrome/124.0.0.0"
+        return "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) $chrome Safari/537.36"
+    }
+
+    /** Sets how the browser introduces itself for [url]'s site: desktop or phone. True if it changed. */
+    private fun useAgentFor(url: String?): Boolean {
+        if (phoneAgent.isEmpty()) return false
+        val desktop = isDesktop(url)
+        val want = if (desktop) desktopAgent() else phoneAgent
+        if (web.settings.userAgentString == want) return false
+        web.settings.userAgentString = want
+        web.settings.loadWithOverviewMode = desktop             // the whole desktop page fits the screen at first
+        return true
+    }
+
+    /** ⋮ → Desktop site: switches this site between its desktop and phone versions, and reloads it. */
+    private fun toggleDesktop() {
+        val cur = web.url ?: return
+        val key = siteKeyOf(cur) ?: return
+        val now = desktopSites().toMutableSet()
+        val on = !isDesktop(cur)
+        if (on) now.add(key) else now.removeAll { key == it || key.endsWith(".$it") }
+        desktopPrefs.edit().putStringSet("sites", now).apply()
+        useAgentFor(cur)
+        web.reload()
+        toast(if (on) "Showing the desktop site" else "Showing the phone site")
     }
 
     // ---------- websites' own pop-ups ----------
@@ -876,6 +975,11 @@ class MainActivity : Activity() {
         }
         if (onRealSite) {
             item(R.drawable.ic_d_ban, "Ask to block") { showRequestDialog(Requests.Action.BLOCK, cur) }   // this site (the request screen names it)
+            asked = true
+        }
+        if (onRealSite) {
+            if (asked) divider()
+            item(R.drawable.ic_d_desktop, "Desktop site", if (isDesktop(cur)) "On" else null) { toggleDesktop() }
             asked = true
         }
         if (asked) divider()
@@ -1381,13 +1485,6 @@ class MainActivity : Activity() {
         }
         d.add(filterWarning)
 
-        // The "Approve here with a PIN" option (added further down, below the note).
-        val (pinRow, pinSwitch) = Ui.switchRow(this, "Approve here with a PIN", "If whoever manages this browser is with you")
-        val pinField = Ui.field(this, "Approval PIN",
-            type = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD).apply {
-            visibility = View.GONE
-        }
-
         val siteField = Ui.field(this, "Website, e.g. scratch.mit.edu",
             type = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI)
         if (siteDomain == null) { d.add(Ui.label(this, "Website")); d.add(siteField, 6) }
@@ -1405,7 +1502,6 @@ class MainActivity : Activity() {
                     askAnyway = null
                     siteField.error = null
                     filterWarning.visibility = View.GONE
-                    if (Whitelist.state.pinApproval) pinRow.visibility = View.VISIBLE
                     sendButton.text = "Send"
                 }
             }
@@ -1596,14 +1692,7 @@ class MainActivity : Activity() {
                 toast("Choose how long on the wheels, or pick Always") // the sheet stays open
                 return@button
             }
-            val pinOffered = pinRow.parent != null && pinRow.visibility == View.VISIBLE
-            val pin = if (pinOffered && pinSwitch.isChecked) pinField.text.toString().trim() else null
-            if (pin != null && !Regex("^\\d{4,8}$").matches(pin)) {
-                pinField.error = "The PIN is 4 to 8 digits"
-                pinField.requestFocus()
-                return@button
-            }
-            if (pin == null && Requests.recentlySent(this, action, Requests.sentKey(subject, media, kind))) {
+            if (Requests.recentlySent(this, action, Requests.sentKey(subject, media, kind))) {
                 toast("You already asked about $subject. Wait for an answer.")
                 d.dismiss()
                 return@button
@@ -1612,12 +1701,12 @@ class MainActivity : Activity() {
             // "Send anyway" after the site couldn't be found: send it, marked as not found.
             if (siteDomain == null && sendAnyway == domain) {
                 d.dismiss()
-                sendRequest(action, scope, media, domain, null, note, hops, minutes, unverified = true, pin = pin, mediaKind = kind, tile = tile, timeMode = timeMode, item = item)
+                sendRequest(action, scope, media, domain, null, note, hops, minutes, unverified = true, mediaKind = kind, tile = tile, timeMode = timeMode, item = item)
                 return@button
             }
             if (siteDomain != null) {
                 d.dismiss()
-                sendRequest(action, scope, media, domain, pageUrl, note, hops, minutes, pin = pin, mediaKind = kind, tile = tile, timeMode = timeMode, item = item)
+                sendRequest(action, scope, media, domain, pageUrl, note, hops, minutes, mediaKind = kind, tile = tile, timeMode = timeMode, item = item)
                 return@button
             }
             // A typed site on a content filter's list: say which, and ask them to confirm first.
@@ -1625,8 +1714,6 @@ class MainActivity : Activity() {
             if (typedFiltered.isNotEmpty() && askAnyway != domain) {
                 filterWarning.text = filterWarningText(domain, typedFiltered, pinNote = Whitelist.state.pinApproval)
                 filterWarning.visibility = View.VISIBLE
-                pinSwitch.isChecked = false
-                pinRow.visibility = View.GONE
                 askAnyway = domain
                 sendButton.text = "Ask anyway"
                 return@button
@@ -1651,7 +1738,7 @@ class MainActivity : Activity() {
                     } else {
                         // Found, or no internet to check with: the request is sent (or saved until online).
                         d.dismiss()
-                        sendRequest(action, scope, media, domain, null, note, hops, minutes, pin = pin, mediaKind = kind, tile = tile, timeMode = timeMode, item = item)
+                        sendRequest(action, scope, media, domain, null, note, hops, minutes, mediaKind = kind, tile = tile, timeMode = timeMode, item = item)
                     }
                 }
             }
@@ -1678,16 +1765,16 @@ class MainActivity : Activity() {
      */
     private fun sendRequest(action: Requests.Action, scope: Requests.Scope, media: Requests.Media,
                             domain: String, pageUrl: String?, note: String, hops: List<Requests.Hop> = emptyList(),
-                            minutes: Int = 0, unverified: Boolean = false, pin: String? = null,
+                            minutes: Int = 0, unverified: Boolean = false,
                             frames: List<String> = emptyList(), mediaKind: String = "both", tile: Boolean = true,
                             timeMode: String? = null, item: String? = null) {
-        toast(if (pin != null) "Checking the PIN" else "Sending request")
+        toast("Sending request")
         updateIo.execute {
             val outcome = runCatching {
                 // Which content filters list it (so you see that before approving).
                 val filtered = if (action == Requests.Action.ALLOW) Whitelist.filteredAs(domain) else emptyList()
                 val id = Requests.queue(applicationContext, action, scope, media, domain, pageUrl, note, hops, minutes, unverified,
-                    if (frames.isEmpty()) filtered else emptyList(), pin, frames, mediaKind, tile, timeMode, item)
+                    if (frames.isEmpty()) filtered else emptyList(), frames, mediaKind, tile, timeMode, item)
                 val r = Outbox.flush(applicationContext)
                 when {
                     id in r.sent -> null
@@ -1700,7 +1787,6 @@ class MainActivity : Activity() {
                 if (isDestroyed) return@post
                 val problem = outcome.getOrElse { "Couldn't send the request: ${it.message}" }
                 toast(problem ?: when {
-                    pin != null -> "Checking the PIN. If it's right, this happens by itself within a minute or two."
                     frames.isNotEmpty() -> "Request sent. If it's approved, reload the page to see the blocked parts."
                     action == Requests.Action.BLOCK -> "Request sent."
                     media == Requests.Media.ON -> "Request sent. If it's approved, ${Requests.mediaWords(mediaKind)} come back by themselves."
@@ -2052,7 +2138,9 @@ class MainActivity : Activity() {
                 dlg.dismiss()
                 toast("Sending")
                 updateIo.execute {
-                    val sent = items.filter { runCatching { Requests.answerWithPin(it.number, pin, approve) }.getOrDefault(false) }
+                    // One PIN note for all of them (GitHub checks the PIN once).
+                    val ok = runCatching { Requests.answerWithPin(items.map { it.number }, pin, approve) }.getOrDefault(false)
+                    val sent = if (ok) items else emptyList()
                     main.post {
                         if (isDestroyed) return@post
                         if (sent.isEmpty()) { toast("Couldn't send it (no internet?). Try again later."); return@post }
@@ -2420,14 +2508,8 @@ class MainActivity : Activity() {
             type = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
         d.add(Ui.label(this, "Why? (optional)"))
         d.add(noteField, 6)
-        val (pinRow, pinSwitch) = Ui.switchRow(this, "Approve here with a PIN", "If whoever manages this browser is with you")
-        val pinField = Ui.field(this, "Approval PIN",
-            type = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD).apply { visibility = View.GONE }
-        // (Approving with the PIN is in "My requests" now; the switch isn't shown here.)
         d.button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
         d.button("Send", Ui.Kind.PRIMARY) {
-            val pin = if (Whitelist.state.pinApproval && pinSwitch.isChecked) pinField.text.toString().trim() else null
-            if (pin != null && !Regex("^\\d{4,8}$").matches(pin)) { pinField.error = "The PIN is 4 to 8 digits"; return@button }
             // Just the parts (their exact addresses), or the whole site, for each ticked one.
             val chosen = choices.filter { it.ticked }.flatMap { c ->
                 if (c.everything || c.parts.isEmpty()) listOf(c.site) else c.parts
@@ -2436,7 +2518,7 @@ class MainActivity : Activity() {
             it.dismiss()
             hideFrameNote()
             sendRequest(Requests.Action.ALLOW, Requests.Scope.SITE, Requests.Media.UNCHANGED, site, top,
-                noteField.text.toString().trim(), pin = pin, frames = chosen)
+                noteField.text.toString().trim(), frames = chosen)
         }
         d.show()
     }
@@ -2664,6 +2746,7 @@ class MainActivity : Activity() {
         val waiting = Outbox.count(this)
         if (waiting > 0) phone += row("Waiting to send", "$waiting (${Outbox.lastProblem ?: "sends when online"})")
         phone += row("App version", BuildConfig.VERSION_NAME)
+        phone += row("Ad blocking", AdRules.status)
         Ui.AppDialog(this, sheet = true).apply {
             title("About this phone", icon = R.drawable.ic_d_user)
             add(table(phone))

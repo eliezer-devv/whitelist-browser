@@ -142,7 +142,7 @@ object MediaBlock {
   }
   // Takes a player off the page: stopped, emptied, and replaced with a placeholder (if it was visible).
   function takeOff(el, kind) {
-    if (el.__wlbOff) return;
+    if (el.__wlbOff) { try { el.pause(); } catch (e) {} return; }      // already off: just keep it stopped
     el.__wlbOff = true;
     var src = srcOf(el), s = size(el), tag = el.tagName.toLowerCase();
     if (tag === 'video' || tag === 'audio') {
@@ -166,12 +166,45 @@ object MediaBlock {
     if (el.videoWidth > 0) return 'video';
     return el.readyState >= 1 ? 'sound' : '';
   }
+  // Picture and sound, separately. "No videos": no picture (a video's sound still plays if sound is allowed).
+  // "No sound": no sound at all (a video plays muted). Both off: stopped.
   function decide(el) {
     if (!el || !el.tagName || allowed(el)) { if (el && el.setAttribute) el.setAttribute('data-wlb-ok', '1'); return; }
     var k = kindOf(el);
     if (!k) return;
-    if ((k === 'video' && off.videos) || (k === 'sound' && off.sound)) takeOff(el, k);
-    else el.setAttribute('data-wlb-ok', '1');                     // allowed: shown and left to play
+    if (k === 'sound') { if (off.sound) takeOff(el, 'sound'); else el.setAttribute('data-wlb-ok', '1'); return; }
+    if (off.videos && off.sound) { takeOff(el, 'video'); return; }
+    if (off.sound) silence(el);
+    if (off.videos) soundOnly(el); else el.setAttribute('data-wlb-ok', '1');
+  }
+  // Sound off: a video plays muted, and stays muted if the page tries to unmute it.
+  function silence(el) {
+    if (el.__wlbMuted) return;
+    el.__wlbMuted = true;
+    try { el.muted = true; } catch (e) {}
+    el.addEventListener('volumechange', function () { if (!el.muted) { try { el.muted = true; } catch (e) {} } });
+  }
+  // Videos off, sound on: the picture is hidden; it keeps playing (its sound). A label covers where it was, with
+  // "Ask"; taps elsewhere still reach the player (so its own play / pause works).
+  function soundOnly(el) {
+    if (el.__wlbSoundOnly) return;
+    el.__wlbSoundOnly = true;
+    el.style.setProperty('opacity', '0', 'important');            // (it stays out of sight: no data-wlb-ok)
+    var host = el.offsetParent, w = el.offsetWidth, h = el.offsetHeight;
+    if (!host || w < 48 || h < 24) return;                        // a hidden player: nothing to label
+    var tag = document.createElement('div');
+    tag.className = 'wlb-ph';
+    tag.style.cssText = 'position:absolute;left:' + el.offsetLeft + 'px;top:' + el.offsetTop + 'px;width:' + w + 'px;height:' + h +
+      'px;margin:0;pointer-events:none;flex-direction:column;gap:6px;z-index:1';
+    var t = document.createElement('div');
+    t.textContent = LABEL.video.replace('Video blocked', 'Picture hidden') + ' \u00B7 sound only';
+    var ask = document.createElement('a');
+    ask.textContent = 'Ask for videos';
+    ask.href = 'wlb://ask-media?kind=videos' + (srcOf(el) ? '&src=' + encodeURIComponent(srcOf(el)) : '');
+    ask.style.cssText = 'pointer-events:auto;color:#1f5f55;font-weight:700;text-decoration:underline';
+    tag.appendChild(t); tag.appendChild(ask);
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+    host.appendChild(tag);
   }
   function judge(e) { decide(e.target); }
   function swap() {
@@ -229,6 +262,30 @@ object MediaBlock {
   document.addEventListener('play', judge, true);
   document.addEventListener('playing', judge, true);
   document.addEventListener('loadedmetadata', judge, true);
+  // Players made in code and never put on the page (many music players work this way): their events never reach
+  // the page, so each is judged when it's told to play, and watched as it loads.
+  var realPlay = HTMLMediaElement.prototype.play;
+  if (!realPlay.__wlb) {
+    var wrappedPlay = function () {
+      var el = this;
+      if (!el.__wlbWatched) {
+        el.__wlbWatched = true;
+        ['play', 'playing', 'loadedmetadata'].forEach(function (ev) { el.addEventListener(ev, function () { decide(el); }); });
+      }
+      if (!allowed(el)) {
+        var tag = (el.tagName || '').toLowerCase(), k = kindOf(el) || (tag === 'audio' ? 'sound' : '');
+        if ((off.videos && off.sound) || (k === 'sound' && off.sound)) {
+          takeOff(el, k || 'video');
+          return Promise.resolve();
+        }
+        if (k === 'video') decide(el);                               // picture hidden and/or muted, but it plays
+        else if (off.sound && tag === 'video') silence(el);          // not known yet: silent until it is
+      }
+      return realPlay.apply(this, arguments);
+    };
+    wrappedPlay.__wlb = true;
+    HTMLMediaElement.prototype.play = wrappedPlay;
+  }
   // A video player that couldn't load (its video was blocked on the way): it can't be judged, so with videos off
   // it's replaced too, so there's something to tap to ask for it.
   document.addEventListener('error', function (e) {

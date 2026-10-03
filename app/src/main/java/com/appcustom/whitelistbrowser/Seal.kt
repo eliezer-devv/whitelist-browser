@@ -82,7 +82,6 @@ object Seal {
         MessageDigest.getInstance("SHA-256").digest("wlb:$id".toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }.take(32)
 
-    /** A request's hidden part for its GitHub text: sealed (if the app has the request key), else plain. */
-    fun hiddenPart(obj: JSONObject): String =
-        if (canSeal) "<!-- whitelist-sealed\n${seal(obj)}\n-->" else "<!-- whitelist-request\n$obj\n-->"
+    /** A request's hidden part for its GitHub text: sealed, so only GitHub's automation can read it. */
+    fun hiddenPart(obj: JSONObject): String = "<!-- whitelist-sealed\n${seal(obj)}\n-->"
 }

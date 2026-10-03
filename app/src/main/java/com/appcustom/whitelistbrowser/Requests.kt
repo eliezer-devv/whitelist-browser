@@ -23,7 +23,7 @@ object Requests {
     // Stored reversed at build time so the key isn't sitting in the app as plain text.
     private fun token(): String = BuildConfig.REQUESTS_TOKEN_REV.reversed()
 
-    fun isSetUp() = token().isNotBlank() && Config.GITHUB_USERNAME != "YOUR_USERNAME"
+    fun isSetUp() = token().isNotBlank() && Config.GITHUB_USERNAME != "YOUR_USERNAME" && Seal.canSeal   // sealed, always
 
     private const val PREFS = "requests"
     private const val REPEAT_WAIT_MS = 30 * 60 * 1000L
@@ -61,7 +61,7 @@ object Requests {
 
     fun queue(ctx: Context, action: Action, scope: Scope, media: Media, domain: String, pageUrl: String?, note: String,
               hops: List<Hop> = emptyList(), minutes: Int = 0, unverified: Boolean = false,
-              filtered: List<String> = emptyList(), pin: String? = null, frames: List<String> = emptyList(),
+              filtered: List<String> = emptyList(), frames: List<String> = emptyList(),
               mediaKind: String = "both", tile: Boolean = true, timeMode: String? = null, item: String? = null): String {
         if (!isSetUp()) throw IOException("Requests aren't set up for this app yet")
 
@@ -78,13 +78,6 @@ object Requests {
             else -> "Block $what"
         }.let { if (frames.isNotEmpty()) "Embedded content on $domain, from ${frames.joinToString(", ")}" else it } +
             if (minutes > 0) ", for ${duration(minutes)}" else ""
-        val title = if (frames.isNotEmpty()) "Embedded content on $domain" else when {
-            media == Media.ON -> "${mw.replaceFirstChar { it.uppercase() }} back on: $subject"
-            action == Action.ALLOW && media == Media.OFF -> "Open $kind without $mw: $subject"
-            action == Action.BLOCK && media == Media.OFF -> "Block $mw: $subject"
-            action == Action.ALLOW -> "Open $kind: $subject"
-            else -> "Block $kind: $subject"
-        }
         val marker = JSONObject().put("action", action.word).put("scope", if (page != null) "page" else "site")
             .put("domain", domain).put("device", Device.id(ctx)).put("model", Device.model())
             .apply { Device.name(ctx)?.let { put("name", it) } }
@@ -94,7 +87,6 @@ object Requests {
             .apply { if (minutes > 0) put("minutes", minutes) }
             .apply { if (unverified) put("unverified", true) } // the phone couldn't find this site
             .apply { if (filtered.isNotEmpty()) put("filtered", JSONArray(filtered)) } // on a content filter's list
-            .apply { if (pin != null) put("pin", pin) } // approval PIN: checked by GitHub, then removed from the request
             .apply {
                 if (hops.isNotEmpty()) put("hops", JSONArray(hops.take(10).map {
                     JSONObject().put("url", it.url).put("scope", it.scope).put("tile", it.tile)
@@ -106,48 +98,16 @@ object Requests {
             .apply { if (frames.isNotEmpty()) put("frames", JSONArray(frames.take(10))) } // blocked embedded content on this site
             .apply { if (!pageUrl.isNullOrBlank()) put("url", pageUrl) }
             .apply { if (note.isNotBlank()) put("note", note.take(500)) }
-        // Sealed (the app has the request key): nothing readable on GitHub, just that there's a request.
-        if (Seal.canSeal) {
-            val sealedPayload = JSONObject()
-                .put("title", "Request from a phone")
-                .put("body", "🔒 A request from a phone. Answer it on the admin page.\n\n${Seal.hiddenPart(marker)}")
-                .put("labels", JSONArray().put("site request"))
-            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putLong("${action.word}|${sentKey(subject, media, mediaKind)}", System.currentTimeMillis()).apply()
-            return Outbox.add(ctx, "issue", sealedPayload,
-                summary = if (frames.isNotEmpty()) "Embedded content on $domain (from ${frames.joinToString(", ")})" else "$headline: $subject",
-                request = JSONObject(marker.toString()).apply { remove("pin") })
-        }
-        val body = buildString {
-            appendLine("**$headline:** `$subject`")
-            if (!pageUrl.isNullOrBlank()) appendLine("**Page:** $pageUrl")
-            if (hops.isNotEmpty()) {
-                appendLine("**Passes through on the way:**")
-                hops.take(10).forEachIndexed { i, h ->
-                    appendLine("${i + 1}. ${h.url} (${if (h.scope == "site") "whole site" else "this page"}${if (h.tile) ", with a tile" else ""})")
-                }
-            }
-            if (note.isNotBlank()) appendLine("**Note:** ${note.replace("-->", "")}")
-            if (unverified) appendLine("**⚠️ The phone couldn't find this site when asking.** It may be a typo.")
-            if (filtered.isNotEmpty()) appendLine("**⚠️ On the ${filtered.joinToString(" and ") { if (it == "adult") "adult content" else it }} list.**")
-            val name = Whitelist.state.deviceName ?: Device.name(ctx)
-            appendLine("**Phone:** ${name ?: Device.model()} (`${Device.id(ctx)}`)")
-            appendLine("**Asked:** ${utcNow().replace('T', ' ').removeSuffix("Z")} UTC")
-            appendLine()
-            appendLine("<!-- whitelist-request")
-            appendLine(marker.toString())
-            append("-->")
-        }
+        // Sealed: nothing readable on GitHub, just that there's a request (only GitHub's automation can read it).
         val payload = JSONObject()
-            .put("title", title)
-            .put("body", body)
+            .put("title", "Request from a phone")
+            .put("body", "🔒 A request from a phone. Answer it on the admin page.\n\n${Seal.hiddenPart(marker)}")
             .put("labels", JSONArray().put("site request"))
-
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putLong("${action.word}|${sentKey(subject, media, mediaKind)}", System.currentTimeMillis()).apply()
         return Outbox.add(ctx, "issue", payload,
             summary = if (frames.isNotEmpty()) "Embedded content on $domain (from ${frames.joinToString(", ")})" else "$headline: $subject",
-            request = JSONObject(marker.toString()).apply { remove("pin") })
+            request = marker)
     }
 
     /** Sends a saved request and returns its issue number. Called by [Outbox.flush]. */
@@ -163,7 +123,7 @@ object Requests {
             // Still waiting: a notice for the phone, if there is one (e.g. "Wrong PIN, so it was sent for approval").
             val open = JSONArray(get("issues/$number/comments?per_page=100") ?: "[]")
             for (i in open.length() - 1 downTo 0) {
-                val o = hidden(open.getJSONObject(i).optString("body"), NOTICE_SEALED, NOTICE) ?: continue
+                val o = hidden(open.getJSONObject(i).optString("body"), NOTICE_SEALED) ?: continue
                 return Pair("notice", o.optString("message"))
             }
             return null
@@ -172,7 +132,7 @@ object Requests {
         val comments = JSONArray(get("issues/$number/comments?per_page=100") ?: "[]")
         for (i in comments.length() - 1 downTo 0) {
             val body = comments.getJSONObject(i).optString("body")
-            val o = hidden(body, RESPONSE_SEALED, RESPONSE) ?: continue
+            val o = hidden(body, RESPONSE_SEALED) ?: continue
             val outcome = o.optString("outcome")
             return Pair(if (outcome == "approved" || outcome == "denied") outcome else "closed", o.optString("message"))
         }
@@ -181,16 +141,12 @@ object Requests {
             else Pair("closed", "Closed without an answer.")
     }
 
-    private val NOTICE = Regex("<!-- whitelist-notice\\s*([\\s\\S]*?)-->")
-    private val RESPONSE = Regex("<!-- whitelist-response\\s*([\\s\\S]*?)-->")
     private val NOTICE_SEALED = Regex("<!-- whitelist-notice-sealed\\s*([\\s\\S]*?)-->")
     private val RESPONSE_SEALED = Regex("<!-- whitelist-response-sealed\\s*([\\s\\S]*?)-->")
 
-    /** The answer (or notice) in a comment: sealed for this phone, or plain (from before). Null if none. */
-    private fun hidden(body: String, sealed: Regex, plain: Regex): JSONObject? {
-        sealed.find(body)?.let { m -> return runCatching { Seal.open(JSONObject(m.groupValues[1].trim())) }.getOrNull() }
-        return plain.find(body)?.let { m -> runCatching { JSONObject(m.groupValues[1]) }.getOrNull() }
-    }
+    /** The answer (or notice) in a comment, sealed for this phone. Null if none (or not for this phone). */
+    private fun hidden(body: String, sealed: Regex): JSONObject? =
+        sealed.find(body)?.let { m -> runCatching { Seal.open(JSONObject(m.groupValues[1].trim())) }.getOrNull() }
 
     /** GET from the repo's API. Null if it doesn't exist (404/410). Throws on other problems. */
     private fun get(path: String): String? {
@@ -234,10 +190,7 @@ object Requests {
             .apply { Device.first(ctx)?.let { put("first", it) }; Device.last(ctx)?.let { put("last", it) } }
             .put("lastSeen", now).put("installed", Device.installedOn(ctx))
             .put("version", BuildConfig.VERSION_NAME)
-        if (Seal.canSeal) return (if (register) "🔒 A phone registered." else "🔒 A phone's record.") + "\n\n" + Seal.hiddenPart(marker)
-        return (if (register) "A phone installed Whitelist Browser." else "Phone check-in record.") +
-            "\n\n**Name they entered:** ${Device.name(ctx) ?: "(none)"}\n**Model:** ${Device.model()}\n**ID:** `$id`\n**Last seen:** ${now.replace('T', ' ').removeSuffix("Z")} UTC " +
-            "(app ${BuildConfig.VERSION_NAME})\n\n<!-- whitelist-request\n$marker\n-->"
+        return (if (register) "🔒 A phone registered." else "🔒 A phone's record.") + "\n\n" + Seal.hiddenPart(marker)
     }
 
     /**
@@ -264,7 +217,7 @@ object Requests {
     /** Sends the registration (built now, so "last seen" is when it's actually sent). Called by [Outbox.flush]. */
     fun deliverRegistration(ctx: Context, @Suppress("UNUSED_PARAMETER") payload: JSONObject) {
         val number = createIssue(JSONObject()
-            .put("title", if (Seal.canSeal) "New phone" else "New phone: ${Device.name(ctx) ?: Device.model()} (${Device.id(ctx)})")
+            .put("title", "New phone")
             .put("body", statusBody(ctx, register = true))
             .put("labels", JSONArray().put("new phone")))
         val keyJustSent = runCatching { Seal.publicKey() }.getOrNull()       // this key has gone (if there is one)
@@ -301,7 +254,7 @@ object Requests {
             // No record on this install yet (the app was reinstalled, or the phone was added by hand): make one.
             // The workflow files it away quietly because the phone is already known.
             number = createIssue(JSONObject()
-                .put("title", if (Seal.canSeal) "Phone record" else "Phone record: ${Device.model()} (${Device.id(ctx)})")
+                .put("title", "Phone record")
                 .put("body", statusBody(ctx, register = false))
                 .put("labels", JSONArray().put("new phone")))
         } else {
@@ -354,10 +307,13 @@ object Requests {
      * approval mode). The PIN goes in a hidden note, which GitHub deletes at once, then checks the PIN.
      * Blocking. True if the note was sent.
      */
-    fun answerWithPin(number: Int, pin: String, approve: Boolean): Boolean {
-        if (number <= 0) return false
+    fun answerWithPin(numbers: List<Int>, pin: String, approve: Boolean): Boolean {
+        val all = numbers.filter { it > 0 }.distinct()
+        val number = all.firstOrNull() ?: return false
+        // One note for all of them: GitHub checks the PIN once, then answers each.
         val note = JSONObject().put("pin", pin).put("action", if (approve) "approve" else "deny")
-        val hidden = if (Seal.canSeal) "<!-- whitelist-pin-sealed ${Seal.seal(note)} -->" else "<!-- whitelist-pin $note -->"
+            .put("numbers", org.json.JSONArray(all))
+        val hidden = "<!-- whitelist-pin-sealed ${Seal.seal(note)} -->"
         return call("POST", "issues/$number/comments", JSONObject().put("body", "🔑 $hidden")) in 200..299
     }
 

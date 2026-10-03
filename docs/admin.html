@@ -543,54 +543,6 @@ async function apiGet(path) {
   if (!res.ok) throw new Error(explain(res.status, 'It'));
   return res.json();
 }
-// ---------- old readable requests (from before sealing) ----------
-// Every issue still in the old, readable form: requests, new phones and phone records whose text shows what was
-// asked or whose phone it is. Editing them isn't enough (GitHub keeps the edit history and old titles), so they're
-// deleted. Deleting issues needs the repository owner, and a token GitHub allows to do it.
-async function oldReadableIssues() {
-  const all = [];
-  for (let page = 1; page <= 20; page++) {
-    const batch = await apiGet(`issues?state=all&per_page=100&page=${page}`);
-    all.push(...batch.filter(i => !i.pull_request));
-    if (batch.length < 100) break;
-  }
-  return all.filter(i => /<!-- whitelist-request/.test(i.body || '') && !/<!-- whitelist-sealed/.test(i.body || ''));
-}
-async function deleteIssue(nodeId) {
-  const res = await fetch('https://api.github.com/graphql', { method: 'POST', headers: headers(),
-    body: JSON.stringify({ query: 'mutation($id: ID!) { deleteIssue(input: { issueId: $id }) { clientMutationId } }', variables: { id: nodeId } }) });
-  const out = await res.json().catch(() => ({}));
-  if (!res.ok || out.errors) throw new Error((out.errors && out.errors[0] && out.errors[0].message) || `HTTP ${res.status}`);
-}
-async function cleanOldRequests() {
-  try {
-    say('Looking for old readable requests…');
-    const old = await oldReadableIssues();
-    if (!old.length) return say('There are no old readable requests. Everything is sealed.');
-    const ok = await uiConfirmDanger(`Delete ${old.length} old readable request${old.length === 1 ? '' : 's'}?`,
-      'These are from before sealing: their text shows what was asked and whose phone it is. They\'re deleted for good ' +
-      '(open ones too). Phones that use one as their record make a new, sealed one by themselves.', 'Delete them');
-    if (!ok) return;
-    let done = 0;
-    for (const i of old) {
-      try { await deleteIssue(i.node_id); done++; say(`Deleting… ${done} of ${old.length}`); }
-      catch (e) {
-        if (done === 0) {
-          await uiDialog({ title: 'GitHub didn\'t allow deleting', icon: 'warn', red: true, cancel: null, ok: 'OK',
-            text: `GitHub said: "${e.message}". Only the repository's owner can delete issues, and your admin token may not be ` +
-              'allowed to. Either delete them on GitHub (open each one → "Delete issue", at the bottom of the right-hand column), ' +
-              'or make a new admin token that also has "Administration: Read and write", and try again.' });
-          return say('Nothing was deleted.', true);
-        }
-        return say(`Deleted ${done} of ${old.length}, then GitHub stopped it: ${e.message}`, true);
-      }
-    }
-    S.requests = S.requests.filter(r => !old.some(o => o.number === r.number));
-    say(`Deleted ${done} old readable request${done === 1 ? '' : 's'}.`);
-    render();
-  } catch (e) { say(e.message === 'NO_ISSUES' ? NO_ISSUES_MSG : e.message, true); }
-}
-
 async function reply(number, text) {
   const res = await fetch(`${repoBase()}/issues/${number}/comments`, { method: 'POST', headers: headers(), body: JSON.stringify({ body: text }) });
   if (res.status === 403 || res.status === 404) throw new Error('NO_ISSUES');
@@ -1026,11 +978,11 @@ async function exportAll() {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), tabName(listLabel(n)));
     }
     const yn = v => v === 'on' ? 'on' : v === 'off' ? 'off' : 'usual';
-    const phones = [['first name', 'last name', 'name', 'phone ID', 'model', 'lists', 'blocked', 'ads', 'adult filter', 'gambling filter',
+    const phones = [['first name', 'last name', 'name', 'phone ID', 'model', 'lists', 'blocked', 'ads', 'trackers', 'annoyances', 'adult filter', 'gambling filter',
       'malware filter', 'approval PIN', 'approvals go to', 'added']];
     Object.entries(S.D.devices).forEach(([id, d]) => phones.push([d.first || '', d.last || '', d.name || '', id, d.model || '',
       (d.blocked ? (d.blockedLists || []) : (d.lists || [])).map(listLabel).join(', '), d.blocked ? 'yes' : 'no',
-      yn(d.adblock), yn(d.adult), yn(d.gambling), yn(d.malware),
+      yn(d.adblock), yn(d.trackers), yn(d.annoyances), yn(d.adult), yn(d.gambling), yn(d.malware),
       d.approvalPin === 'none' ? 'none' : d.approvalPin ? 'own PIN' : 'usual', d.requestsTo ? listLabel(d.requestsTo) : 'usual', d.registered || '']));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(phones), tabName('Phones'));
     XLSX.writeFile(wb, `whitelist-browser-${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -1649,8 +1601,8 @@ function siteScreen() {
       toggle('sHome', 'Show on the home page', 'Gives it a tile', 'home'),
       toggle('sSubs', 'Include subdomains', `Also m.${bare}, and other addresses ending in ${bare}`, 'subdomains'),
       toggle('sNoPhotos', 'No photos', 'The pages open, pictures don\'t', 'noPhotos'),
-      toggle('sNoVideos', 'No videos', 'The pages open, videos don\'t', 'noVideos'),
-      toggle('sNoSound', 'No sound', 'Music, podcasts and sound files are blocked (videos keep their sound)', 'noSound'),
+      toggle('sNoVideos', 'No videos', 'No moving pictures: a video\'s sound still plays if sound is allowed', 'noVideos'),
+      toggle('sNoSound', 'No sound', 'No sound at all: music and podcasts are blocked, videos play muted', 'noSound'),
       toggle('sOnly', 'Only some pages', 'Everything else on the site stays blocked', 'only')),
     pages,
     h('div', { class: 'group' },
@@ -1890,7 +1842,7 @@ function phonesScreen() {
   const archived = Object.keys(S.D.archived || {}).length;
   // One compact row per phone: name and ID, its lists, and only the tags that matter.
   const cards = entries.map(([id, d]) => {
-    const off = FILTERS.filter(([key]) => d[key] === 'off').map(([, title]) => title.replace('Block ', '').replace(/ and scams$/, ''));
+    const off = [...AD_GROUPS, ...FILTERS].filter(([key]) => d[key] === 'off').map(([, title]) => title.replace('Block ', '').replace('Hide ', '').replace(/ and scams$/, ''));
     const tags = [d.blocked ? chip('Blocked', 'red', 'ban') : null, !d.name ? chip('Needs a name', 'amber') : null,
       d.pinLockedUntil && Date.parse(d.pinLockedUntil) > Date.now() ? chip('Locked PIN', 'amber') : null,
       off.length ? chip(`${cap(off.join(', '))} off`, 'amber') : null].filter(Boolean);
@@ -1973,7 +1925,7 @@ function phoneScreen() {
   const req = h('select', { class: 'inp', id: 'pReq', onchange: e => { if (e.target.value) d.requestsTo = e.target.value; else delete d.requestsTo; markDevices(); } },
     [['', 'The usual (see Settings)'], ['own', 'Its own list'], ...S.lists.map(n => [n, n === 'public' ? 'The default public list' : `The ${listLabel(n)} list`])].map(([v, t]) => h('option', { value: v }, t)));
   req.value = d.requestsTo === 'own' || S.lists.includes(d.requestsTo) ? d.requestsTo : '';
-  const filterRows = FILTERS.map(([key, title]) => h('div', { class: 'frow' },
+  const filterRows = [...AD_GROUPS, ...FILTERS].map(([key, title]) => h('div', { class: 'frow' },
     h('span', { class: 'small', style: 'font-weight:600' }, title.replace('Block ', '').replace(/^./, c => c.toUpperCase())),
     h('div', { class: 'seg', role: 'group', 'aria-label': title },
       [['', 'Usual'], ['on', 'On'], ['off', 'Off']].map(([v, t]) => h('button', { type: 'button', 'aria-pressed': String((d[key] || '') === v),
@@ -2119,6 +2071,11 @@ async function deleteArchived(id) {
 
 // The content filters: [key in devices.json, switch title, description]. They win over your lists: a
 // listed site only opens if it was approved "anyway" (or has "Open even if a filter lists it").
+// AdGuard's other groups, next to "Block ads": [key in devices.json, switch title, description]. On unless switched off.
+const AD_GROUPS = [
+  ['trackers', 'Block trackers', 'AdGuard\'s tracking lists: trackers and analytics, and tracking codes (like utm_source) taken out of addresses'],
+  ['annoyances', 'Hide annoyances', 'AdGuard\'s annoyance lists: cookie notices, pop-ups, "get our app" banners, widgets and social buttons'],
+];
 const FILTERS = [
   ['adult', 'Block adult content', 'Adult sites, and anything from them. HaGeZi\'s and OISD\'s NSFW lists (the ones Mullvad used)'],
   ['gambling', 'Block gambling', 'Gambling sites, and anything from them. HaGeZi\'s gambling list'],
@@ -2139,8 +2096,10 @@ function settingsScreen() {
   return h('main', { class: 'stack' },
     screenTitle('Settings', 'For every phone'),
     section('Filters', h('div', { class: 'group' },
-      h('label', { class: 'tg', for: 'adblock' }, h('span', { class: 'grow' }, h('span', { class: 't' }, 'Block ads and trackers'), h('span', { class: 's' }, 'Uses AdGuard\'s list, updated weekly')),
+      h('label', { class: 'tg', for: 'adblock' }, h('span', { class: 'grow' }, h('span', { class: 't' }, 'Block ads'), h('span', { class: 's' }, 'AdGuard\'s ad lists (Base, Mobile Ads, Quick Fixes), updated daily by each phone')),
         h('input', { type: 'checkbox', class: 'sw', id: 'adblock', checked: D.adblock !== false, onchange: e => { D.adblock = e.target.checked; markDevices(); } })),
+      ...AD_GROUPS.map(([key, title, desc]) => h('label', { class: 'tg', for: key }, h('span', { class: 'grow' }, h('span', { class: 't' }, title), h('span', { class: 's' }, desc)),
+        h('input', { type: 'checkbox', class: 'sw', id: key, checked: D[key] !== false, onchange: e => { D[key] = e.target.checked; markDevices(); } }))),
       ...FILTERS.map(([key, title, desc]) => h('label', { class: 'tg', for: key }, h('span', { class: 'grow' }, h('span', { class: 't' }, title), h('span', { class: 's' }, desc)),
         h('input', { type: 'checkbox', class: 'sw', id: key, checked: D[key] !== false, onchange: e => { D[key] = e.target.checked; markDevices(); } }))),
       row('shield', 'Never block these (all filters)', (D.adblockExceptions || []).length || 'None', () => open({ name: 'neverblock' }), 'openNever'))),
@@ -2164,11 +2123,6 @@ function settingsScreen() {
       h('button', { type: 'button', class: 'row', id: 'openApprovalPin', onclick: () => open({ name: 'approvalpin', scope: 'all' }) }, h('span', { class: 'ic' }, icon('shield', 20)),
         h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'PIN for all phones'),
           h('span', { class: 'dom' }, D.approvalPin ? 'Set: type it on a phone to approve a request there' : 'Not set')),
-        h('span', { class: 'chev' }, icon('chev', 18))))),
-    section('Privacy', h('div', { class: 'group' },
-      h('button', { type: 'button', class: 'row', id: 'cleanOld', onclick: cleanOldRequests }, h('span', { class: 'ic' }, icon('trash', 20)),
-        h('span', { class: 'grow' }, h('span', { class: 't' }, 'Old readable requests'),
-          h('span', { class: 's' }, 'Delete requests from before sealing, whose text shows what was asked and by whom')),
         h('span', { class: 'chev' }, icon('chev', 18))))),
     section('GitHub', h('div', { class: 'group' },
       h('div', { class: 'row' }, h('span', { class: 'ic', style: 'color:#2E8B57' }, icon('check', 20, 2.2)),

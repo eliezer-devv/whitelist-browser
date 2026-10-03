@@ -66,9 +66,6 @@ Tick these off as you go (edit this file, and change `[ ]` to `[x]`).
       `docs/p`. No readable lists, no `phones.json`.
 
 **Once**
-- [ ] **Old requests from before sealing** are still readable in their issues: admin page → **Settings** →
-      **Privacy** → **Old readable requests** deletes them (editing isn't enough: GitHub keeps edit history). If GitHub
-      doesn't allow your admin token to delete issues, the page says how to do it instead.
 - [ ] **Get notified:** in the private repository, **Watch** → **All activity**, and in the GitHub app turn on push
       notifications for **Participating** (see setup step 6).
 - [ ] **Install the latest version on every phone** that uses the app.
@@ -226,14 +223,22 @@ You can keep something blocked but open it **for a while**: a whole site, a sing
 ### No photos, no videos, no sound
 Sites or pages can be set to open **without photos**, **without videos**, **without sound**, or any mix of them. The
 text, links and buttons work as usual, but pictures don't load, videos don't play, and/or sound on its own (music,
-podcasts, sound files, audio players) doesn't play. Videos that are allowed keep their own sound.
+podcasts, sound files, audio players) doesn't play (see below for how videos are treated).
+- **Picture and sound are separate:**
+  - **No videos** = no moving pictures. A video's picture is hidden (*"🎬 Picture hidden · sound only"*), and its
+    sound still plays if sound is allowed: on YouTube, songs play as sound only.
+  - **No sound** = no sound at all: music, podcasts and sound files are stopped, and videos play **muted** (they stay
+    muted even if the page tries to unmute them).
+  - **Both off:** videos are stopped (*"Video blocked"*), and so is all sound.
+  - **Players embedded from other sites** (e.g. a YouTube video inside a news page) can't have their picture hidden,
+    so they're blocked whenever videos are off.
 - **How it tells sound from video:** by the media itself, as it starts to play: **a picture means video, no picture
   means sound**, wherever it comes from (so a music service streaming songs counts as sound, and a film counts as
   video). Only what's unmistakable is stopped before it downloads: video and sound files, video players' own servers
   (YouTube, Vimeo…), and anything labelled as video or audio. While videos are off, players stay out of sight until
   they've been judged, so no picture shows.
 - **Sound made without a player** (the browser's sound system, used by games and many sites) stays silent when sound
-  is off too.
+  is off too, and so do players a site makes in code without putting them on the page (as many music players do).
 - **Turning them back on for one phone, or one page:** "off" anywhere wins, so approving them back on adds a **back
   on** entry to the list it goes into (`photosOn`, `videosOn`, `soundOn`) whenever another of the phone's lists, or the
   whole site, still has them off. A "back on" wins over every "off", for the phones using that list. Switching a
@@ -283,6 +288,37 @@ in three ways:
   - **Each phone's Ads setting** (Phones → the phone): Usual, Blocked or Allowed. It overrides the setting for all phones.
   - **Never block these (both filters):** if a site stops working properly, something it needs may be on a list. Add that domain here.
 - **Check it on the phone:** **⋮ → About this phone** shows whether ad blocking is on and how many requests it has blocked since the app opened.
+
+### Ads, trackers and annoyances, entirely from AdGuard (updates by itself)
+Three switches (admin page → **Settings** → **Filters**, for every phone, and **Usual / On / Off** on each phone),
+all on unless switched off:
+
+| Switch | AdGuard's lists | What it does |
+|---|---|---|
+| **Block ads** | Base (includes EasyList), Mobile Ads, Quick Fixes, plus the DNS list | Ads, including YouTube's |
+| **Block trackers** | Tracking Protection, URL Tracking | Trackers and analytics; tracking codes (`utm_source`, `fbclid`…) taken out of addresses when a page opens |
+| **Hide annoyances** | Cookie Notices, Popups, Mobile App Banners, Other Annoyances, Widgets, Social Media | Cookie notices, pop-ups, "get our app" banners, widgets, like and share buttons |
+
+If a site misbehaves, switching off just one group (for one phone, or all) usually finds the cause; **Hide
+annoyances** is the likeliest, as it occasionally hides something a site needs.
+
+What the app follows from AdGuard's lists:
+- **Address rules:** particular addresses and paths, regular-expression patterns, rules for some sites only, and
+  AdGuard's exceptions (e.g. Google's reCAPTCHA keeps working). AdGuard's **stand-in** rules get a harmless empty
+  answer of the right type rather than a refusal, which keeps more sites working.
+- **Hiding page elements:** everywhere and site by site; **style rules** as written; **advanced element rules**
+  ("hide the box containing *Sponsored*") run with **AdGuard's own ExtendedCss code**.
+- **AdGuard's scriptlets and site scripts,** run with **AdGuard's own code** for them (YouTube's ads especially).
+- **Tracking codes in addresses**, taken out when a page opens.
+
+**Where it all comes from: AdGuard.** Phones download its lists and its scriptlet and ExtendedCss code **once a day**,
+so its updates arrive by themselves: you never update the app for them. A copy is packed into the app when it's
+built, so it works from the first launch, even offline. **⋮ → Settings → About this phone → Ad blocking** says when
+they were last updated.
+
+**Not possible in a browser app:** AdGuard's rules that rewrite a page's HTML or a server's answers (its own app does
+that by filtering all the phone's traffic), and its few named stand-ins (fake versions of Google Analytics and the
+like), which are blocked instead. **Sites on "Never block these"** get none of it.
 
 ### Content filters: adult, gambling, malware
 Three filters, each **on by default**, block anything pages load from listed sites: pictures, videos, embedded frames,
@@ -499,7 +535,8 @@ admin page, and without signing in to the admin page on their phone.
   digits (6 is best).
 - **On the phone, it's hidden:** the person asks as usual, then you open **⋮** → **My requests** and **tap its title
   7 times**. That's **approval mode**: tick one or more waiting requests, tap **Approve** or **Deny**, and type the PIN
-  once for all of them. **Exit** (or closing My requests) leaves approval mode.
+  once for all of them: GitHub checks it **once**, then answers each (a wrong PIN counts as one wrong try). **Exit** (or
+  closing My requests) leaves approval mode.
 - **Approve** gives each request exactly what was asked, including a time limit or "without photos", and the site
   opens by itself within a minute or two. **Deny** tells the person *"Denied with the approval PIN"*. You still get the
   notifications, marked *"Approved (or Denied) on the phone with the approval PIN"*.
@@ -597,13 +634,15 @@ You can always adjust things yourself afterwards (section 4).
     and Emma's list blocks it, so Emma's phone can't open YouTube but everyone else's can.
   - A phone that uses **only** a personal list sees nothing from the public list.
 
-### Works offline from the first launch
-A phone doesn't need internet to be set up. On first launch, the app sets up locally:
+### Setting up, even offline
+A phone doesn't need internet to start setting up. On first launch, the app sets up locally:
 - **its phone ID,** worked out on the phone itself
 - **its install date**
 - **the person's name,** asked for on the first screen
 - **its registration,** saved in a small **outbox** on the phone
-- **starter lists:** the lists new phones start with, as they were when the app was built, so sites work straight away
+
+Its lists are sealed for it, so they only arrive once it's online and registered (a minute or two). Until then it
+shows *"Setting up this phone…"* and opens nothing.
 
 Anything the phone needs to send waits in that outbox: its registration, and requests made without internet.
 It survives restarts. **As soon as the phone is online, the app sends everything in the order it was created**
@@ -1056,8 +1095,8 @@ updated by a version with the same seal. This stops anyone else from pushing a f
 | `block` | Sites (`maps.google.com`) or pages (`en.wikipedia.org/wiki/Fortnite`) to always block, even inside allowed sites. | `[]` |
 | `noMedia` | Sites or pages that open without photos, videos and sound. If any of a phone's lists includes a page, it applies on that phone. | `[]` |
 | `noPhotos` | Sites or pages that open without photos only (the same format). | `[]` |
-| `noVideos` | Sites or pages that open without videos only. | `[]` |
-| `noSound` | Sites or pages where sound on its own (music, podcasts, sound files) is blocked. Allowed videos keep their sound. | `[]` |
+| `noVideos` | Sites or pages with no moving pictures: a video's picture is hidden, and its sound plays if sound is allowed. | `[]` |
+| `noSound` | Sites or pages with no sound at all: music, podcasts and sound files are stopped, videos play muted. | `[]` |
 | `mediaAllow` | Single photos or videos shown anyway where they're off: host and path, e.g. `ichef.bbci.co.uk/news/976/shark.jpg`. | `[]` |
 | `photosOn`, `videosOn`, `soundOn` | Sites or pages where they're turned **back on** for the phones using this list, whatever other lists say (and, for a page, over its whole site's "off"). | `[]` |
 | `temporary` | Temporary access. `what`: `site`, `page`, `media` (photos, videos and sound on), `photos`, `videos` or `sound`. `mode`: `clock` (from `from`) or `use` (time on it, within 7 days). `minutes`: how long. Easiest to add on the admin page. | none |
@@ -1117,9 +1156,6 @@ clears Android's key storage) notices its file won't open and registers its new 
 public repositories, and the app downloads them without logging in. Sealing each phone's file means that doesn't
 matter: what's published can't be read.
 
-**Requests from before sealing** (made by an older app version) stay readable in their issues; close or delete them
-if you want them gone.
-
 ---
 
 ### Play Protect warnings
@@ -1151,6 +1187,8 @@ People never see it.
   many; **Ask for photos/videos/sound** where they're off; **Ask to block**), **Ask for a new site**,
   **My requests** (with how many are waiting), and **Settings**. On tiny screens, **Forward**, **Reload** and **Check
   the list** are a row of buttons at its top.
+- **⋮ → Desktop site** (on a site): shows that site's desktop version, remembered for that site until switched off
+  (shown **On** in the menu). Other sites stay as phone sites.
 - **⋮ → Settings** holds **Appearance**, **Phone's browser**, **Cookies and site data**, **Clear cache**, **App update**
   and **About this phone**.
 - **Sheets that slide up from the bottom** can be dragged by their handle: down to close, up to fill the screen.
@@ -1257,7 +1295,7 @@ The app, its dialogs, the home page, the blocked page and the admin page all wor
 | Requests arrive but you get no notification | Check GitHub notification settings for **Participating**, and that you're watching the private repo (setup step 6). They still show in the private repo's **Issues** tab. |
 | Someone didn't hear back about a request | Answers arrive while the app is open and online, within a few minutes of your reply. **⋮ → My requests** shows the status. Make sure you replied `approve` or `deny` (a plain comment isn't an answer). |
 | A request made offline hasn't arrived | It's sent when the phone is next online with the app open. **⋮ → About this phone** shows whether anything is still waiting and why. |
-| A new phone only has the sites from when the app was built | Those are the starter lists, used until it first goes online. It then fetches its real lists. |
+| A phone stays on *"Setting up this phone…"* | It needs to be online and registered first (a minute or two). **⋮ → Settings → About this phone → Setting up** says where it's got to. |
 | The bot says *"Could not save for 5 minutes"* | Very many changes arrived at once and this one kept losing the race. Nothing was changed. Reply `approve` again. |
 | A phone says *"GitHub is busy"* | GitHub limits how many requests one account can create per minute, which lots of phones at once can reach. Wait a few minutes and send it again. Phones registering themselves retry by themselves. |
 | You replied `approve` but nothing happened | The reply must start with the word, and must come from your own account. Check the **Site requests** run in Actions. |

@@ -68,6 +68,8 @@ object Whitelist {
         val malware: Boolean = true,
         val adblock: Boolean = true,                // block ads and trackers (set in the admin page)
         val adblockExceptions: List<String> = emptyList(), // domains never blocked as ads
+        val trackers: Boolean = true,                      // AdGuard's tracker lists (and tracking codes in addresses)
+        val annoyances: Boolean = true,                    // AdGuard's annoyance lists (cookie notices, pop-ups, widgets, social)
         // Embedded content allowed on a site: site -> sites whose content may show inside its pages
         // (a list's "embeds", approved from a request after the phone blocked it).
         val embeds: Map<String, List<String>> = emptyMap(),
@@ -245,9 +247,6 @@ object Whitelist {
     }
 
     /** Where a list lives: "public" is whitelist.json, others are lists/<name>.json. */
-    fun listUrl(name: String) =
-        if (name == "public") Config.WHITELIST_URL else "${Config.PAGES_BASE}lists/$name.json"
-
     /**
      * Combines this phone's lists: a site is allowed if any list allows it, and blocked if any
      * list blocks it. [bundle] = {"device": {...} or null, "lists": [{"name": .., "json": ..}]}.
@@ -291,22 +290,18 @@ object Whitelist {
             gambling = b.optBoolean("gambling", true),
             pinApproval = b.optBoolean("pin", false),
             malware = b.optBoolean("malware", true),
+            trackers = b.optBoolean("trackers", true),
+            annoyances = b.optBoolean("annoyances", true),
             adblockExceptions = b.optJSONArray("adblockExceptions")?.let { a ->
                 (0 until a.length()).mapNotNull { normalize(a.optString(it)) } } ?: emptyList()
         )
     }
 
-    /**
-     * The lists saved from the last download. On a phone that has never been online: the lists new
-     * phones start with, packed into the app when it was built (assets/initial-bundle.json), so it's
-     * usable straight away. The admin page decides which lists those are (possibly none).
-     */
+    /** The lists saved from the last download (a phone that has never had them is "setting up" until it does). */
     fun loadCache(ctx: Context) {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val bundle = p.getString("bundle", null)
-        if (bundle != null) { runCatching { state = parseBundle(bundle, p.getLong("fetchedAt", 0L)) }; return }
-        val builtIn = runCatching { ctx.assets.open("initial-bundle.json").bufferedReader().use { it.readText() } }.getOrNull() ?: return
-        runCatching { state = parseBundle(builtIn, 0L) }
+        val bundle = p.getString("bundle", null) ?: return
+        runCatching { state = parseBundle(bundle, p.getLong("fetchedAt", 0L)) }
     }
 
     /** GET a file from GitHub Pages. Null if it doesn't exist (404). Throws on other failures. */
@@ -372,6 +367,7 @@ object Whitelist {
         }
         val bundle = JSONObject().put("device", device ?: JSONObject.NULL).put("lists", lists)
             .put("adblock", adblock).put("adult", filter("adult")).put("gambling", filter("gambling")).put("malware", filter("malware"))
+            .put("trackers", filter("trackers")).put("annoyances", filter("annoyances"))
             .put("pin", if (device?.has("pin") == true) device.optBoolean("pin") else devices?.optBoolean("pin", false) ?: false)
             .put("adblockExceptions", devices?.optJSONArray("adblockExceptions") ?: JSONArray())
             .toString()

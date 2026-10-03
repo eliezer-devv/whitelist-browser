@@ -50,13 +50,6 @@ object Outbox {
             .map { it.optString("summary") to it.optLong("created") }
     }
 
-    /** What a request asked for: the hidden part of its text (kept with it in My requests). */
-    private fun requestOf(payload: JSONObject): JSONObject? {
-        val body = payload.optString("body")
-        val m = Regex("<!-- whitelist-request\\s*([\\s\\S]*?)-->").find(body) ?: return null
-        return runCatching { JSONObject(m.groupValues[1].trim()) }.getOrNull()?.apply { remove("pin") }
-    }
-
     /** Requests not sent yet, with their outbox ids: (id, summary, time asked), oldest first. */
     @Synchronized fun waitingRequestsWithIds(ctx: Context): List<Triple<String, String, Long>> {
         val items = read(ctx)
@@ -95,7 +88,7 @@ object Outbox {
                 val payload = item.getJSONObject("payload")
                 if (item.optString("kind") == "register") Requests.deliverRegistration(ctx, payload)
                 else MyRequests.sent(ctx, Requests.deliverIssue(payload), item.optString("summary"), item.optLong("created"),
-                    item.optJSONObject("request") ?: requestOf(payload))
+                    item.optJSONObject("request"))
                 remove(ctx, id)
                 sent += id
                 lastProblem = null
