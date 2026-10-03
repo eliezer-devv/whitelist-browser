@@ -10,7 +10,10 @@ import android.widget.Toast
 /** Receives progress from Android's installer after Updater.install(). */
 class InstallReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
+        AppLog.ready(context)
+        val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
+        AppLog.i("Update", "Installer: status $status ${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE).orEmpty()}")
+        when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 // Show Android's "Do you want to update this app?" screen.
                 val confirm = if (Build.VERSION.SDK_INT >= 33) {

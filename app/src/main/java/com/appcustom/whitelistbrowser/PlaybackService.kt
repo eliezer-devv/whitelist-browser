@@ -46,10 +46,16 @@ class PlaybackService : Service() {
     /** A button pressed (on the notification, the lock screen or headphones): to the app, which presses it on the page. */
     private fun send(cmd: String) { sendBroadcast(Intent(ACTION_MEDIA).setPackage(packageName).putExtra(EXTRA_CMD, cmd)) }
 
+    override fun onCreate() { super.onCreate(); running = this; AppLog.ready(this); AppLog.i("Sound", "Playing notification started") }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        show(intent)
+        // (If Android won't let it show, it closes cleanly rather than crashing the app.)
+        runCatching { show(intent) }.onFailure { AppLog.e("Sound", "Android didn't allow the playing notification", it); stopSelf() }
         return START_NOT_STICKY
     }
+
+    /** An update from the app while it's running: straight to it (no "start" for Android to refuse in the background). */
+    fun update(intent: Intent) { runCatching { show(intent) } }
 
     /** Builds (or rebuilds) the notification and the media session from what the page says is playing. */
     private fun show(intent: Intent?) {
@@ -97,8 +103,9 @@ class PlaybackService : Service() {
                 if (len > 0) pos else android.media.session.PlaybackState.PLAYBACK_POSITION_UNKNOWN, if (playing) 1f else 0f)
             .apply {
                 // Back / forward 10 seconds, where the site has no previous / next (newer Android shows these as buttons).
-                if (len > 0 && !canPrev) addCustomAction(android.media.session.PlaybackState.CustomAction.Builder("seekbackward", "Back 10 seconds", R.drawable.ic_d_rew10).build())
-                if (len > 0 && !canNext) addCustomAction(android.media.session.PlaybackState.CustomAction.Builder("seekforward", "Forward 10 seconds", R.drawable.ic_d_fwd10).build())
+                // Back / forward 10 seconds, besides previous / next (newer Android shows these as extra buttons).
+                if (len > 0) addCustomAction(android.media.session.PlaybackState.CustomAction.Builder("seekbackward", "Back 10 seconds", R.drawable.ic_d_rew10).build())
+                if (len > 0) addCustomAction(android.media.session.PlaybackState.CustomAction.Builder("seekforward", "Forward 10 seconds", R.drawable.ic_d_fwd10).build())
             }
             .build())
         // The notification: artwork, title, artist; Previous, Play/Pause, Next (where the site has them), Stop.
@@ -108,16 +115,17 @@ class PlaybackService : Service() {
         fun button(code: Int, icon: Int, label: String, cmd: String) = Notification.Action.Builder(
             android.graphics.drawable.Icon.createWithResource(this, icon), label,
             PendingIntent.getBroadcast(this, code, Intent(ACTION_MEDIA).setPackage(packageName).putExtra(EXTRA_CMD, cmd), flagsPi)).build()
-        // Previous (or back 10 s), Play/Pause, Next (or forward 10 s), Stop.
+        // Previous, back 10 s, Play/Pause, forward 10 s, Next (each where it applies), and Stop if there's room
+        // (5 buttons at most). The compact view: Previous, Play/Pause, Next (or back / forward 10 s).
         val buttons = ArrayList<Notification.Action>()
-        val before = when { canPrev -> button(10, R.drawable.ic_d_prev, "Previous", "previoustrack"); len > 0 -> button(15, R.drawable.ic_d_rew10, "Back 10 seconds", "seekbackward"); else -> null }
-        val after = when { canNext -> button(13, R.drawable.ic_d_next, "Next", "nexttrack"); len > 0 -> button(16, R.drawable.ic_d_fwd10, "Forward 10 seconds", "seekforward"); else -> null }
-        before?.let { buttons += it }
+        val prevAt = if (canPrev) buttons.size.also { buttons += button(10, R.drawable.ic_d_prev, "Previous", "previoustrack") } else -1
+        val rewAt = if (len > 0) buttons.size.also { buttons += button(15, R.drawable.ic_d_rew10, "Back 10 seconds", "seekbackward") } else -1
+        val playAt = buttons.size
         buttons += if (playing) button(11, R.drawable.ic_d_pause, "Pause", "pause") else button(12, R.drawable.ic_d_play, "Play", "play")
-        after?.let { buttons += it }
-        buttons += button(14, R.drawable.ic_d_stop, "Stop", "stop")
-        val main = if (before != null) 1 else 0                   // the Play/Pause button's place
-        val compact = listOfNotNull(if (before != null) 0 else null, main, if (after != null) main + 1 else null).toIntArray()
+        val fwdAt = if (len > 0) buttons.size.also { buttons += button(16, R.drawable.ic_d_fwd10, "Forward 10 seconds", "seekforward") } else -1
+        val nextAt = if (canNext) buttons.size.also { buttons += button(13, R.drawable.ic_d_next, "Next", "nexttrack") } else -1
+        if (buttons.size < 5) buttons += button(14, R.drawable.ic_d_stop, "Stop", "stop")
+        val compact = listOf(if (prevAt >= 0) prevAt else rewAt, playAt, if (nextAt >= 0) nextAt else fwdAt).filter { it >= 0 }.toIntArray()
         @Suppress("DEPRECATION")
         val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CHANNEL) else Notification.Builder(this)
         val n = b.setSmallIcon(R.drawable.ic_d_sound)
@@ -162,6 +170,8 @@ class PlaybackService : Service() {
     }
 
     override fun onDestroy() {
+        if (running === this) running = null
+        AppLog.i("Sound", "Playing notification stopped")
         session?.let { it.isActive = false; it.release() }
         session = null
         artLoader.shutdownNow()
@@ -186,7 +196,13 @@ class PlaybackService : Service() {
         @Volatile private var lastArt = ""
         private const val ID = 4417
 
-        /** Shows (or updates) the media notification: [info] is the page's own description of what's playing. */
+        /** The running service, if any (to update it directly). */
+        @Volatile private var running: PlaybackService? = null
+
+        /**
+         * Shows (or updates) the media notification: [info] is the page's own description of what's playing. A running
+         * service is updated directly; it's only started fresh (which Android allows while the app is on screen) if not.
+         */
         fun show(ctx: Context, site: String, info: org.json.JSONObject?) {
             val i = Intent(ctx, PlaybackService::class.java).putExtra(EXTRA_SITE, site)
                 .putExtra(EXTRA_PLAYING, info?.optBoolean("playing", true) ?: true)
@@ -194,7 +210,10 @@ class PlaybackService : Service() {
                 .putExtra(EXTRA_ART, info.optString("art")).putExtra(EXTRA_PREV, info.optBoolean("prev"))
                 .putExtra(EXTRA_NEXT, info.optBoolean("next"))
                 .putExtra(EXTRA_POS, info.optLong("pos")).putExtra(EXTRA_LEN, info.optLong("len"))
+            val r = running
+            if (r != null) { android.os.Handler(android.os.Looper.getMainLooper()).post { r.update(i) }; return }
             runCatching { if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i) }
+                .onFailure { AppLog.e("Sound", "Couldn't start the playing notification", it) }
         }
 
         fun stop(ctx: Context) { runCatching { ctx.stopService(Intent(ctx, PlaybackService::class.java)) } }

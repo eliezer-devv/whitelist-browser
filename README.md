@@ -1208,6 +1208,13 @@ People never see it.
 - **First launch** asks for the person's **first and last name**. **About this phone** shows the phone's own list by
   the person's name.
 
+### The app's log (to see what went wrong)
+The app keeps a small rolling log on the phone (about the last few days): which sites opened and how long they took,
+what was blocked on them, script errors pages report, list checks, downloads, ad-blocking updates, requests, the
+playing notification, app updates, and crashes. **Site names only**: never full page addresses, searches or anything
+typed. It stays on the phone until you share it: **⋮ → Settings → About this phone → Share log** (WhatsApp, email,
+Drive, or save it to a file). **Last crash** in About this phone shows the most recent crash.
+
 ### App updates in the background
 Tapping the update banner downloads the new version with Android's own download manager (with its progress
 notification), so it **carries on if you minimise or close the app**. When it's done, Android's "Do you want to update

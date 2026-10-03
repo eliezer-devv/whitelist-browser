@@ -104,7 +104,9 @@ object Outbox {
                     MyRequests.failed(ctx, item.optString("summary"), item.optLong("created"), e.message ?: "refused")
                 }
                 lastProblem = e.message
+                AppLog.w("Requests", "Refused by GitHub: ${e.message}")
             } catch (e: Exception) {
+                AppLog.w("Requests", "Not sent yet (${e.javaClass.simpleName}: ${e.message}); will try again")
                 lastProblem = if (e is java.io.IOException && e.message?.contains("busy") == true) e.message
                     else "No connection"
                 break                        // no internet or GitHub busy: try again later

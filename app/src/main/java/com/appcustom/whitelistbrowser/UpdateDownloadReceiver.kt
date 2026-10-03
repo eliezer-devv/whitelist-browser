@@ -13,12 +13,14 @@ class UpdateDownloadReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
         val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
+        AppLog.ready(context)
         val pending = goAsync()
         Thread {
             try {
                 val apk = Updater.finished(context.applicationContext, id)   // only the update's own download
-                if (apk != null) Updater.install(context.applicationContext, apk)
+                if (apk != null) { AppLog.i("Update", "Downloaded; installing"); Updater.install(context.applicationContext, apk) }
             } catch (e: Exception) {
+                AppLog.e("Update", "Installing failed", e)
                 InstallReceiver.notify(context, "Update failed", e.message ?: "unknown error", null)
             } finally {
                 pending.finish()

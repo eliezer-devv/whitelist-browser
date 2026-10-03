@@ -51,6 +51,13 @@ class MainActivity : Activity() {
 
     private lateinit var web: WebView
     private lateinit var loadBar: View
+    // What was blocked on the open page (for the log, when it's loaded).
+    private val pageAds = java.util.concurrent.atomic.AtomicInteger()
+    private val pageMedia = java.util.concurrent.atomic.AtomicInteger()
+    private val pageFrames = java.util.concurrent.atomic.AtomicInteger()
+    private val pageScriptErrors = java.util.concurrent.atomic.AtomicInteger()
+    private var pageStartedAt = 0L
+    private fun blockedAd(): WebResourceResponse { pageAds.incrementAndGet(); return AdBlock.blockedResponse() }
 
     /** The loading bar: shown at once when a page starts opening, filling as it loads, gone when it's done. */
     private fun showLoading(percent: Int) {
@@ -175,6 +182,8 @@ class MainActivity : Activity() {
         updateBanner.setOnClickListener { availableUpdate?.let { startUpdate(it) } }
 
         TempTime.load(this)       // time already used on "time on the site" temporary access
+        AppLog.start(applicationContext)                      // the rolling log (About this phone → Share log)
+        CrashLog.install(applicationContext)                  // a crash is recorded (About this phone shows it)
         Whitelist.loadCache(this) // last known list, so it works offline
         val stopFilter = android.content.IntentFilter(PlaybackService.ACTION_MEDIA)
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(stopReceiver, stopFilter, Context.RECEIVER_NOT_EXPORTED)
@@ -209,6 +218,8 @@ class MainActivity : Activity() {
         isResumedNow = true
         main.removeCallbacks(soundCheck)
         PlaybackService.stop(this)                            // back in the app: no "playing" notification
+        web.settings.mediaPlaybackRequiresUserGesture = true  // pages start sound only after a tap again
+        player?.settings?.mediaPlaybackRequiresUserGesture = true
         main.removeCallbacks(playCheck); main.postDelayed(playCheck, 3_000)
         refreshWhitelist() // check GitHub every time the app comes to the front
         io.execute { AdRules.update(applicationContext) }   // AdGuard's ad rules: once a day (checked at most hourly)
@@ -248,6 +259,7 @@ class MainActivity : Activity() {
         val box = old.parent as? android.widget.FrameLayout ?: return
         stopPlayer()                                           // only one at a time
         playerSite = siteKeyOf(old.url) ?: "a website"
+        AppLog.i("Sound", "$playerSite moved to the player tab (keeps playing)")
         // The player: no navigating on its own, no pop-ups, ad blocking by its own site.
         val site = Uri.parse(old.url ?: "").host
         old.webViewClient = object : WebViewClient() {
@@ -256,8 +268,8 @@ class MainActivity : Activity() {
                 if (request == null || request.isForMainFrame) return null
                 val host = request.url.host ?: return null
                 val groups = adGroups(site)
-                if ("ads" in groups && AdBlock.isAd(host, Whitelist.state.adblockExceptions)) return AdBlock.blockedResponse()
-                if (groups.isNotEmpty() && !adExcepted(host) && AdRules.blocks(request.url, site, groups)) return AdBlock.blockedResponse()
+                if ("ads" in groups && AdBlock.isAd(host, Whitelist.state.adblockExceptions)) return blockedAd()
+                if (groups.isNotEmpty() && !adExcepted(host) && AdRules.blocks(request.url, site, groups)) return blockedAd()
                 return null
             }
         }
@@ -353,6 +365,8 @@ class MainActivity : Activity() {
         override fun run() {
             if (!isResumedNow || isDestroyed) return
             web.evaluateJavascript("(window.__wlbPlaying ? window.__wlbPlaying() : 0)") { n -> mainPlaying = (n?.trim()?.toIntOrNull() ?: 0) > 0 }
+            // What's playing (the player tab's, or this page's), kept ready for the moment the app is left.
+            mediaInfo(player ?: web) { info -> lastInfo = info }
             player?.evaluateJavascript("(window.__wlbPlaying ? window.__wlbPlaying() : 0)") { n ->
                 if ((n?.trim()?.toIntOrNull() ?: 0) > 0) playerIdleChecks = 0
                 else if (++playerIdleChecks >= 20) stopPlayer()     // nothing for a minute: it closes
@@ -372,17 +386,23 @@ class MainActivity : Activity() {
         }
     }
     private val soundSite: String get() = if (player != null) playerSite else (siteKeyOf(web.url) ?: "a website")
+    @Volatile private var lastInfo: org.json.JSONObject? = null
     private var pausedSince = 0L
 
     /** Leaving the app with a site's sound playing: it keeps playing, with media controls in a notification. */
     private fun keepPlayingIfSound() {
         main.removeCallbacks(playCheck)
-        mediaInfo(player ?: web) { info ->
-            if (isResumedNow || info == null || !info.optBoolean("playing")) return@mediaInfo
-            pausedSince = 0L
-            PlaybackService.show(this, soundSite, info)
-            main.postDelayed(soundCheck, 3_000)
-        }
+        // Started at once, from what was last seen playing: Android only lets it start while the app is still on
+        // screen, which it no longer is a moment later.
+        val info = lastInfo
+        if (info == null || !info.optBoolean("playing")) return
+        AppLog.i("Sound", "Left the app while ${soundSite} plays: keeps playing (\"${info.optString("title").take(60)}\", " +
+            "buttons from the site: ${listOfNotNull(if (info.optBoolean("prev")) "previous" else null, if (info.optBoolean("next")) "next" else null).ifEmpty { listOf("none") }.joinToString()})")
+        pausedSince = 0L
+        PlaybackService.show(this, soundSite, info)
+        // While away, a page may start sound without a tap (the next song, or a media button): restored on return.
+        (player ?: web).settings.mediaPlaybackRequiresUserGesture = false
+        main.postDelayed(soundCheck, 3_000)
     }
 
     /** While in the background: keeps the media controls up to date; they go after 10 minutes paused, or with nothing to play. */
@@ -462,6 +482,13 @@ class MainActivity : Activity() {
         }
 
         web.webViewClient = object : WebViewClient() {
+            override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: android.webkit.WebResourceError?) {
+                if (request?.isForMainFrame == true) AppLog.w("Page", "Couldn't open ${AppLog.site(request.url.toString())}: ${error?.description} (${error?.errorCode})")
+            }
+            override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, response: WebResourceResponse?) {
+                if (request?.isForMainFrame == true) AppLog.w("Page", "${AppLog.site(request.url.toString())} answered ${response?.statusCode} ${response?.reasonPhrase}")
+            }
+
             // Links, form posts, JS navigation and server redirects.
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
@@ -560,13 +587,14 @@ class MainActivity : Activity() {
                         (videosOffHere && soundOffHere && MediaBlock.isVideo(request) && !(Whitelist.hasAllowedPlayer() && MediaBlock.isStream(request))) ||
                         (soundOffHere && MediaBlock.isSound(request, videosAllowed = !videosOffHere))) &&
                     !Whitelist.mediaAllowed(request.url.toString())) {        // a single photo or video allowed anyway
+                    pageMedia.incrementAndGet()
                     return MediaBlock.emptyResponse()
                 }
                 // Ad blocking: things a page loads from ad and tracker domains get an empty answer.
                 val pageHost = topUrl?.let { Uri.parse(it).host }
                 if (request != null && !request.isForMainFrame && "ads" in adGroups(pageHost)) {
                     val host = request.url.host
-                    if (host != null && AdBlock.isAd(host, Whitelist.state.adblockExceptions)) return AdBlock.blockedResponse()
+                    if (host != null && AdBlock.isAd(host, Whitelist.state.adblockExceptions)) return blockedAd()
                 }
                 // AdGuard's lists, by group (ads, trackers, annoyances): particular addresses and paths. A harmless
                 // empty answer (also for its "stand-in" rules). Not for sites on the "Never block these" list.
@@ -574,7 +602,7 @@ class MainActivity : Activity() {
                     val groups = adGroups(pageHost)
                     val host = request.url.host
                     if (groups.isNotEmpty() && host != null && !adExcepted(host) &&
-                        AdRules.blocks(request.url, pageHost, groups)) return AdBlock.blockedResponse()
+                        AdRules.blocks(request.url, pageHost, groups)) return blockedAd()
                 }
                 // Content filters (adult, gambling, malware): anything a page loads from a listed site gets an
                 // empty answer, even from sites on the phone's lists, unless that site was approved "anyway".
@@ -596,6 +624,7 @@ class MainActivity : Activity() {
                     val host = request.url.host
                     if (host != null && (u.startsWith("https://") || u.startsWith("http://")) && !frameOk(u, host, topUrl)) {
                         noteBlockedFrame(host, u)
+                        pageFrames.incrementAndGet()
                         return frameBlockedResponse(host, u)
                     }
                 }
@@ -618,6 +647,11 @@ class MainActivity : Activity() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 topUrl = url
                 if (!HomePage.isHome(url)) showLoading(8)          // at once: something is happening
+                if (!HomePage.isHome(url) && url?.startsWith("http") == true) {
+                    pageAds.set(0); pageMedia.set(0); pageFrames.set(0); pageScriptErrors.set(0)
+                    pageStartedAt = System.currentTimeMillis()
+                    AppLog.i("Page", "Opening ${AppLog.site(url)}" + (if (isDesktop(url)) " (desktop site)" else ""))
+                }
                 view?.evaluateJavascript(PlaybackService.PAGE_SCRIPT, null)   // (if it didn't run first already)
                 if (isDesktop(url)) view?.evaluateJavascript(DESKTOP_SCRIPT, null)
                 addAdScripts(view, url, early = true)    // YouTube's: as early as possible (before its player reads its data)
@@ -640,6 +674,12 @@ class MainActivity : Activity() {
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
+                if (pageStartedAt > 0 && url?.startsWith("http") == true) {
+                    AppLog.i("Page", "Opened ${AppLog.site(url)} in ${System.currentTimeMillis() - pageStartedAt} ms; blocked: " +
+                        "${pageAds.get()} ads/trackers, ${pageMedia.get()} photos/videos/sound, ${pageFrames.get()} embedded parts" +
+                        (if (pageScriptErrors.get() > 0) "; ${pageScriptErrors.get()} script errors" else ""))
+                    pageStartedAt = 0L
+                }
                 // Where this site was left off (the home page's "Open where you left off").
                 if (url != null && Whitelist.isAllowed(url)) siteScope(url)?.let { Tiles.rememberPage(this@MainActivity, it, url, view?.title) }
                 if (mediaOffHere) view?.evaluateJavascript(MediaBlock.script(photosOffHere, videosOffHere, soundOffHere, Whitelist.mediaAllowList()), null)
@@ -666,6 +706,14 @@ class MainActivity : Activity() {
         }
 
         web.webChromeClient = object : WebChromeClient() {
+            // A page's own script errors (at most 15 a page), e.g. something a filter broke, or the app's own scripts.
+            override fun onConsoleMessage(m: android.webkit.ConsoleMessage?): Boolean {
+                if (m != null && m.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR && pageScriptErrors.incrementAndGet() <= 15) {
+                    AppLog.w("Page script", "${AppLog.site(web.url)}: ${m.message().take(200)} (${AppLog.site(m.sourceId())}:${m.lineNumber()})")
+                }
+                return true
+            }
+
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 if (HomePage.isHome(view?.url) && newProgress < 100) return          // the home page opens at once
                 showLoading(newProgress)
@@ -888,6 +936,7 @@ class MainActivity : Activity() {
         val on = !isDesktop(cur)
         if (on) now.add(key) else now.removeAll { key == it || key.endsWith(".$it") }
         desktopPrefs.edit().putStringSet("sites", now).apply()
+        AppLog.i("Desktop site", "${if (on) "On" else "Off"} for $key")
         registerDesktopScripts()
         useAgentFor(cur)
         web.reload()
@@ -991,15 +1040,15 @@ class MainActivity : Activity() {
     private val stopReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(c: Context?, i: Intent?) {
             if (i?.action != PlaybackService.ACTION_MEDIA) return
+            AppLog.i("Sound", "Media button: ${i.getStringExtra(PlaybackService.EXTRA_CMD)}")
             when (val cmd = i.getStringExtra(PlaybackService.EXTRA_CMD)) {
                 "stop" -> stopSound()
                 "play", "pause", "nexttrack", "previoustrack", "seekbackward", "seekforward" -> {
                     // Pressed on the page that's playing (the player tab, if there is one), then the controls catch up.
                     // A page may only start sound after a tap on it: a media button counts as one, just for a moment.
                     val target = player ?: web
-                    target.settings.mediaPlaybackRequiresUserGesture = false
+                    target.settings.mediaPlaybackRequiresUserGesture = false        // (until the app comes back)
                     target.evaluateJavascript("window.__wlbMediaDo && window.__wlbMediaDo('$cmd')", null)
-                    main.postDelayed({ runCatching { target.settings.mediaPlaybackRequiresUserGesture = true } }, 2_000)
                     main.removeCallbacks(soundCheck); main.postDelayed(soundCheck, 700)
                 }
                 else -> if (cmd?.startsWith("seekto:") == true && cmd.drop(7).all { it.isDigit() })      // dragging the progress bar
@@ -1106,6 +1155,7 @@ class MainActivity : Activity() {
             } catch (e: Exception) {
                 e.message ?: e.javaClass.simpleName
             }
+            if (error != null) AppLog.w("Lists", "Checking for changes failed: $error")
             main.post {
                 if (isDestroyed) return@post
                 Whitelist.lastError = error
@@ -1568,8 +1618,10 @@ class MainActivity : Activity() {
                     setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
                 }
                 (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(req)
+                AppLog.i("Download", "Downloading $name from ${AppLog.site(url)} (type ${mimeType ?: "?"})")
                 toast("Downloading $name to the Downloads folder")
             } catch (e: Exception) {
+                AppLog.e("Download", "$name from ${AppLog.site(url)} failed", e)
                 toast("Download failed: ${e.message}")
             }
         }
@@ -1589,7 +1641,7 @@ class MainActivity : Activity() {
 
         @android.webkit.JavascriptInterface
         fun failed(code: String, why: String) {
-            if (blobCodes.remove(code) != null) main.post { toast("This file couldn't be saved ($why)") }
+            if (blobCodes.remove(code) != null) { AppLog.w("Download", "A file the page built couldn't be saved: $why"); main.post { toast("This file couldn't be saved ($why)") } }
         }
     }
 
@@ -1677,8 +1729,10 @@ class MainActivity : Activity() {
                 dir.mkdirs()
                 java.io.File(dir, name).writeBytes(bytes)
             }
+            AppLog.i("Download", "Saved $name ($type, ${bytes.size / 1024} KB)")
             toast("Saved $name to the Downloads folder")
         } catch (e: Exception) {
+            AppLog.e("Download", "Saving $name failed", e)
             toast("This file couldn't be saved: ${e.message}")
         }
     }
@@ -2227,6 +2281,18 @@ class MainActivity : Activity() {
         if (!holding) return item
         return MyRequests.Item(item.number, item.summary, item.asked, "waiting", "Waiting for an answer", 0L, true,
             item.archived, item.request, pinChecking = true)
+    }
+
+    /** About this phone → Share log: Android's share menu (WhatsApp, email, Drive, save to a file…). */
+    private fun shareLog() {
+        val all = AppLog.text()
+        val tail = if (all.length > 150_000) "(earlier entries left out)\n" + all.takeLast(150_000).substringAfter('\n') else all
+        val text = "Whitelist Browser log · phone ${Device.id(this)} · version ${BuildConfig.VERSION_NAME}\n\n" + tail +
+            (CrashLog.last(this)?.let { "\n\nLast crash:\n$it" } ?: "")
+        val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+            .putExtra(Intent.EXTRA_SUBJECT, "Whitelist Browser log")
+            .putExtra(Intent.EXTRA_TEXT, text)
+        runCatching { startActivity(Intent.createChooser(send, "Share the log")) }.onFailure { toast("Couldn't share the log: ${it.message}") }
     }
 
     /** Is the open page the one [item] was about (so reloading it shows the change)? */
@@ -3125,6 +3191,7 @@ class MainActivity : Activity() {
         val waiting = Outbox.count(this)
         if (waiting > 0) phone += row("Waiting to send", "$waiting (${Outbox.lastProblem ?: "sends when online"})")
         phone += row("App version", BuildConfig.VERSION_NAME)
+        CrashLog.last(this)?.let { phone += row("Last crash", it.lineSequence().take(4).joinToString("\n")) }
         if (PlaybackService.lastPlaying.isNotEmpty()) phone += row("Now playing", PlaybackService.lastPlaying)
         phone += row("Ad blocking", AdRules.status)
         if (AdRules.listsSummary.isNotEmpty()) phone += row("Ad lists", AdRules.listsSummary)
@@ -3140,6 +3207,7 @@ class MainActivity : Activity() {
                 row("Adult content", f(st.adult, Filters.adult)),
                 row("Gambling", f(st.gambling, Filters.gambling)),
                 row("Malware and scams", f(st.malware, Filters.malware)))), 6)
+            button("Share log", Ui.Kind.GHOST) { shareLog() }
             button("Copy ID", Ui.Kind.SECONDARY) { copy() }
             button("Close", Ui.Kind.PRIMARY) { it.dismiss() }
         }.show()

@@ -39,7 +39,15 @@ object AdRules {
     /** [load], saying why if it can't (rather than "Not loaded yet" for ever). */
     fun loadSafely(ctx: Context) {
         status = "Loading…"
-        try { load(ctx) } catch (t: Throwable) { status = "Couldn't load AdGuard's rules (${t.javaClass.simpleName}: ${t.message})" }
+        val t0 = System.currentTimeMillis()
+        try {
+            load(ctx)
+            AppLog.i("Ad blocking", "Loaded in ${System.currentTimeMillis() - t0} ms: $listsSummary; scriptlet code: ${scriptlets.size} scriptlets" +
+                (if (extendedCss == null) "; advanced element rules: not available" else ""))
+        } catch (t: Throwable) {
+            status = "Couldn't load AdGuard's rules (${t.javaClass.simpleName}: ${t.message})"
+            AppLog.e("Ad blocking", "Loading failed", t)
+        }
     }
 
     /** Reads everything (in the background): at start, and after each update. */
@@ -104,7 +112,8 @@ object AdRules {
         var got = 0
         for ((name, urls) in Config.AD_FILTER_GROUPS.values.flatten()) {
             // The first address that gives a list (several may be given, " | " between them).
-            val text = urls.split(" | ").map { it.trim() }.firstNotNullOfOrNull { u -> download(u)?.takeIf { it.lines().size >= 20 } } ?: continue
+            val text = urls.split(" | ").map { it.trim() }.firstNotNullOfOrNull { u -> download(u)?.takeIf { it.lines().size >= 20 } }
+            if (text == null) { AppLog.w("Ad blocking", "Daily download of $name: none of its addresses worked"); continue }
             File(dir(ctx), "$name.new").writeText(text)
             File(dir(ctx), "$name.new").renameTo(File(dir(ctx), name))
             got++
@@ -114,6 +123,7 @@ object AdRules {
             val code = download(u) ?: continue
             if (code.contains("ExtendedCss")) { File(dir(ctx), "extended-css.js").writeText(code); break }
         }
+        AppLog.i("Ad blocking", "Daily download: $got of ${Config.AD_FILTER_GROUPS.values.sumOf { it.size }} lists")
         if (got > 0) {
             p.edit().putLong("updated", now).apply()
             loadSafely(ctx)

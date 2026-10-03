@@ -71,6 +71,7 @@ object Updater {
             .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE)
             .setDestinationInExternalFilesDir(ctx, android.os.Environment.DIRECTORY_DOWNLOADS, name)
         val id = dm.enqueue(req)
+        AppLog.i("Update", "Downloading version ${r.versionName} in the background")
         p.edit().putLong("id", id).putString("file", name).putString("version", r.versionName).apply()
         return id
     }
