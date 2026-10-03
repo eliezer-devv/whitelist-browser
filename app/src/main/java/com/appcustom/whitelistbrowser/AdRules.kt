@@ -36,6 +36,12 @@ object AdRules {
         return runCatching { ctx.assets.open("adlists/$name").bufferedReader().use { it.readText() } }.getOrNull()
     }
 
+    /** [load], saying why if it can't (rather than "Not loaded yet" for ever). */
+    fun loadSafely(ctx: Context) {
+        status = "Loading…"
+        try { load(ctx) } catch (t: Throwable) { status = "Couldn't load AdGuard's rules (${t.javaClass.simpleName}: ${t.message})" }
+    }
+
     /** Reads everything (in the background): at start, and after each update. */
     fun load(ctx: Context) {
         val loaded = HashMap<String, AdFilters>()
@@ -104,7 +110,7 @@ object AdRules {
         }
         if (got > 0) {
             p.edit().putLong("updated", now).apply()
-            load(ctx)
+            loadSafely(ctx)
         }
     }
 
@@ -129,7 +135,7 @@ object AdRules {
         val rules = on(which).flatMap { it.scriptsFor(h) }.distinct()
         val names = rules.mapNotNull { AdFilters.scriptletParts(it)?.firstOrNull() }
         val missing = names.filter { it !in scriptlets }.distinct()
-        val hidden = on(which).sumOf { Regex("\\{display:none").findAll(it.hideCss(h)).count() }
+        val hidden = on(which).sumOf { it.hiddenCount(h) }                         // counted, not built (quick)
         val grouped = names.groupingBy { it }.eachCount().entries.joinToString(", ") { if (it.value > 1) "${it.key} ×${it.value}" else it.key }
         return "$h: ${names.size} scriptlets" + (if (grouped.isNotEmpty()) " ($grouped)" else "") +
             ", ${rules.size - names.size} scripts, $hidden elements hidden. Scripts run first: ${if (runsFirst) "yes" else "no (they may run too late)"}" +

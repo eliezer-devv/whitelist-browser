@@ -1208,6 +1208,11 @@ People never see it.
 - **First launch** asks for the person's **first and last name**. **About this phone** shows the phone's own list by
   the person's name.
 
+### App updates in the background
+Tapping the update banner downloads the new version with Android's own download manager (with its progress
+notification), so it **carries on if you minimise or close the app**. When it's done, Android's "Do you want to update
+this app?" screen shows; if the app isn't open then, a **"Update ready: tap to install"** notification opens it.
+
 ### Sound in the background
 A site's sound (music, a podcast, a video's sound) **keeps playing when you leave the app** or the screen turns off:
 a **media notification** shows what's playing as the site describes it (title, artist, artwork), with **Previous**,

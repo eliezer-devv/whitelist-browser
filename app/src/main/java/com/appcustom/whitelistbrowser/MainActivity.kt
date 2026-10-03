@@ -179,7 +179,7 @@ class MainActivity : Activity() {
         val stopFilter = android.content.IntentFilter(PlaybackService.ACTION_MEDIA)
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(stopReceiver, stopFilter, Context.RECEIVER_NOT_EXPORTED)
         else registerReceiver(stopReceiver, stopFilter)       // (before Android 13, only this app's own anyway)
-        io.execute { AdRules.load(applicationContext); AdRules.update(applicationContext) }   // AdGuard's rules (updated daily)
+        io.execute { AdRules.loadSafely(applicationContext); AdRules.update(applicationContext) }   // AdGuard's rules (updated daily)
         // Ad list: load the saved copy (or the one in the app) first, then fetch a fresh one if a week
         // has passed. In that order, so an old copy can never overwrite a fresh one.
         io.execute {
@@ -1387,23 +1387,24 @@ class MainActivity : Activity() {
             return
         }
         updating = true
-        showBanner("Downloading version ${release.versionName}")
-        updateIo.execute {
-            try {
-                val apk = Updater.download(this, release) { pct ->
-                    main.post { showBanner("Downloading version ${release.versionName}: $pct%") }
+        if (Config.LOCK_TASK) runCatching { stopLockTask() }       // the installer screen needs to open
+        // Android's download manager: it carries on if the app is minimised or closed, and installs when it's done.
+        try { Updater.startDownload(applicationContext, release) }
+        catch (e: Exception) { updating = false; showBanner("Update failed: ${e.message ?: "unknown error"}. Tap to try again."); return }
+        val name = release.versionName
+        showBanner("Downloading version $name (it carries on if you close the app)")
+        val watch = object : Runnable {
+            override fun run() {
+                if (isDestroyed) return
+                val pct = Updater.progress(applicationContext)
+                when {
+                    pct == null -> { updating = false; showBanner("Update failed. Tap to try again.") }
+                    pct >= 100 -> { updating = false; showBanner("Installing version $name") }
+                    else -> { showBanner("Downloading version $name: $pct% (it carries on if you close the app)"); main.postDelayed(this, 1_000) }
                 }
-                main.post {
-                    showBanner("Installing version ${release.versionName}")
-                    if (Config.LOCK_TASK) runCatching { stopLockTask() } // the installer screen needs to open
-                }
-                Updater.install(applicationContext, apk)
-            } catch (e: Exception) {
-                main.post { showBanner("Update failed: ${e.message ?: "unknown error"}. Tap to try again.") }
-            } finally {
-                main.post { updating = false }
             }
         }
+        main.postDelayed(watch, 1_000)
     }
 
     private fun showBanner(text: String) {
@@ -1638,12 +1639,19 @@ class MainActivity : Activity() {
         return name
     }
 
-    /** The file's type: from its name's ending when the server only said "binary" (so the phone knows how to open it). */
+    /**
+     * The file's type, from its name's ending whenever Android knows that ending. Android adds the ending it expects
+     * when the type and the name disagree ("report.pdf" saved as plain text became "report.pdf.txt"), so the name
+     * decides. An ending Android doesn't know (".md"): "any kind of file", which leaves the name as it is.
+     */
     private fun typeFor(name: String, mimeType: String?): String? {
-        val m = mimeType?.substringBefore(';')?.trim()?.lowercase()
-        if (m != null && m.isNotEmpty() && m != "application/octet-stream" && m != "binary/octet-stream") return m
         val ext = name.substringAfterLast('.', "").lowercase()
-        return android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: m
+        if (ext.isNotEmpty() && ext != name.lowercase()) {
+            android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)?.let { return it }
+            return "application/octet-stream"
+        }
+        val m = mimeType?.substringBefore(';')?.trim()?.lowercase()
+        return m?.takeIf { it.isNotEmpty() }
     }
 
     /** Writes a "data:" address's contents into the phone's Downloads folder. */
@@ -3117,9 +3125,11 @@ class MainActivity : Activity() {
         val waiting = Outbox.count(this)
         if (waiting > 0) phone += row("Waiting to send", "$waiting (${Outbox.lastProblem ?: "sends when online"})")
         phone += row("App version", BuildConfig.VERSION_NAME)
+        if (PlaybackService.lastPlaying.isNotEmpty()) phone += row("Now playing", PlaybackService.lastPlaying)
         phone += row("Ad blocking", AdRules.status)
         if (AdRules.listsSummary.isNotEmpty()) phone += row("Ad lists", AdRules.listsSummary)
-        phone += row("Ad blocking on this page", AdRules.describe(web.url?.let { Uri.parse(it).host }, adGroups(web.url?.let { Uri.parse(it).host }),
+        val pageHost = web.url?.takeUnless { HomePage.isHome(it) || it.startsWith(BLOCKED_PAGE) }?.let { Uri.parse(it).host }
+        phone += row("Ad blocking on this page", AdRules.describe(pageHost, adGroups(pageHost),
             androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)))
         Ui.AppDialog(this, sheet = true).apply {
             title("About this phone", icon = R.drawable.ic_d_user)

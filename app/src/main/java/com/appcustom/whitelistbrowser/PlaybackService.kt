@@ -60,6 +60,14 @@ class PlaybackService : Service() {
         val canPrev = intent?.getBooleanExtra(EXTRA_PREV, false) ?: false
         val canNext = intent?.getBooleanExtra(EXTRA_NEXT, false) ?: false
         val newArt = intent?.getStringExtra(EXTRA_ART)?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+        // (For About this phone: what's playing, the site's buttons, and what happened to the artwork.)
+        lastPlaying = "$title · buttons: " + listOfNotNull(if (canPrev) "previous" else null, "play/pause", if (canNext) "next" else null).joinToString(", ") +
+            " · artwork: " + when {
+                intent?.getStringExtra(EXTRA_ART).isNullOrBlank() -> "none given by the site"
+                newArt == null -> "not a web address"
+                newArt == artUrl && art != null -> "loaded"
+                else -> lastArt.ifBlank { "loading" }
+            }
         val pos = intent?.getLongExtra(EXTRA_POS, 0L) ?: 0L
         val len = intent?.getLongExtra(EXTRA_LEN, 0L) ?: 0L
         val nm = getSystemService(NotificationManager::class.java)
@@ -135,10 +143,12 @@ class PlaybackService : Service() {
                     c.connectTimeout = 10_000; c.readTimeout = 10_000
                     c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) WhitelistBrowser")
                     try { c.inputStream.use { android.graphics.BitmapFactory.decodeStream(it) } } finally { c.disconnect() }
-                }.getOrNull()?.let { full ->
+                }.onFailure { lastArt = "failed (${it.javaClass.simpleName}: ${it.message})" }.getOrNull()?.let { full ->
                     val scale = minOf(1f, 512f / maxOf(full.width, full.height))
                     if (scale >= 1f) full else android.graphics.Bitmap.createScaledBitmap(full, (full.width * scale).toInt(), (full.height * scale).toInt(), true)
                 }
+                if (bmp == null && !lastArt.startsWith("failed")) lastArt = "failed (not a picture Android can read)"
+                if (bmp != null) lastArt = "loaded (${bmp.width}×${bmp.height})"
                 if (bmp != null && artUrl == newArt) {
                     art = bmp
                     android.os.Handler(mainLooper).post { runCatching { show(again) } }
@@ -167,6 +177,9 @@ class PlaybackService : Service() {
         private const val EXTRA_POS = "pos"
         private const val EXTRA_LEN = "len"
         private const val CHANNEL = "playback"
+        /** What's playing now, for About this phone (to see why artwork or buttons might be missing). */
+        @Volatile var lastPlaying = ""
+        @Volatile private var lastArt = ""
         private const val ID = 4417
 
         /** Shows (or updates) the media notification: [info] is the page's own description of what's playing. */
@@ -232,14 +245,19 @@ class PlaybackService : Service() {
   var p = HTMLMediaElement.prototype.play;
   HTMLMediaElement.prototype.play = function () { watch(this); return p.apply(this, arguments); };
   // The buttons the site supports (it tells the browser, for media controls): kept so they can be pressed from outside.
+  // (Captured on the general function, so however the site registers them, they're seen.)
   var handlers = {};
   try {
-    var ms = navigator.mediaSession;
-    if (ms && ms.setActionHandler) {
-      var set = ms.setActionHandler.bind(ms);
-      ms.setActionHandler = function (a, h) { handlers[a] = h; try { return set(a, h); } catch (e) {} };
+    var MS = window.MediaSession && MediaSession.prototype;
+    if (MS && MS.setActionHandler && !MS.setActionHandler.__wlb) {
+      var set = MS.setActionHandler;
+      var wrapped = function (a, h) { handlers[a] = h; return set.apply(this, arguments); };
+      wrapped.__wlb = true;
+      MS.setActionHandler = wrapped;
     }
   } catch (e) {}
+  // What's playing, as the site last described it: kept, since some sites clear it when paused.
+  var lastMeta = null;
   window.__wlbPlaying = function () {
     var n = 0; players.forEach(function (el) { if (!el.paused && !el.ended && !el.muted && el.volume > 0) n++; }); return n;
   };
@@ -249,6 +267,8 @@ class PlaybackService : Service() {
     var has = false; players.forEach(function (el) { if (!el.ended && (el.currentTime > 0 || !el.paused)) has = true; });
     var md = null, art = '';
     try { md = navigator.mediaSession && navigator.mediaSession.metadata; } catch (e) {}
+    if (md && md.title) lastMeta = { title: md.title, artist: md.artist, album: md.album, artwork: md.artwork };
+    else if (has && lastMeta) md = lastMeta;                    // paused, and the site cleared it: as it was
     try { if (md && md.artwork && md.artwork.length) art = new URL(md.artwork[md.artwork.length - 1].src, location.href).href; } catch (e) {}
     // No artwork from the site: the video's preview picture, else the page's sharing picture (most pages have one).
     try {

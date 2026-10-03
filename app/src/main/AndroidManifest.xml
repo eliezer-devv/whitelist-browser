@@ -81,6 +81,15 @@
             </intent-filter>
         </activity>
 
+        <!-- The app update finished downloading (even with the app closed): it's installed. -->
+        <receiver
+            android:name=".UpdateDownloadReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
+            </intent-filter>
+        </receiver>
+
         <!-- Keeps a site's sound playing with the app in the background (shows a "playing" notification). -->
         <service
             android:name=".PlaybackService"

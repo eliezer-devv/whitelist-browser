@@ -52,33 +52,55 @@ object Updater {
     fun isNewer(r: Release) = r.versionCode > BuildConfig.VERSION_CODE
 
     /** Downloads the APK into app-private storage. Blocking. */
-    fun download(ctx: Context, r: Release, onProgress: (Int) -> Unit): File {
-        val out = File(ctx.cacheDir, "update.apk")
-        val conn = open(r.apkUrl)
-        try {
-            if (conn.responseCode != 200) throw IOException("Download failed: HTTP ${conn.responseCode}")
-            val total = conn.contentLengthLong
-            conn.inputStream.use { input ->
-                out.outputStream().use { output ->
-                    val buf = ByteArray(64 * 1024)
-                    var done = 0L
-                    var lastPct = -1
-                    while (true) {
-                        val n = input.read(buf)
-                        if (n < 0) break
-                        output.write(buf, 0, n)
-                        done += n
-                        if (total > 0) {
-                            val pct = (done * 100 / total).toInt()
-                            if (pct != lastPct) { lastPct = pct; onProgress(pct) }
-                        }
-                    }
-                }
-            }
-            return out
-        } finally {
-            conn.disconnect()
+    private const val PREFS = "update"
+
+    /**
+     * Downloads the update with Android's own download manager, so it carries on if the app is minimised or closed
+     * (with Android's progress notification). When it's done, UpdateDownloadReceiver installs it.
+     */
+    fun startDownload(ctx: Context, r: Release): Long {
+        val dm = ctx.getSystemService(android.app.DownloadManager::class.java)
+        val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        p.getLong("id", -1L).takeIf { it >= 0 }?.let { runCatching { dm.remove(it) } }      // an earlier one: replaced
+        val name = "update-${r.versionCode}.apk"
+        ctx.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)?.let { File(it, name).delete() }
+        val req = android.app.DownloadManager.Request(android.net.Uri.parse(r.apkUrl))
+            .setTitle("Whitelist Browser ${r.versionName}")
+            .setDescription("App update")
+            .setMimeType("application/vnd.android.package-archive")
+            .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE)
+            .setDestinationInExternalFilesDir(ctx, android.os.Environment.DIRECTORY_DOWNLOADS, name)
+        val id = dm.enqueue(req)
+        p.edit().putLong("id", id).putString("file", name).putString("version", r.versionName).apply()
+        return id
+    }
+
+    /** How far the update's download has got: a percentage, or null if there isn't one going. */
+    fun progress(ctx: Context): Int? {
+        val id = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("id", -1L).takeIf { it >= 0 } ?: return null
+        val dm = ctx.getSystemService(android.app.DownloadManager::class.java)
+        dm.query(android.app.DownloadManager.Query().setFilterById(id))?.use { c ->
+            if (!c.moveToFirst()) return null
+            val status = c.getInt(c.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_STATUS))
+            if (status == android.app.DownloadManager.STATUS_SUCCESSFUL) return 100
+            if (status == android.app.DownloadManager.STATUS_FAILED) return null
+            val done = c.getLong(c.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+            val total = c.getLong(c.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+            return if (total > 0) (done * 100 / total).toInt() else 0
         }
+        return null
+    }
+
+    /** The finished download (if [id] is the update's), or null. */
+    fun finished(ctx: Context, id: Long): File? {
+        val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (p.getLong("id", -1L) != id) return null
+        val dm = ctx.getSystemService(android.app.DownloadManager::class.java)
+        val ok = dm.query(android.app.DownloadManager.Query().setFilterById(id))?.use { c ->
+            c.moveToFirst() && c.getInt(c.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_STATUS)) == android.app.DownloadManager.STATUS_SUCCESSFUL
+        } ?: false
+        if (!ok) return null
+        return ctx.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)?.let { File(it, p.getString("file", "update.apk")!!) }?.takeIf { it.exists() }
     }
 
     /**

@@ -19,14 +19,23 @@ import java.util.regex.Pattern;
 public final class AdFilters {
 
     private static final class NetRule {
-        final Pattern path;          // null: the whole site
+        final String path;           // null: the whole site
         final boolean thirdPartyOnly;
         final String[] onlyOn;       // $domain=a.com|b.com: only on pages of these sites (null: any)
         final String[] notOn;        // $domain=~c.com: not on pages of these sites
-        NetRule(Pattern path, boolean thirdPartyOnly, String[] onlyOn, String[] notOn) {
+        private Pattern re;          // built the first time it's needed (most rules never are)
+        NetRule(String path, boolean thirdPartyOnly, String[] onlyOn, String[] notOn) {
             this.path = path; this.thirdPartyOnly = thirdPartyOnly; this.onlyOn = onlyOn; this.notOn = notOn;
         }
+        /** Does [rest] (path and query) match? A plain path is a quick "starts with"; others, a pattern. */
+        boolean matches(String rest) {
+            if (path == null) return true;
+            if (path.indexOf('*') < 0 && path.indexOf('^') < 0 && path.indexOf('|') < 0) return rest.startsWith(path);
+            if (re == null) { re = pathPattern(path); if (re == null) re = Pattern.compile("(?!)"); }
+            return re.matcher(rest).find();
+        }
     }
+    private static final NetRule WHOLE_SITE = new NetRule(null, false, null, null);   // shared by every plain "||site^"
     private static final class RegexRule {
         final Pattern re; final boolean thirdPartyOnly; final String[] onlyOn, notOn;
         RegexRule(Pattern re, boolean thirdPartyOnly, String[] onlyOn, String[] notOn) {
@@ -45,16 +54,62 @@ public final class AdFilters {
      * and all. Its longest plain part is only a quick first check (an address without it can't match).
      */
     private static final class Text {
-        final String token; final Pattern whole; final boolean thirdPartyOnly; final String[] onlyOn, notOn;
-        Text(String token, Pattern whole, boolean thirdPartyOnly, String[] onlyOn, String[] notOn) {
-            this.token = token; this.whole = whole; this.thirdPartyOnly = thirdPartyOnly; this.onlyOn = onlyOn; this.notOn = notOn;
+        final String token; final String pattern; final boolean thirdPartyOnly; final String[] onlyOn, notOn;
+        private Pattern whole;       // built the first time it's needed
+        Text(String token, String pattern, boolean thirdPartyOnly, String[] onlyOn, String[] notOn) {
+            this.token = token; this.pattern = pattern; this.thirdPartyOnly = thirdPartyOnly; this.onlyOn = onlyOn; this.notOn = notOn;
         }
         boolean matches(String address, boolean third, String page) {
             if (thirdPartyOnly && !third) return false;
             if (onlyOn != null && (page == null || !under(page, onlyOn))) return false;
             if (notOn != null && page != null && under(page, notOn)) return false;
-            return address.contains(token) && whole.matcher(address).find();
+            if (!address.contains(token)) return false;
+            if (pattern.indexOf('*') < 0 && pattern.indexOf('^') < 0 && pattern.indexOf('|') < 0) return true;   // plain: the token is it
+            if (whole == null) { whole = anywherePattern(pattern); if (whole == null) whole = Pattern.compile("(?!)"); }
+            return whole.matcher(address).find();
         }
+    }
+    /**
+     * "Anywhere" rules filed under a distinctive word (letters and digits with a separator on both sides in the rule,
+     * so the same word appears whole in any address it matches): an address is only compared with the rules filed
+     * under the words it contains, not all of them (as uBlock Origin does). Rules without such a word: compared always.
+     */
+    private final Map<String, List<Text>> anywhereByWord = new HashMap<>(), allowByWord = new HashMap<>();
+    private final List<Text> anywhereRest = new ArrayList<>(), allowRest = new ArrayList<>();
+    private static final Pattern WORD = Pattern.compile("[a-z0-9]+");
+    private static final Pattern HOST = Pattern.compile("^[a-z0-9.-]+");
+    /** Letters, digits, ".", "-" and "*" only (a simple loop: this runs for every rule). */
+    private static boolean siteName(String d) {
+        if (d.isEmpty()) return false;
+        for (int i = 0; i < d.length(); i++) {
+            char c = d.charAt(i);
+            if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '*')) return false;
+        }
+        return true;
+    }
+    /** A site's name without "www." (a simple check: this runs for every rule, so no pattern). */
+    private static String noWww(String h) { return h.startsWith("www.") ? h.substring(4) : h; }
+    private static String wordOf(String plain) {
+        String best = null;
+        Matcher m = WORD.matcher(plain);
+        while (m.find()) {
+            boolean before = m.start() > 0, after = m.end() < plain.length();     // a separator on both sides, in the rule
+            if (before && after && m.group().length() >= 2 && (best == null || m.group().length() > best.length())) best = m.group();
+        }
+        return best;
+    }
+    private static void addTo(Map<String, List<Text>> byWord, List<Text> rest, Text t, String plain) {
+        String w = wordOf(plain);
+        if (w == null) rest.add(t); else byWord.computeIfAbsent(w, k -> new ArrayList<>(1)).add(t);
+    }
+    private static boolean anyMatch(Map<String, List<Text>> byWord, List<Text> rest, String address, boolean third, String page) {
+        for (Text t : rest) if (t.matches(address, third, page)) return true;
+        Matcher m = WORD.matcher(address);
+        while (m.find()) {
+            List<Text> l = byWord.get(m.group());
+            if (l != null) for (Text t : l) if (t.matches(address, third, page)) return true;
+        }
+        return false;
     }
 
     private static final int MAX_GENERIC_CSS = 12000;    // elements hidden on every page
@@ -63,8 +118,7 @@ public final class AdFilters {
 
     private final Map<String, List<NetRule>> block = new HashMap<>();
     private final Map<String, List<NetRule>> allow = new HashMap<>();
-    private final List<Text> anywhere = new ArrayList<>();
-    private final List<Text> anywhereAllow = new ArrayList<>();      // their exceptions ("@@/some/path/")
+    private int anywhereCount = 0;
     private final Set<String> anywhereSeen = new HashSet<>();
     private final LinkedHashSet<String> genericCss = new LinkedHashSet<>();
     private final Map<String, List<String>> siteCss = new HashMap<>();
@@ -124,17 +178,18 @@ public final class AdFilters {
             if (!onlyPath || !(rest.contains("#%#") && !rest.contains("#@%#"))) return false;
             l = rest;
         }
-        Matcher cm = COSMETIC.matcher(l);
-        if (cm.matches() && !l.startsWith("[$")) {
+        // (Most lines are address rules, without a "#": they skip this pattern.)
+        Matcher cm = l.indexOf('#') >= 0 ? COSMETIC.matcher(l) : null;
+        if (cm != null && cm.matches() && !l.startsWith("[$")) {
             String doms = cm.group(1), sep = cm.group(2), body = cm.group(3);
             List<String> domains = new ArrayList<>(), except = new ArrayList<>();
             for (String d : doms.split(",")) {
                 d = d.trim().toLowerCase();
                 if (d.isEmpty()) continue;
-                if (d.startsWith("~")) except.add(d.substring(1).replaceFirst("^www\\.", "")); else domains.add(d);
+                if (d.startsWith("~")) except.add(noWww(d.substring(1))); else domains.add(d);
             }
-            for (String d : domains) if (!d.matches("[a-z0-9.*-]+")) return false;
-            for (String d : except) if (!d.matches("[a-z0-9.*-]+")) return false;
+            for (String d : domains) if (!siteName(d)) return false;
+            for (String d : except) if (!siteName(d)) return false;
             // "Except on…" only for plain element hiding (other kinds: left out, rather than applied too widely).
             if (!except.isEmpty() && !sep.equals("##")) return false;
             // AdGuard's scripts and scriptlets: #%# (on), #@%# (switched off there).
@@ -142,7 +197,7 @@ public final class AdFilters {
                 boolean off = sep.equals("#@%#");
                 if (domains.isEmpty()) domains.add("");
                 for (String d : domains) {
-                    String h = d.replaceFirst("^www\\.", "");
+                    String h = noWww(d);
                     if (off) scriptsOff.computeIfAbsent(h, k -> new HashSet<>()).add(body);
                     else scripts.computeIfAbsent(h, k -> new ArrayList<>()).add(body);
                 }
@@ -156,7 +211,7 @@ public final class AdFilters {
                 String rule = sep.equals("#?#") || sep.equals("##") ? body + " { display: none !important; }" : body;
                 for (String d : domains) {
                     if (d.contains("*")) continue;
-                    String h = d.replaceFirst("^www\\.", "");
+                    String h = noWww(d);
                     List<String> list = (extended ? siteExtended : siteStyles).computeIfAbsent(h, k -> new ArrayList<>());
                     if (!list.contains(rule)) list.add(rule);                     // each rule once
                 }
@@ -172,7 +227,7 @@ public final class AdFilters {
             }
             for (String d : domains) {
                 if (d.contains("*")) continue;
-                String h = d.replaceFirst("^www\\.", "");
+                String h = noWww(d);
                 (sep.equals("##") ? siteCss : siteUnhide).computeIfAbsent(h, k -> new ArrayList<>()).add(body);
             }
             return true;
@@ -193,9 +248,9 @@ public final class AdFilters {
                 if (EXCEPTION_KINDS.contains(o)) { any = true; kinds.add(o); }
             }
             if (any) {
-                Matcher hm = Pattern.compile("^[a-z0-9.-]+").matcher(pattern.substring(2).toLowerCase());
+                Matcher hm = HOST.matcher(pattern.substring(2).toLowerCase());
                 if (!hm.find()) return false;
-                String host = hm.group().replaceFirst("^www\\.", "");
+                String host = noWww(hm.group());
                 Set<String> off = siteOff.computeIfAbsent(host, k -> new HashSet<>());
                 for (String k : kinds) {
                     if (k.equals("ghide")) k = NO_GENERIC; else if (k.equals("shide")) k = NO_SPECIFIC; else if (k.equals("ehide")) k = NO_HIDING;
@@ -222,8 +277,8 @@ public final class AdFilters {
                 if (name.equals("domain")) {
                     List<String> yes = new ArrayList<>(), no = new ArrayList<>();
                     for (String d : o.substring(7).split("\\|")) {
-                        if (d.startsWith("~")) no.add(d.substring(1).replaceFirst("^www\\.", ""));
-                        else if (!d.isEmpty()) yes.add(d.replaceFirst("^www\\.", ""));
+                        if (d.startsWith("~")) no.add(noWww(d.substring(1)));
+                        else if (!d.isEmpty()) yes.add(noWww(d));
                     }
                     for (String d : yes) if (d.contains("*") || d.startsWith("/")) return false;
                     if (!yes.isEmpty()) onlyOn = yes.toArray(new String[0]);
@@ -243,16 +298,16 @@ public final class AdFilters {
         }
         if (pattern.startsWith("||")) {
             String rest = pattern.substring(2).toLowerCase();
-            Matcher hm = Pattern.compile("^[a-z0-9.-]+").matcher(rest);
+            Matcher hm = HOST.matcher(rest);
             if (!hm.find()) return false;
-            String host = hm.group().replaceFirst("^www\\.", "");
+            String host = noWww(hm.group());
             if (!host.contains(".") || (rest.length() > hm.end() && rest.charAt(hm.end()) == '*')) return false;
             String path = rest.substring(hm.end());
             if (path.equals("^") || path.equals("^|") || path.equals("|")) path = "";
             if (!path.isEmpty() && "/^:?*".indexOf(path.charAt(0)) < 0) return false;
-            Pattern p = path.isEmpty() ? null : pathPattern(path);
-            if (!path.isEmpty() && p == null) return false;
-            (exception ? allow : block).computeIfAbsent(host, k -> new ArrayList<>()).add(new NetRule(p, third, onlyOn, notOn));
+            NetRule r = path.isEmpty() && !third && onlyOn == null && notOn == null ? WHOLE_SITE
+                : new NetRule(path.isEmpty() ? null : path, third, onlyOn, notOn);
+            (exception ? allow : block).computeIfAbsent(host, k -> new ArrayList<>(1)).add(r);
             return true;
         }
         // "Anywhere in the address" (and "starts with", "|https://…"): the whole pattern is matched, wildcards and all.
@@ -261,19 +316,21 @@ public final class AdFilters {
         String bare = pat.replaceFirst("^\\|", "").replaceFirst("^https?://", "");
         String best = "";
         for (String part : bare.split("[*^|]")) if (part.length() > best.length()) best = part;
-        if (best.length() < 4 || !best.matches(".*[a-z0-9].*") || anywhere.size() >= MAX_ANYWHERE || !anywhereSeen.add((exception ? "@" : "") + pat)) return false;
-        Pattern whole = anywherePattern(pat);
-        if (whole == null) return false;
-        (exception ? anywhereAllow : anywhere).add(new Text(best, whole, third, onlyOn, notOn));
+        if (best.length() < 4 || !best.matches(".*[a-z0-9].*") || anywhereCount >= MAX_ANYWHERE || !anywhereSeen.add((exception ? "@" : "") + pat)) return false;
+        // (A plain rule is matched as its own text, so its "token" is the whole of it.)
+        boolean plain = pat.indexOf('*') < 0 && pat.indexOf('^') < 0 && pat.indexOf('|') < 0;
+        Text t = new Text(plain ? bare : best, pat, third, onlyOn, notOn);
+        if (exception) addTo(allowByWord, allowRest, t, best); else addTo(anywhereByWord, anywhereRest, t, best);
+        anywhereCount++;
         return true;
     }
 
     private boolean addRemoveParam(String pattern, String value, String[] onlyOn, String[] notOn) {
         String site = "";
         if (pattern.startsWith("||")) {
-            Matcher hm = Pattern.compile("^[a-z0-9.-]+").matcher(pattern.substring(2).toLowerCase());
+            Matcher hm = HOST.matcher(pattern.substring(2).toLowerCase());
             if (!hm.find()) return false;
-            site = hm.group().replaceFirst("^www\\.", "");
+            site = noWww(hm.group());
         } else if (!pattern.isEmpty() && !pattern.equals("*")) return false;
         Pattern re = null;
         String name = null;
@@ -350,14 +407,14 @@ public final class AdFilters {
 
     /** The same, with the whole address [url] (for the rules written as regular expressions). */
     public boolean blocks(String host, String rest, String pageHost, String url) {
-        host = host.toLowerCase().replaceFirst("^www\\.", "");
-        String page = pageHost == null ? null : pageHost.toLowerCase().replaceFirst("^www\\.", "");
+        host = noWww(host.toLowerCase());
+        String page = pageHost == null ? null : noWww(pageHost.toLowerCase());
         boolean third = page == null || !siteOf(page).equals(siteOf(host));
         if (page != null && off(page, NOTHING)) return false;
         List<String> hosts = withParents(host);
         for (String h : hosts) {
             List<NetRule> rs = allow.get(h);
-            if (rs != null) for (NetRule r : rs) if (appliesOn(r, page) && (r.path == null || r.path.matcher(rest).find())) return false;
+            if (rs != null) for (NetRule r : rs) if (appliesOn(r, page) && r.matches(rest)) return false;
         }
         for (String h : hosts) {
             List<NetRule> rs = block.get(h);
@@ -365,15 +422,12 @@ public final class AdFilters {
             for (NetRule r : rs) {
                 if (r.thirdPartyOnly && !third) continue;
                 if (!appliesOn(r, page)) continue;
-                if (r.path == null || r.path.matcher(rest).find()) return true;
+                if (r.matches(rest)) return true;
             }
         }
         String whole = (host + rest).toLowerCase();
-        boolean hit = false;
-        for (Text t : anywhere) if (t.matches(whole, third, page)) { hit = true; break; }
-        if (hit) {
-            for (Text t : anywhereAllow) if (t.matches(whole, third, page)) return false;   // an exception wins
-            return true;
+        if (anyMatch(anywhereByWord, anywhereRest, whole, third, page)) {
+            return !anyMatch(allowByWord, allowRest, whole, third, page);             // an exception wins
         }
         if (url != null) for (RegexRule r : regexRules) {
             if (r.thirdPartyOnly && !third) continue;
@@ -396,7 +450,7 @@ public final class AdFilters {
         String base = url.substring(0, q), query = hash < 0 ? url.substring(q + 1) : url.substring(q + 1, hash), frag = hash < 0 ? "" : url.substring(hash);
         Matcher hm = Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.-]*://([^/:?#]+)").matcher(base);
         if (!hm.find()) return url;
-        String host = hm.group(1).toLowerCase().replaceFirst("^www\\.", "");
+        String host = noWww(hm.group(1).toLowerCase());
         List<RemoveParam> here = new ArrayList<>();
         for (RemoveParam r : removeParams) {
             if (!r.site.isEmpty() && !(host.equals(r.site) || host.endsWith("." + r.site))) continue;
@@ -424,7 +478,7 @@ public final class AdFilters {
 
     /** Advanced element rules for [host]'s pages, for AdGuard's ExtendedCss code ("selector { display: none … }"). */
     public List<String> extendedFor(String host) {
-        String h = host.toLowerCase().replaceFirst("^www\\.", "");
+        String h = noWww(host.toLowerCase());
         if (off(h, NO_HIDING) || off(h, NO_SPECIFIC)) return new ArrayList<>();
         List<String> out = new ArrayList<>();
         for (String p : withParents(h)) { List<String> e = siteExtended.get(p); if (e != null) out.addAll(e); }
@@ -436,7 +490,7 @@ public final class AdFilters {
      * apply there (its exceptions, and "except on…" rules): those simply aren't hidden, as AdGuard does.
      */
     public String hideCss(String host) {
-        String h = host.toLowerCase().replaceFirst("^www\\.", "");
+        String h = noWww(host.toLowerCase());
         StringBuilder css = new StringBuilder();
         if (off(h, NO_HIDING)) return "";
         List<String> sites = withParents(h);
@@ -454,6 +508,22 @@ public final class AdFilters {
         return css.toString();
     }
 
+    /** How many elements [host]'s pages hide (the same rules as hideCss, only counted: quick, nothing built). */
+    public int hiddenCount(String host) {
+        String h = noWww(host.toLowerCase());
+        if (off(h, NO_HIDING)) return 0;
+        List<String> sites = withParents(h);
+        Set<String> notHere = new HashSet<>();
+        for (String p : sites) { List<String> un = siteUnhide.get(p); if (un != null) notHere.addAll(un); }
+        int n = 0;
+        if (!off(h, NO_GENERIC)) for (String s : genericCss) if (!notHere.contains(s) && !exceptedHere(s, h)) n++;
+        if (!off(h, NO_SPECIFIC)) for (String p : sites) {
+            List<String> own = siteCss.get(p);
+            if (own != null) for (String s : own) if (!notHere.contains(s) && !exceptedHere(s, h)) n++;
+        }
+        return n;
+    }
+
     private boolean exceptedHere(String selector, String host) {
         List<String> ex = hideExcept.get(selector);
         if (ex == null) return false;
@@ -463,7 +533,7 @@ public final class AdFilters {
 
     /** AdGuard's script rules for [host] ("//scriptlet('name', 'arg'…)" or a script), minus those switched off there. */
     public List<String> scriptsFor(String host) {
-        String h = host.toLowerCase().replaceFirst("^www\\.", "");
+        String h = noWww(host.toLowerCase());
         if (off(h, NO_SCRIPTS)) return new ArrayList<>();
         List<String> sites = withParents(h);
         Set<String> off = new HashSet<>();
@@ -506,7 +576,7 @@ public final class AdFilters {
         int st = 0, ex = 0;
         for (List<String> l : siteStyles.values()) st += l.size();
         for (List<String> l : siteExtended.values()) ex += l.size();
-        return b + " address rules, " + regexRules.size() + " patterns, " + anywhere.size() + " texts, " + removeParams.size() +
+        return b + " address rules, " + regexRules.size() + " patterns, " + anywhereCount + " texts, " + removeParams.size() +
             " tracking codes, " + genericCss.size() + " elements everywhere, " + s + " site elements, " + st + " styles, " +
             ex + " advanced, " + sc + " scripts";
     }
