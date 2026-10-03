@@ -85,24 +85,28 @@ jobs:
           get https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/gambling.txt gambling-hagezi.txt
           get https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.mini.txt malware-hagezi.txt
 
-      # Pack the lists new phones start with (admin page: "When a new phone is set up") into the app,
-      # so a phone that has never been online can already use them. None ticked: no starter lists.
+      # Fuller ad blocking, entirely from AdGuard: a copy of its lists and its scriptlet code, packed into the app so
+      # it works from the first launch. Phones then download them from AdGuard themselves, once a day (Config.kt).
+      - name: AdGuard's ad rules
+        run: |
+          mkdir -p app/src/main/assets/adlists
+          get() { curl -fsSL --retry 3 "$1" -o "app/src/main/assets/adlists/$2" && echo "$2: $(wc -l < "app/src/main/assets/adlists/$2") lines" \
+                  || echo "::warning::Couldn't download $2; phones will download it themselves."; }
+          ag=https://filters.adtidy.org/extension/chromium/filters
+          # Ads
+          get $ag/2.txt adguard-base.txt; get $ag/11.txt adguard-mobile.txt; get $ag/24.txt adguard-quickfixes.txt
+          # Trackers
+          get $ag/3.txt adguard-tracking.txt; get $ag/17.txt adguard-urltracking.txt
+          # Annoyances
+          get $ag/18.txt adguard-cookies.txt; get $ag/19.txt adguard-popups.txt; get $ag/20.txt adguard-appbanners.txt
+          get $ag/21.txt adguard-otherannoyances.txt; get $ag/22.txt adguard-widgets.txt; get $ag/4.txt adguard-social.txt
+          # AdGuard's code for its scriptlets and its advanced element rules
+          get https://cdn.jsdelivr.net/npm/@adguard/scriptlets@latest/dist/scriptlets.corelibs.json scriptlets.json
+          get https://cdn.jsdelivr.net/npm/@adguard/extended-css@latest/dist/extended-css.min.js extended-css.js
+
       # The admin page, for the hidden admin screen inside the app.
       - name: Add the admin page
         run: cp docs/admin.html app/src/main/assets/admin.html
-
-      - name: Add starter lists
-        run: |
-          node -e '
-            const fs = require("fs");
-            const devices = fs.existsSync("docs/phones.json") ? JSON.parse(fs.readFileSync("docs/phones.json", "utf8")) : {};
-            const names = Array.isArray(devices.default) ? devices.default : ["public"];
-            const lists = names.map(n => ({ name: n, path: n === "public" ? "docs/whitelist.json" : `docs/lists/${n}.json` }))
-              .filter(l => /^[a-z0-9_-]+$/.test(l.name) && fs.existsSync(l.path))
-              .map(l => ({ name: l.name, json: fs.readFileSync(l.path, "utf8") }));
-            fs.writeFileSync("app/src/main/assets/initial-bundle.json", JSON.stringify({ device: null, lists }));
-            console.log("Starter lists:", lists.map(l => l.name).join(", ") || "none");
-          '
 
       - name: Build signed APK
         env:
