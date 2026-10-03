@@ -1206,8 +1206,10 @@ People never see it.
 
 ### Sound in the background
 A site's sound (music, a podcast, a video's sound) **keeps playing when you leave the app** or the screen turns off:
-a **"Playing from youtube.com"** notification shows, with **Stop**. It goes when you come back, or once nothing's
-playing. (Sites that stop playing when they're hidden, like YouTube, are told they're still showing.)
+a **media notification** shows what's playing as the site describes it (title, artist, artwork), with **Previous**,
+**Play/Pause** and **Next** where the site has them, and **Stop**. The same controls work on the lock screen, in the
+quick settings media panel, and with headphone and Bluetooth buttons. It goes when you come back to the app, when
+nothing's left to play, or after 10 minutes paused. (Sites that stop playing when they're hidden, like YouTube, are told they're still showing.)
 
 **Browsing elsewhere while it plays:** leaving a site that's playing (a link, an address, **Home** or **Back**) moves
 it to a hidden **player tab**, where it keeps playing, and the new page opens in a fresh tab. A slim bar under the

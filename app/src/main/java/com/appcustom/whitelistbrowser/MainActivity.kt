@@ -176,7 +176,7 @@ class MainActivity : Activity() {
 
         TempTime.load(this)       // time already used on "time on the site" temporary access
         Whitelist.loadCache(this) // last known list, so it works offline
-        val stopFilter = android.content.IntentFilter(PlaybackService.ACTION_STOP)
+        val stopFilter = android.content.IntentFilter(PlaybackService.ACTION_MEDIA)
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(stopReceiver, stopFilter, Context.RECEIVER_NOT_EXPORTED)
         else registerReceiver(stopReceiver, stopFilter)       // (before Android 13, only this app's own anyway)
         io.execute { AdRules.load(applicationContext); AdRules.update(applicationContext) }   // AdGuard's rules (updated daily)
@@ -363,26 +363,43 @@ class MainActivity : Activity() {
 
     // ---------- sound in the background ----------
 
-    /** Leaving the app with a site's sound playing: it keeps playing, with a "playing" notification (Stop on it). */
+    /** What the playing page says is playing (title, artist, artwork, its buttons), or null. */
+    private fun mediaInfo(view: WebView, done: (org.json.JSONObject?) -> Unit) {
+        view.evaluateJavascript("(window.__wlbMediaInfo ? JSON.stringify(window.__wlbMediaInfo()) : '')") { raw ->
+            // (The answer comes back as a quoted string.)
+            val text = runCatching { org.json.JSONArray("[" + (raw ?: "\"\"") + "]").getString(0) }.getOrDefault("")
+            done(runCatching { org.json.JSONObject(text) }.getOrNull())
+        }
+    }
+    private val soundSite: String get() = if (player != null) playerSite else (siteKeyOf(web.url) ?: "a website")
+    private var pausedSince = 0L
+
+    /** Leaving the app with a site's sound playing: it keeps playing, with media controls in a notification. */
     private fun keepPlayingIfSound() {
         main.removeCallbacks(playCheck)
-        if (player != null) { PlaybackService.start(this, playerSite); main.postDelayed(soundCheck, 30_000); return }
-        val site = web.url?.let { Uri.parse(it).host?.removePrefix("www.") } ?: return
-        web.evaluateJavascript("(window.__wlbPlaying ? window.__wlbPlaying() : 0)") { n ->
-            if ((n?.trim()?.toIntOrNull() ?: 0) > 0 && !isResumedNow) {
-                PlaybackService.start(this, site)
-                main.postDelayed(soundCheck, 30_000)
-            }
+        mediaInfo(player ?: web) { info ->
+            if (isResumedNow || info == null || !info.optBoolean("playing")) return@mediaInfo
+            pausedSince = 0L
+            PlaybackService.show(this, soundSite, info)
+            main.postDelayed(soundCheck, 3_000)
         }
     }
 
-    /** While in the background: once nothing's playing any more, the notification goes. */
+    /** While in the background: keeps the media controls up to date; they go after 10 minutes paused, or with nothing to play. */
     private val soundCheck = object : Runnable {
         override fun run() {
             if (isResumedNow || isDestroyed) return
-            (player ?: web).evaluateJavascript("(window.__wlbPlaying ? window.__wlbPlaying() : 0)") { n ->
-                if ((n?.trim()?.toIntOrNull() ?: 0) == 0) PlaybackService.stop(this@MainActivity)
-                else main.postDelayed(this, 30_000)
+            mediaInfo(player ?: web) { info ->
+                if (isResumedNow) return@mediaInfo
+                val now = System.currentTimeMillis()
+                when {
+                    info == null || !info.optBoolean("has") -> { PlaybackService.stop(this@MainActivity); return@mediaInfo }
+                    info.optBoolean("playing") -> pausedSince = 0L
+                    pausedSince == 0L -> pausedSince = now
+                    now - pausedSince > 10 * 60_000L -> { PlaybackService.stop(this@MainActivity); return@mediaInfo }
+                }
+                PlaybackService.show(this@MainActivity, soundSite, info)
+                main.postDelayed(this, 3_000)
             }
         }
     }
@@ -951,9 +968,23 @@ class MainActivity : Activity() {
         openLinkFrom(intent)                                    // a link from another app while this one is open
     }
 
-    /** The "playing" notification's Stop (a message only this app can send). */
+    /** The media controls (notification, lock screen, headphones): a message only this app can send. */
     private val stopReceiver = object : android.content.BroadcastReceiver() {
-        override fun onReceive(c: Context?, i: Intent?) { if (i?.action == PlaybackService.ACTION_STOP) stopSound() }
+        override fun onReceive(c: Context?, i: Intent?) {
+            if (i?.action != PlaybackService.ACTION_MEDIA) return
+            when (val cmd = i.getStringExtra(PlaybackService.EXTRA_CMD)) {
+                "stop" -> stopSound()
+                "play", "pause", "nexttrack", "previoustrack" -> {
+                    // Pressed on the page that's playing (the player tab, if there is one), then the controls catch up.
+                    // A page may only start sound after a tap on it: a media button counts as one, just for a moment.
+                    val target = player ?: web
+                    target.settings.mediaPlaybackRequiresUserGesture = false
+                    target.evaluateJavascript("window.__wlbMediaDo && window.__wlbMediaDo('$cmd')", null)
+                    main.postDelayed({ runCatching { target.settings.mediaPlaybackRequiresUserGesture = true } }, 2_000)
+                    main.removeCallbacks(soundCheck); main.postDelayed(soundCheck, 700)
+                }
+            }
+        }
     }
 
     /** Is this app the phone's default browser? */
