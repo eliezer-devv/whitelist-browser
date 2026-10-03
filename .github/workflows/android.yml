@@ -94,7 +94,12 @@ jobs:
                   || echo "::warning::Couldn't download $2; phones will download it themselves."; }
           ag=https://filters.adtidy.org/extension/chromium/filters
           # Ads
-          get $ag/2.txt adguard-base.txt; get $ag/11.txt adguard-mobile.txt; get $ag/24.txt adguard-quickfixes.txt
+          get $ag/2.txt adguard-base.txt; get $ag/11.txt adguard-mobile.txt
+          # Quick Fixes: AdGuard publishes it in some variants only, so each is tried in turn.
+          for u in $ag/24.txt https://filters.adtidy.org/extension/chromium-mv3/filters/24.txt https://filters.adtidy.org/extension/ublock/filters/24.txt \
+                   https://filters.adtidy.org/android/filters/24.txt https://filters.adtidy.org/windows/filters/24.txt; do
+            curl -fsSL --retry 2 "$u" -o app/src/main/assets/adlists/adguard-quickfixes.txt && { echo "Quick Fixes from $u"; break; }
+          done || true
           # Trackers
           get $ag/3.txt adguard-tracking.txt; get $ag/17.txt adguard-urltracking.txt
           # Annoyances
