@@ -54,7 +54,13 @@ object AdRules {
                 if (text != null) f.add(text)
                 val n = f.kept - before
                 val label = name.removePrefix("adguard-").removeSuffix(".txt").replaceFirstChar { it.uppercase() }
-                counts += "$label " + (if (text == null) "missing" else if (n >= 1000) "${n / 1000}k" else "$n")
+                counts += "$label " + when {
+                    text == null -> "missing"
+                    // Nothing usable in it: what it was (to see why), e.g. an error page or a notice.
+                    n == 0 -> "0 (of ${text.lines().size} lines, starting \"${text.trim().lines().firstOrNull().orEmpty().take(50)}\")"
+                    n >= 1000 -> "${n / 1000}k"
+                    else -> "$n"
+                }
             }
             loaded[group] = f
         }

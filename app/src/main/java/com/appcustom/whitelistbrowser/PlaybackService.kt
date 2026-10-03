@@ -59,7 +59,7 @@ class PlaybackService : Service() {
         val playing = intent?.getBooleanExtra(EXTRA_PLAYING, true) ?: true
         val canPrev = intent?.getBooleanExtra(EXTRA_PREV, false) ?: false
         val canNext = intent?.getBooleanExtra(EXTRA_NEXT, false) ?: false
-        val newArt = intent?.getStringExtra(EXTRA_ART)?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+        val newArt = intent?.getStringExtra(EXTRA_ART)?.takeIf { it.startsWith("https://") || it.startsWith("http://") || it.startsWith("data:image/") }
         // (For About this phone: what's playing, the site's buttons, and what happened to the artwork.)
         lastPlaying = "$title · buttons: " + listOfNotNull(if (canPrev) "previous" else null, "play/pause", if (canNext) "next" else null).joinToString(", ") +
             " · artwork: " + when {
@@ -139,6 +139,10 @@ class PlaybackService : Service() {
             val again = intent?.let { Intent(it) } ?: return
             artLoader.execute {
                 val bmp = runCatching {
+                    if (newArt.startsWith("data:image/")) {
+                        val bytes = android.util.Base64.decode(newArt.substringAfter(','), android.util.Base64.DEFAULT)
+                        return@runCatching android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    }
                     val c = java.net.URL(newArt).openConnection() as java.net.HttpURLConnection
                     c.connectTimeout = 10_000; c.readTimeout = 10_000
                     c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) WhitelistBrowser")
@@ -254,6 +258,26 @@ class PlaybackService : Service() {
       var wrapped = function (a, h) { handlers[a] = h; return set.apply(this, arguments); };
       wrapped.__wlb = true;
       MS.setActionHandler = wrapped;
+    }
+  } catch (e) {}
+  // Android's browser engine doesn't have Media Session (where sites describe what's playing and register their
+  // buttons), so sites like YouTube Music don't describe anything. It's provided here, before the site's own scripts:
+  // the site finds it as in Chrome, and what it sets is passed on to the notification.
+  try {
+    if (!('mediaSession' in navigator)) {
+      if (!window.MediaMetadata) {
+        window.MediaMetadata = function (init) {
+          init = init || {};
+          this.title = init.title || ''; this.artist = init.artist || ''; this.album = init.album || '';
+          this.artwork = Array.isArray(init.artwork) ? init.artwork.slice() : [];
+        };
+      }
+      var session = {
+        metadata: null, playbackState: 'none',
+        setActionHandler: function (a, h) { handlers[a] = h; },
+        setPositionState: function () {}, setCameraActive: function () {}, setMicrophoneActive: function () {}
+      };
+      Object.defineProperty(Navigator.prototype, 'mediaSession', { configurable: true, get: function () { return session; } });
     }
   } catch (e) {}
   // What's playing, as the site last described it: kept, since some sites clear it when paused.
