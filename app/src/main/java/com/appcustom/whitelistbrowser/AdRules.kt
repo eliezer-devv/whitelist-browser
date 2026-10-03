@@ -21,6 +21,9 @@ object AdRules {
     @Volatile private var scriptletsVersion = ""
     @Volatile var status = "Not loaded yet"
         private set
+    /** How many rules each list gave (for About this phone), e.g. "Base 98k · Mobile Ads 3k · …". */
+    @Volatile var listsSummary = ""
+        private set
     private const val PREFS = "adrules"
     private const val DAY = 24 * 3_600_000L
 
@@ -36,11 +39,20 @@ object AdRules {
     /** Reads everything (in the background): at start, and after each update. */
     fun load(ctx: Context) {
         val loaded = HashMap<String, AdFilters>()
+        val counts = ArrayList<String>()
         for ((group, lists) in Config.AD_FILTER_GROUPS) {
             val f = AdFilters()
-            for ((name, _) in lists) read(ctx, name)?.let { f.add(it) }
+            for ((name, _) in lists) {
+                val before = f.kept
+                val text = read(ctx, name)
+                if (text != null) f.add(text)
+                val n = f.kept - before
+                val label = name.removePrefix("adguard-").removeSuffix(".txt").replaceFirstChar { it.uppercase() }
+                counts += "$label " + (if (text == null) "missing" else if (n >= 1000) "${n / 1000}k" else "$n")
+            }
             loaded[group] = f
         }
+        listsSummary = counts.joinToString(" · ")
         val lib = read(ctx, "scriptlets.json")?.let { parseScriptlets(it) }
         groups = loaded
         extendedCss = read(ctx, "extended-css.js")?.takeIf { it.contains("ExtendedCss") }
@@ -106,6 +118,23 @@ object AdRules {
     }.getOrNull()
 
     private fun on(which: Set<String>) = groups.filterKeys { it in which }.values
+
+    /**
+     * What AdGuard does on [host]'s pages (for About this phone, to see why ads might get through): its scriptlets
+     * and scripts, whether AdGuard's code has each scriptlet, and how many elements are hidden.
+     */
+    fun describe(host: String?, which: Set<String>, runsFirst: Boolean): String {
+        val h = host?.lowercase()?.removePrefix("www.") ?: return "No site open"
+        if (which.isEmpty()) return "Off here"
+        val rules = on(which).flatMap { it.scriptsFor(h) }.distinct()
+        val names = rules.mapNotNull { AdFilters.scriptletParts(it)?.firstOrNull() }
+        val missing = names.filter { it !in scriptlets }.distinct()
+        val hidden = on(which).sumOf { Regex("\\{display:none").findAll(it.hideCss(h)).count() }
+        val grouped = names.groupingBy { it }.eachCount().entries.joinToString(", ") { if (it.value > 1) "${it.key} ×${it.value}" else it.key }
+        return "$h: ${names.size} scriptlets" + (if (grouped.isNotEmpty()) " ($grouped)" else "") +
+            ", ${rules.size - names.size} scripts, $hidden elements hidden. Scripts run first: ${if (runsFirst) "yes" else "no (they may run too late)"}" +
+            (if (missing.isNotEmpty()) ". AdGuard's code is missing: ${missing.joinToString(", ")}" else "")
+    }
 
     /** Is this address (loaded by a page on [pageHost]) blocked by the groups switched on ([which])? */
     fun blocks(url: android.net.Uri, pageHost: String?, which: Set<String>): Boolean {

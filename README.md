@@ -300,8 +300,8 @@ all on unless switched off:
 | **Block trackers** | Tracking Protection, URL Tracking | Trackers and analytics; tracking codes (`utm_source`, `fbclid`…) taken out of addresses when a page opens |
 | **Hide annoyances** | Cookie Notices, Popups, Mobile App Banners, Other Annoyances, Widgets, Social Media | Cookie notices, pop-ups, "get our app" banners, widgets, like and share buttons |
 
-**If a site doesn't look or work right,** admin page → **Settings** → **Filters off on some sites**: add the site and
-switch off just the group causing it, on that site's pages only (for every phone). It's usually **Annoyances**: its
+**If a site doesn't look or work right,** admin page → **Sites** → the site → **Filters off on this site's pages**:
+switch off just the group causing it, on that site's pages only (for the phones using that list). It's usually **Annoyances**: its
 rules for every site occasionally hide something a particular site needs. The app also follows AdGuard's own
 per-site exceptions (`$generichide`, `$specifichide`, `$elemhide`, `$jsinject`, `$document`), which is how AdGuard
 itself keeps known sites from breaking. **Never block these addresses** is different: addresses that are never
@@ -316,6 +316,10 @@ What the app follows from AdGuard's lists:
 - **AdGuard's scriptlets and site scripts,** run with **AdGuard's own code** for them (YouTube's ads especially),
   **before the page's own scripts**, as AdGuard runs them (needed for YouTube, which reads its ad data as it loads).
 - **Tracking codes in addresses**, taken out when a page opens.
+
+**Checking it:** **⋮ → Settings → About this phone** shows **Ad lists** (how many rules each list gave) and **Ad blocking
+on this page** (for the open page: AdGuard's scriptlets and scripts there, elements hidden, whether scripts run before
+the page's own, and any scriptlet AdGuard's code is missing).
 
 **Where it all comes from: AdGuard.** Phones download its lists and its scriptlet and ExtendedCss code **once a day**,
 so its updates arrive by themselves: you never update the app for them. A copy is packed into the app when it's
@@ -1196,8 +1200,8 @@ People never see it.
   the list** are a row of buttons at its top.
 - **⋮ → Desktop site** (on a site): shows that site's desktop version, remembered for that site until switched off
   (shown **On** in the menu). Other sites stay as phone sites. Like Chrome's, it introduces itself as a desktop
-  browser **and** lays the page out at desktop width (zoomed out to fit), so sites that adapt to the screen's width
-  (most do) show their desktop layout too.
+  browser **and** lays the page out at desktop width, opened **zoomed out so the whole page fits** (pinch to zoom in),
+  so sites that adapt to the screen's width (most do) show their desktop layout too.
 - **⋮ → Settings** holds **Appearance**, **Phone's browser**, **Cookies and site data**, **Clear cache**, **App update**
   and **About this phone**.
 - **Sheets that slide up from the bottom** can be dragged by their handle: down to close, up to fill the screen.
@@ -1208,7 +1212,9 @@ People never see it.
 A site's sound (music, a podcast, a video's sound) **keeps playing when you leave the app** or the screen turns off:
 a **media notification** shows what's playing as the site describes it (title, artist, artwork), with **Previous**,
 **Play/Pause** and **Next** where the site has them, and **Stop**. The same controls work on the lock screen, in the
-quick settings media panel, and with headphone and Bluetooth buttons. It goes when you come back to the app, when
+quick settings media panel, and with headphone and Bluetooth buttons. Where a site has no previous / next, there's
+**back 10 s** / **forward 10 s**, and (newer Android) a progress bar to drag. No artwork from the site: the video's
+preview picture, or the page's sharing picture. It goes when you come back to the app, when
 nothing's left to play, or after 10 minutes paused. (Sites that stop playing when they're hidden, like YouTube, are told they're still showing.)
 
 **Browsing elsewhere while it plays:** leaving a site that's playing (a link, an address, **Home** or **Back**) moves

@@ -811,7 +811,9 @@ class MainActivity : Activity() {
     private val DESKTOP_SCRIPT = """
 (function () {
   if (window.__wlbDesk) return; window.__wlbDesk = true;
-  var W = 'width=1024';
+  // Desktop width, opened zoomed out so the whole page fits the screen (pinch to zoom in).
+  var fit = Math.min(1, Math.max(0.2, (screen.width || 390) / 1024));
+  var W = 'width=1024, initial-scale=' + fit.toFixed(3);
   function fix(m) { if (m && m.getAttribute && (m.getAttribute('name') || '').toLowerCase() === 'viewport' && m.getAttribute('content') !== W) m.setAttribute('content', W); }
   function ensure() {
     var m = document.querySelector('meta[name="viewport" i]');
@@ -974,7 +976,7 @@ class MainActivity : Activity() {
             if (i?.action != PlaybackService.ACTION_MEDIA) return
             when (val cmd = i.getStringExtra(PlaybackService.EXTRA_CMD)) {
                 "stop" -> stopSound()
-                "play", "pause", "nexttrack", "previoustrack" -> {
+                "play", "pause", "nexttrack", "previoustrack", "seekbackward", "seekforward" -> {
                     // Pressed on the page that's playing (the player tab, if there is one), then the controls catch up.
                     // A page may only start sound after a tap on it: a media button counts as one, just for a moment.
                     val target = player ?: web
@@ -983,6 +985,8 @@ class MainActivity : Activity() {
                     main.postDelayed({ runCatching { target.settings.mediaPlaybackRequiresUserGesture = true } }, 2_000)
                     main.removeCallbacks(soundCheck); main.postDelayed(soundCheck, 700)
                 }
+                else -> if (cmd?.startsWith("seekto:") == true && cmd.drop(7).all { it.isDigit() })      // dragging the progress bar
+                    (player ?: web).evaluateJavascript("window.__wlbMediaDo && window.__wlbMediaDo('$cmd')", null)
             }
         }
     }
@@ -1564,8 +1568,8 @@ class MainActivity : Activity() {
         }
 
         @android.webkit.JavascriptInterface
-        fun failed(code: String) {
-            if (blobCodes.remove(code) != null) main.post { toast("This file couldn't be saved") }
+        fun failed(code: String, why: String) {
+            if (blobCodes.remove(code) != null) main.post { toast("This file couldn't be saved ($why)") }
         }
     }
 
@@ -1583,9 +1587,11 @@ class MainActivity : Activity() {
             val code = java.util.UUID.randomUUID().toString()
             blobCodes[code] = name to type
             toast("Saving $name")
-            val js = "(function(u,c){fetch(u).then(function(r){return r.blob();}).then(function(b){" +
-                "var f=new FileReader();f.onloadend=function(){WLBlobSaver.save(c,String(f.result));};f.readAsDataURL(b);" +
-                "}).catch(function(){WLBlobSaver.failed(c);});})(" + org.json.JSONObject.quote(url) + "," + org.json.JSONObject.quote(code) + ");"
+            // The file as the page kept it (it may already have let go of the address), else fetched from the address.
+            val js = "(function(u,c){var k=window.__wlbFiles&&window.__wlbFiles.get(u);" +
+                "(k?Promise.resolve(k):fetch(u).then(function(r){return r.blob();})).then(function(b){" +
+                "var f=new FileReader();f.onloadend=function(){if(f.error)WLBlobSaver.failed(c,String(f.error));else WLBlobSaver.save(c,String(f.result));};f.readAsDataURL(b);" +
+                "}).catch(function(e){WLBlobSaver.failed(c,String(e&&e.message||e));});})(" + org.json.JSONObject.quote(url) + "," + org.json.JSONObject.quote(code) + ");"
             web.evaluateJavascript(js, null)
         }
     }
@@ -1952,7 +1958,7 @@ class MainActivity : Activity() {
         val offHere = Requests.kindList(mediaKind)
         if (!mediaBack) {
             if (action == Requests.Action.ALLOW) {
-                d.add(Ui.label(this, "Without"))
+                d.add(Ui.label(this, "Block"))
                 chips = Ui.Chips(this, kindLabels, kindIcons, emptySet(), tinyBar).also { d.add(it.view, 6) }
             } else {
                 d.add(Ui.label(this, "Block"))
@@ -2183,6 +2189,18 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * How a request shows in My requests: an approval only once its change has reached this phone (as with the
+     * answer's pop-up), until then still waiting (and not tickable in approval mode); after 10 minutes, shown anyway.
+     */
+    private fun shownAs(item: MyRequests.Item): MyRequests.Item {
+        val holding = item.status == "approved" && !item.seen && !changeArrived(item) &&
+            System.currentTimeMillis() - item.answered < 10 * 60_000L
+        if (!holding) return item
+        return MyRequests.Item(item.number, item.summary, item.asked, "waiting", "Waiting for an answer", 0L, true,
+            item.archived, item.request, pinChecking = true)
+    }
+
     /** Is the open page the one [item] was about (so reloading it shows the change)? */
     private fun aboutThisPage(item: MyRequests.Item): Boolean {
         val r = item.request ?: return false
@@ -2277,7 +2295,7 @@ class MainActivity : Activity() {
         fun whenText(r: MyRequests.Item) = if (r.status == "waiting") "Asked ${shortDate(r.asked)}" else "Answered ${shortDate(r.answered)}"
         if (!archive) {
             val notSent = Outbox.waitingRequestsWithIds(this).reversed()
-            val sent = MyRequests.all(this).filter { !it.archived }
+            val sent = MyRequests.all(this).filter { !it.archived }.map { shownAs(it) }
             var archiveButton: Button? = null
             d.title("My requests")
             // Tapping the title 7 times (within a few seconds): approval mode, to approve or deny with the PIN.
@@ -2359,7 +2377,7 @@ class MainActivity : Activity() {
                 d.add(list, 8)
                 // Nothing that can be ticked (e.g. all waiting for their PIN to be checked): no Approve or Deny.
                 if (sent.none { it.status == "waiting" && !it.pinChecking }) {
-                    if (sent.any { it.pinChecking }) d.add(Ui.text(this, "Waiting for GitHub to check the PIN.", 13.5f, Ui.MUTED), 8)
+                    if (sent.any { it.pinChecking }) d.add(Ui.text(this, "Waiting for these to be answered.", 13.5f, Ui.MUTED), 8)
                     d.show()
                     return
                 }
@@ -3080,6 +3098,9 @@ class MainActivity : Activity() {
         if (waiting > 0) phone += row("Waiting to send", "$waiting (${Outbox.lastProblem ?: "sends when online"})")
         phone += row("App version", BuildConfig.VERSION_NAME)
         phone += row("Ad blocking", AdRules.status)
+        if (AdRules.listsSummary.isNotEmpty()) phone += row("Ad lists", AdRules.listsSummary)
+        phone += row("Ad blocking on this page", AdRules.describe(web.url?.let { Uri.parse(it).host }, adGroups(web.url?.let { Uri.parse(it).host }),
+            androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)))
         Ui.AppDialog(this, sheet = true).apply {
             title("About this phone", icon = R.drawable.ic_d_user)
             add(table(phone))

@@ -45,7 +45,7 @@ public final class AdFilters {
         Text(String text, boolean thirdPartyOnly) { this.text = text; this.thirdPartyOnly = thirdPartyOnly; }
     }
 
-    private static final int MAX_GENERIC_CSS = 6000;     // elements hidden on every page
+    private static final int MAX_GENERIC_CSS = 12000;    // elements hidden on every page
     private static final int MAX_ANYWHERE = 4000;        // "anywhere in the address" texts
     private static final int MAX_REGEX = 2000;           // address patterns written as regular expressions
 
@@ -56,6 +56,8 @@ public final class AdFilters {
     private final LinkedHashSet<String> genericCss = new LinkedHashSet<>();
     private final Map<String, List<String>> siteCss = new HashMap<>();
     private final Map<String, List<String>> siteUnhide = new HashMap<>();
+    // "Everywhere except…" (~site.com##.x) and "on this site except part of it": selector -> sites where it doesn't apply.
+    private final Map<String, List<String>> hideExcept = new HashMap<>();
     private final Map<String, List<String>> scripts = new HashMap<>();      // site ("" = every site) -> script rules
     private final Map<String, Set<String>> scriptsOff = new HashMap<>();    // site -> script rules switched off there
     private final List<RegexRule> regexRules = new ArrayList<>();
@@ -89,19 +91,39 @@ public final class AdFilters {
     public void add(String listText) {
         for (String raw : listText.split("\r?\n")) {
             String l = raw.trim();
-            if (l.isEmpty() || l.charAt(0) == '!' || l.charAt(0) == '[') continue;
+            // Comments, and headers like "[Adblock Plus 2.0]" (but not "[$path=…]" rules).
+            if (l.isEmpty() || l.charAt(0) == '!' || (l.charAt(0) == '[' && !l.startsWith("[$"))) continue;
             read++;
             if (addRule(l)) kept++;
         }
     }
 
     private boolean addRule(String l) {
+        // "[$path=…]site#%#…": a script for some pages of the site. Sites like YouTube move between pages without
+        // loading a new one, so scripts run on the whole site (and do their work as you move around it). Other kinds
+        // with such a condition (hiding elements, say) are left out rather than applied too widely.
+        if (l.startsWith("[$")) {
+            int close = l.indexOf(']');
+            if (close < 0) return false;
+            String mods = l.substring(2, close), rest = l.substring(close + 1);
+            boolean onlyPath = true;
+            for (String m : mods.split(",")) if (!m.trim().toLowerCase().startsWith("path=")) onlyPath = false;
+            if (!onlyPath || !(rest.contains("#%#") && !rest.contains("#@%#"))) return false;
+            l = rest;
+        }
         Matcher cm = COSMETIC.matcher(l);
         if (cm.matches() && !l.startsWith("[$")) {
             String doms = cm.group(1), sep = cm.group(2), body = cm.group(3);
-            List<String> domains = new ArrayList<>();
-            for (String d : doms.split(",")) { d = d.trim().toLowerCase(); if (!d.isEmpty()) domains.add(d); }
-            for (String d : domains) if (d.startsWith("~") || !d.matches("[a-z0-9.*-]+")) return false;   // "except on…": left out
+            List<String> domains = new ArrayList<>(), except = new ArrayList<>();
+            for (String d : doms.split(",")) {
+                d = d.trim().toLowerCase();
+                if (d.isEmpty()) continue;
+                if (d.startsWith("~")) except.add(d.substring(1).replaceFirst("^www\\.", "")); else domains.add(d);
+            }
+            for (String d : domains) if (!d.matches("[a-z0-9.*-]+")) return false;
+            for (String d : except) if (!d.matches("[a-z0-9.*-]+")) return false;
+            // "Except on…" only for plain element hiding (other kinds: left out, rather than applied too widely).
+            if (!except.isEmpty() && !sep.equals("##")) return false;
             // AdGuard's scripts and scriptlets: #%# (on), #@%# (switched off there).
             if (sep.equals("#%#") || sep.equals("#@%#")) {
                 boolean off = sep.equals("#@%#");
@@ -129,6 +151,7 @@ public final class AdFilters {
             }
             if (!sep.equals("##") && !sep.equals("#@#")) return false;               // their exceptions: left out
             if (body.contains("+js(") || body.length() > 300) return false;
+            if (!except.isEmpty()) hideExcept.computeIfAbsent(body, k -> new ArrayList<>()).addAll(except);
             if (domains.isEmpty()) {
                 if (!sep.equals("##") || genericCss.size() >= MAX_GENERIC_CSS) return false;
                 genericCss.add(body);
@@ -366,25 +389,34 @@ public final class AdFilters {
         return out;
     }
 
-    /** The style hiding ad elements on [host]'s pages: everywhere-rules, its own, then its exceptions (they win). */
+    /**
+     * The style hiding ad elements on [host]'s pages: everywhere-rules and its own, minus the ones AdGuard says not to
+     * apply there (its exceptions, and "except on…" rules): those simply aren't hidden, as AdGuard does.
+     */
     public String hideCss(String host) {
         String h = host.toLowerCase().replaceFirst("^www\\.", "");
         StringBuilder css = new StringBuilder();
         if (off(h, NO_HIDING)) return "";
-        if (!off(h, NO_GENERIC)) for (String s : genericCss) css.append(s).append("{display:none!important}");
-        if (!off(h, NO_SPECIFIC)) for (String p : withParents(h)) {
+        List<String> sites = withParents(h);
+        Set<String> notHere = new HashSet<>();
+        for (String p : sites) { List<String> un = siteUnhide.get(p); if (un != null) notHere.addAll(un); }
+        if (!off(h, NO_GENERIC)) for (String s : genericCss) if (!notHere.contains(s) && !exceptedHere(s, h)) css.append(s).append("{display:none!important}");
+        if (!off(h, NO_SPECIFIC)) for (String p : sites) {
             List<String> own = siteCss.get(p);
-            if (own != null) for (String s : own) css.append(s).append("{display:none!important}");
+            if (own != null) for (String s : own) if (!notHere.contains(s) && !exceptedHere(s, h)) css.append(s).append("{display:none!important}");
         }
         for (String p : withParents(h)) {
             List<String> st = siteStyles.get(p);
             if (st != null) for (String s : st) css.append(s);
         }
-        for (String p : withParents(h)) {
-            List<String> un = siteUnhide.get(p);
-            if (un != null) for (String s : un) css.append(":root ").append(s).append("{display:revert!important}");
-        }
         return css.toString();
+    }
+
+    private boolean exceptedHere(String selector, String host) {
+        List<String> ex = hideExcept.get(selector);
+        if (ex == null) return false;
+        for (String e : ex) if (host.equals(e) || host.endsWith("." + e)) return true;
+        return false;
     }
 
     /** AdGuard's script rules for [host] ("//scriptlet('name', 'arg'…)" or a script), minus those switched off there. */

@@ -244,8 +244,9 @@ object Ui {
             }
             thumbDrawable = android.graphics.drawable.StateListDrawable().apply {
                 // On: white, 22dp (a 3dp gap inside the track).
+                // (With its own outline, so a white knob still stands out on a pale accent.)
                 addState(on, android.graphics.drawable.InsetDrawable(GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL; setColor(Color.WHITE); setSize(dp(ctx, 22), dp(ctx, 22))
+                    shape = GradientDrawable.OVAL; setColor(Color.WHITE); setStroke(dp(ctx, 1), outlineOf(ACCENT)); setSize(dp(ctx, 22), dp(ctx, 22))
                 }, dp(ctx, 3)))
                 // Off: dark grey, 16dp (a 6dp gap), the outline's colour.
                 addState(intArrayOf(), android.graphics.drawable.InsetDrawable(GradientDrawable().apply {
@@ -581,7 +582,7 @@ object Ui {
 
     /** A switch's outline when on: the accent, deeper (light mode) or lighter (dark mode). */
     fun outlineOf(c: Int): Int {
-        val f = if (dark) 0.45f else 0.35f
+        val f = if (dark) 0.6f else 0.55f                       // clearly deeper (or lighter): a visible ring
         val to = if (dark) 255 else 0
         fun mix(x: Int) = (x + (to - x) * f).toInt()
         return Color.rgb(mix(Color.red(c)), mix(Color.green(c)), mix(Color.blue(c)))

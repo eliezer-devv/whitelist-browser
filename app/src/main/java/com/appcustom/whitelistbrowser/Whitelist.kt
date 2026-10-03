@@ -18,7 +18,8 @@ object Whitelist {
                     val subdomains: Boolean = true,
                     val pages: List<String> = emptyList(),   // empty = the whole site; else only these pages
                     val frames: Boolean = false,             // content embedded from any site works on its pages
-                    val unfiltered: Boolean = false) {       // approved "anyway": the content filters don't apply to it
+                    val unfiltered: Boolean = false,         // approved "anyway": the content filters don't apply to it
+                    val filtersOff: Set<String> = emptySet()) { // AdGuard's groups switched off on its pages
         fun matches(host: String): Boolean {
             // "www.example.com" means the site itself, example.com, as does "example.com".
             val base = domain.removePrefix("www.")
@@ -172,7 +173,8 @@ object Whitelist {
                 // A page-only site's tile opens its first page unless "url" says otherwise.
                 val tileUrl = if (item.optString("url").isBlank() && pages.isNotEmpty()) "https://${pages[0]}" else url
                 Site(domain, name, tileUrl, item.optBoolean("home", true), item.optBoolean("subdomains", true), pages,
-                    item.optBoolean("frames", false), item.optBoolean("unfiltered", false))
+                    item.optBoolean("frames", false), item.optBoolean("unfiltered", false),
+                    item.optJSONArray("filtersOff")?.let { a -> (0 until a.length()).map { a.optString(it) }.toSet() } ?: emptySet())
             }
             else -> null
         }
@@ -258,8 +260,9 @@ object Whitelist {
         val arr = b.getJSONArray("lists")
         val parts = (0 until arr.length()).map { arr.getJSONObject(it) }
         val states = parts.map { parse(it.getString("json"), fetchedAt) }
+        val allSites = states.flatMap { it.sites }
         return State(
-            sites = states.flatMap { it.sites },
+            sites = allSites,
             block = states.flatMap { it.block }.distinct(),
             blockPages = states.flatMap { it.blockPages }.distinct(),
             noMedia = states.flatMap { it.noMedia }.distinct(),
@@ -295,13 +298,9 @@ object Whitelist {
             annoyances = b.optBoolean("annoyances", true),
             adblockExceptions = b.optJSONArray("adblockExceptions")?.let { a ->
                 (0 until a.length()).mapNotNull { normalize(a.optString(it)) } } ?: emptyList(),
-            sitesFiltersOff = b.optJSONObject("sitesFiltersOff")?.let { o ->
-                o.keys().asSequence().mapNotNull { k ->
-                    val site = normalize(k)?.removePrefix("www.") ?: return@mapNotNull null
-                    val groups = o.optJSONArray(k) ?: return@mapNotNull null
-                    site to (0 until groups.length()).map { groups.optString(it) }.toSet()
-                }.toMap()
-            } ?: emptyMap()
+            // From each site's settings in this phone's lists (a site in several lists: all of them together).
+            sitesFiltersOff = allSites.filter { it.filtersOff.isNotEmpty() }.groupBy { it.domain.removePrefix("www.") }
+                .mapValues { (_, l) -> l.flatMap { it.filtersOff }.toSet() }
         )
     }
 
@@ -378,7 +377,6 @@ object Whitelist {
             .put("trackers", filter("trackers")).put("annoyances", filter("annoyances"))
             .put("pin", if (device?.has("pin") == true) device.optBoolean("pin") else devices?.optBoolean("pin", false) ?: false)
             .put("adblockExceptions", devices?.optJSONArray("adblockExceptions") ?: JSONArray())
-            .put("sitesFiltersOff", devices?.optJSONObject("sitesFiltersOff") ?: JSONObject())
             .toString()
         val now = System.currentTimeMillis()
         state = parseBundle(bundle, now)
