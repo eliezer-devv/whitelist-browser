@@ -1579,9 +1579,11 @@ class MainActivity : Activity() {
 
     private inner class BlobBridge {
         @android.webkit.JavascriptInterface
-        fun save(code: String, dataUrl: String) {
+        fun save(code: String, dataUrl: String, pageName: String) {
             val (name, type) = blobCodes.remove(code) ?: return          // not one the app asked for: ignored
-            main.post { writeDownload(name, type, dataUrl) }
+            // The name the page gave the download (Android doesn't pass it on), else the one worked out before.
+            val real = pageName.takeIf { it.isNotBlank() }?.let { downloadName("", "attachment; filename=\"${it.replace("\"", "")}\"", type) } ?: name
+            main.post { writeDownload(real, typeFor(real, type) ?: type, dataUrl) }
         }
 
         @android.webkit.JavascriptInterface
@@ -1607,7 +1609,8 @@ class MainActivity : Activity() {
             // The file as the page kept it (it may already have let go of the address), else fetched from the address.
             val js = "(function(u,c){var k=window.__wlbFiles&&window.__wlbFiles.get(u);" +
                 "(k?Promise.resolve(k):fetch(u).then(function(r){return r.blob();})).then(function(b){" +
-                "var f=new FileReader();f.onloadend=function(){if(f.error)WLBlobSaver.failed(c,String(f.error));else WLBlobSaver.save(c,String(f.result));};f.readAsDataURL(b);" +
+                "var n=(window.__wlbNames&&window.__wlbNames.get(u))||'';" +
+                "var f=new FileReader();f.onloadend=function(){if(f.error)WLBlobSaver.failed(c,String(f.error));else WLBlobSaver.save(c,String(f.result),n);};f.readAsDataURL(b);" +
                 "}).catch(function(e){WLBlobSaver.failed(c,String(e&&e.message||e));});})(" + org.json.JSONObject.quote(url) + "," + org.json.JSONObject.quote(code) + ");"
             web.evaluateJavascript(js, null)
         }

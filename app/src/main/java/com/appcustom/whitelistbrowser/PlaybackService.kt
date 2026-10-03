@@ -203,6 +203,15 @@ class PlaybackService : Service() {
       var self = this, args = arguments;
       setTimeout(function () { window.__wlbFiles.delete(u); try { rm.apply(self, args); } catch (e) {} }, 60000);
     };
+    // The name the page gives such a download (<a download="README.md">), which Android doesn't pass on: kept too,
+    // whether the link is tapped or "clicked" by the page's own code (often on a link that's never on the page).
+    window.__wlbNames = new Map();
+    var note = function (a) {
+      try { if (a && a.href && a.href.indexOf('blob:') === 0 && a.hasAttribute('download')) window.__wlbNames.set(a.href, a.getAttribute('download') || ''); } catch (e) {}
+    };
+    var click = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () { note(this); return click.apply(this, arguments); };
+    document.addEventListener('click', function (e) { note(e.target && e.target.closest ? e.target.closest('a') : null); }, true);
   }
   if (window.__wlbBg) return; window.__wlbBg = true;
   try {
