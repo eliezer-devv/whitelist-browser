@@ -518,7 +518,8 @@ class MainActivity : Activity() {
                 if (request.isForMainFrame && !request.isRedirect && leavesPlayingSite(url)) { moveToPlayer(); navigate(url); return true }
                 if (Whitelist.isAllowed(url, request.isForMainFrame)) {
                     // Opening a page: its tracking codes (utm_source, fbclid…) are taken out of its address first.
-                    if (request.isForMainFrame && request.method.equals("GET", ignoreCase = true)) {
+                    // (Not on a redirect: the server chose that address, e.g. GitHub's signed download addresses.)
+                    if (request.isForMainFrame && !request.isRedirect && request.method.equals("GET", ignoreCase = true)) {
                         val clean = AdRules.cleanUrl(url, adGroups(request.url.host))
                         if (clean != url) { registerEarlyScripts(clean); view?.loadUrl(clean); return true }
                     }
@@ -633,6 +634,7 @@ class MainActivity : Activity() {
             }
 
             override fun onPageCommitVisible(view: WebView?, url: String?) {
+                fitDesktop(view, url)
                 if (mediaOffHere) view?.evaluateJavascript(MediaBlock.script(photosOffHere, videosOffHere, soundOffHere, Whitelist.mediaAllowList()), null)
                 addAdScripts(view, url)
             }
@@ -642,6 +644,7 @@ class MainActivity : Activity() {
                 if (url != null && Whitelist.isAllowed(url)) siteScope(url)?.let { Tiles.rememberPage(this@MainActivity, it, url, view?.title) }
                 if (mediaOffHere) view?.evaluateJavascript(MediaBlock.script(photosOffHere, videosOffHere, soundOffHere, Whitelist.mediaAllowList()), null)
                 addAdScripts(view, url)
+                fitDesktop(view, url)
                 updateUi()
             }
 
@@ -840,6 +843,20 @@ class MainActivity : Activity() {
   } catch (e) {}
 })();
 """
+
+    /**
+     * A desktop site's page, zoomed out until the whole page fits the screen (as a pinch would): Android's browser
+     * doesn't always honour the page's own starting zoom. Once when it first shows, and again when it's loaded.
+     */
+    private fun fitDesktop(view: WebView?, url: String?) {
+        if (view == null || !isDesktop(url)) return
+        main.postDelayed({
+            if (view.url == url) {
+                var steps = 0
+                while (steps < 25 && view.zoomOut()) steps++          // stops at "fits the screen"
+            }
+        }, 250)
+    }
 
     /** The desktop sites' script, registered to run before their pages' own scripts (re-registered when they change). */
     private var desktopScripts: androidx.webkit.ScriptHandler? = null

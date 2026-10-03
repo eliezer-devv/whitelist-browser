@@ -47,6 +47,12 @@ class PlaybackService : Service() {
     private fun send(cmd: String) { sendBroadcast(Intent(ACTION_MEDIA).setPackage(packageName).putExtra(EXTRA_CMD, cmd)) }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        show(intent)
+        return START_NOT_STICKY
+    }
+
+    /** Builds (or rebuilds) the notification and the media session from what the page says is playing. */
+    private fun show(intent: Intent?) {
         val site = intent?.getStringExtra(EXTRA_SITE) ?: "a website"
         val title = intent?.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { "Playing from $site" }
         val artist = intent?.getStringExtra(EXTRA_ARTIST).orEmpty()
@@ -118,20 +124,27 @@ class PlaybackService : Service() {
             .build()
         if (Build.VERSION.SDK_INT >= 29) startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
         else startForeground(ID, n)
-        // The artwork: fetched once per picture, then the notification is shown again with it.
+        // The artwork: fetched once per picture, made small enough for a notification (a large picture makes the
+        // update fail silently), then the notification is rebuilt with it.
         if (newArt != null && newArt != artUrl) {
             artUrl = newArt
-            val again = Intent(intent ?: return START_NOT_STICKY)
+            val again = intent?.let { Intent(it) } ?: return
             artLoader.execute {
                 val bmp = runCatching {
                     val c = java.net.URL(newArt).openConnection() as java.net.HttpURLConnection
                     c.connectTimeout = 10_000; c.readTimeout = 10_000
+                    c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) WhitelistBrowser")
                     try { c.inputStream.use { android.graphics.BitmapFactory.decodeStream(it) } } finally { c.disconnect() }
-                }.getOrNull()
-                if (bmp != null && artUrl == newArt) { art = bmp; runCatching { startService(again) } }
+                }.getOrNull()?.let { full ->
+                    val scale = minOf(1f, 512f / maxOf(full.width, full.height))
+                    if (scale >= 1f) full else android.graphics.Bitmap.createScaledBitmap(full, (full.width * scale).toInt(), (full.height * scale).toInt(), true)
+                }
+                if (bmp != null && artUrl == newArt) {
+                    art = bmp
+                    android.os.Handler(mainLooper).post { runCatching { show(again) } }
+                }
             }
         } else if (newArt == null && artUrl != null) { artUrl = null; art = null }
-        return START_NOT_STICKY
     }
 
     override fun onDestroy() {

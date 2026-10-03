@@ -40,18 +40,31 @@ public final class AdFilters {
             this.name = name; this.re = re; this.site = site; this.onlyOn = onlyOn; this.notOn = notOn;
         }
     }
+    /**
+     * A rule that can match anywhere in an address ("/wp-content/" any text "/ads-"): the whole pattern, wildcards
+     * and all. Its longest plain part is only a quick first check (an address without it can't match).
+     */
     private static final class Text {
-        final String text; final boolean thirdPartyOnly;
-        Text(String text, boolean thirdPartyOnly) { this.text = text; this.thirdPartyOnly = thirdPartyOnly; }
+        final String token; final Pattern whole; final boolean thirdPartyOnly; final String[] onlyOn, notOn;
+        Text(String token, Pattern whole, boolean thirdPartyOnly, String[] onlyOn, String[] notOn) {
+            this.token = token; this.whole = whole; this.thirdPartyOnly = thirdPartyOnly; this.onlyOn = onlyOn; this.notOn = notOn;
+        }
+        boolean matches(String address, boolean third, String page) {
+            if (thirdPartyOnly && !third) return false;
+            if (onlyOn != null && (page == null || !under(page, onlyOn))) return false;
+            if (notOn != null && page != null && under(page, notOn)) return false;
+            return address.contains(token) && whole.matcher(address).find();
+        }
     }
 
     private static final int MAX_GENERIC_CSS = 12000;    // elements hidden on every page
-    private static final int MAX_ANYWHERE = 4000;        // "anywhere in the address" texts
+    private static final int MAX_ANYWHERE = 20000;       // "anywhere in the address" rules
     private static final int MAX_REGEX = 2000;           // address patterns written as regular expressions
 
     private final Map<String, List<NetRule>> block = new HashMap<>();
     private final Map<String, List<NetRule>> allow = new HashMap<>();
     private final List<Text> anywhere = new ArrayList<>();
+    private final List<Text> anywhereAllow = new ArrayList<>();      // their exceptions ("@@/some/path/")
     private final Set<String> anywhereSeen = new HashSet<>();
     private final LinkedHashSet<String> genericCss = new LinkedHashSet<>();
     private final Map<String, List<String>> siteCss = new HashMap<>();
@@ -242,12 +255,16 @@ public final class AdFilters {
             (exception ? allow : block).computeIfAbsent(host, k -> new ArrayList<>()).add(new NetRule(p, third, onlyOn, notOn));
             return true;
         }
-        if (exception || pattern.startsWith("|") || onlyOn != null || notOn != null) return false;
-        // "Anywhere in the address": its longest plain part, if distinctive enough.
+        // "Anywhere in the address" (and "starts with", "|https://…"): the whole pattern is matched, wildcards and all.
+        String pat = pattern.toLowerCase();
+        // The quick first check: the longest plain part, taken as the address is compared (without "https://").
+        String bare = pat.replaceFirst("^\\|", "").replaceFirst("^https?://", "");
         String best = "";
-        for (String part : pattern.toLowerCase().split("[*^|]")) if (part.length() > best.length()) best = part;
-        if (best.length() < 7 || !best.matches(".*[a-z].*") || anywhere.size() >= MAX_ANYWHERE || !anywhereSeen.add(best)) return false;
-        anywhere.add(new Text(best, third));
+        for (String part : bare.split("[*^|]")) if (part.length() > best.length()) best = part;
+        if (best.length() < 4 || !best.matches(".*[a-z0-9].*") || anywhere.size() >= MAX_ANYWHERE || !anywhereSeen.add((exception ? "@" : "") + pat)) return false;
+        Pattern whole = anywherePattern(pat);
+        if (whole == null) return false;
+        (exception ? anywhereAllow : anywhere).add(new Text(best, whole, third, onlyOn, notOn));
         return true;
     }
 
@@ -265,6 +282,26 @@ public final class AdFilters {
         } else name = value;
         removeParams.add(new RemoveParam(name, re, site, onlyOn, notOn));
         return true;
+    }
+
+    /**
+     * An "anywhere" pattern against the whole address (without "https://"): a star is any text, "^" a separator or the
+     * end; "|" at the start: the address starts there (with "https://" or "http://" in the rule, as written); at the end:
+     * it ends there.
+     */
+    private static Pattern anywherePattern(String p) {
+        boolean start = p.startsWith("|"), end = p.endsWith("|") && p.length() > 1;
+        if (start) p = p.substring(1);
+        if (end) p = p.substring(0, p.length() - 1);
+        p = p.replaceFirst("^https?://", "");                   // the address is matched without its scheme
+        StringBuilder sb = new StringBuilder(start ? "^" : "");
+        for (char c : p.toCharArray()) {
+            if (c == '*') sb.append(".*");
+            else if (c == '^') sb.append("(?:[/?&=:;]|$)");
+            else sb.append(Pattern.quote(String.valueOf(c)));
+        }
+        if (end) sb.append("$");
+        try { return Pattern.compile(sb.toString()); } catch (Exception e) { return null; }
     }
 
     /** "/ads/" + any text + ".js", "/api/stats/ads^": a star is any text; "^" a separator or the end. */
@@ -332,7 +369,12 @@ public final class AdFilters {
             }
         }
         String whole = (host + rest).toLowerCase();
-        for (Text t : anywhere) if ((!t.thirdPartyOnly || third) && whole.contains(t.text)) return true;
+        boolean hit = false;
+        for (Text t : anywhere) if (t.matches(whole, third, page)) { hit = true; break; }
+        if (hit) {
+            for (Text t : anywhereAllow) if (t.matches(whole, third, page)) return false;   // an exception wins
+            return true;
+        }
         if (url != null) for (RegexRule r : regexRules) {
             if (r.thirdPartyOnly && !third) continue;
             if (r.onlyOn != null && (page == null || !under(page, r.onlyOn))) continue;

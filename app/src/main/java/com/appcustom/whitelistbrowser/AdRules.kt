@@ -90,9 +90,9 @@ object AdRules {
         if (now - p.getLong("updated", 0L) < DAY) return
         p.edit().putLong("tried", now).apply()
         var got = 0
-        for ((name, url) in Config.AD_FILTER_GROUPS.values.flatten()) {
-            val text = download(url) ?: continue
-            if (text.lines().size < 50) continue                       // not a list (an error page, say)
+        for ((name, urls) in Config.AD_FILTER_GROUPS.values.flatten()) {
+            // The first address that gives a list (several may be given, " | " between them).
+            val text = urls.split(" | ").map { it.trim() }.firstNotNullOfOrNull { u -> download(u)?.takeIf { it.lines().size >= 20 } } ?: continue
             File(dir(ctx), "$name.new").writeText(text)
             File(dir(ctx), "$name.new").renameTo(File(dir(ctx), name))
             got++

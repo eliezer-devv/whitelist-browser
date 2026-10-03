@@ -23,7 +23,11 @@ object Config {
     // In three groups, each with its own switch (admin page): ads, trackers, annoyances.
     private const val AG = "https://filters.adtidy.org/extension/chromium/filters/"
     val AD_FILTER_GROUPS = mapOf(
-        "ads" to listOf("adguard-base.txt" to "${AG}2.txt", "adguard-mobile.txt" to "${AG}11.txt", "adguard-quickfixes.txt" to "${AG}24.txt"),
+        // (Several addresses, " | " between them: tried in order. AdGuard publishes Quick Fixes in some variants only.)
+        "ads" to listOf("adguard-base.txt" to "${AG}2.txt", "adguard-mobile.txt" to "${AG}11.txt",
+            "adguard-quickfixes.txt" to "${AG}24.txt | https://filters.adtidy.org/extension/chromium-mv3/filters/24.txt | " +
+                "https://filters.adtidy.org/extension/ublock/filters/24.txt | https://filters.adtidy.org/android/filters/24.txt | " +
+                "https://filters.adtidy.org/windows/filters/24.txt"),
         "trackers" to listOf("adguard-tracking.txt" to "${AG}3.txt", "adguard-urltracking.txt" to "${AG}17.txt"),
         "annoyances" to listOf("adguard-cookies.txt" to "${AG}18.txt", "adguard-popups.txt" to "${AG}19.txt",
             "adguard-appbanners.txt" to "${AG}20.txt", "adguard-otherannoyances.txt" to "${AG}21.txt",
