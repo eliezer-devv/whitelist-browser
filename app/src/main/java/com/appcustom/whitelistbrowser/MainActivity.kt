@@ -50,6 +50,22 @@ class MainActivity : Activity() {
     }
 
     private lateinit var web: WebView
+    private lateinit var loadBar: View
+
+    /** The loading bar: shown at once when a page starts opening, filling as it loads, gone when it's done. */
+    private fun showLoading(percent: Int) {
+        if (percent >= 100) {
+            if (loadBar.visibility != View.VISIBLE) return
+            loadBar.animate().scaleX(1f).setDuration(120).withEndAction {
+                loadBar.animate().alpha(0f).setDuration(200).withEndAction { loadBar.visibility = View.GONE }.start()
+            }.start()
+            return
+        }
+        if (loadBar.visibility != View.VISIBLE) { loadBar.visibility = View.VISIBLE; loadBar.alpha = 1f; loadBar.scaleX = 0f }
+        loadBar.animate().cancel()
+        loadBar.alpha = 1f
+        loadBar.animate().scaleX(maxOf(percent, 8) / 100f).setDuration(200).start()
+    }
     private lateinit var pageTitle: TextView
     private lateinit var status: TextView
     private lateinit var backBtn: ImageButton
@@ -130,6 +146,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         web = findViewById(R.id.web)
+        loadBar = findViewById<View>(R.id.loadBar).apply { setBackgroundColor(Ui.ACCENT); pivotX = 0f; scaleX = 0f }
         web.setBackgroundColor(Ui.PAGE)            // no white flash between pages in dark mode
         findViewById<View>(R.id.root).setBackgroundColor(Ui.BAR)
         window.statusBarColor = Ui.BAR
@@ -159,6 +176,9 @@ class MainActivity : Activity() {
 
         TempTime.load(this)       // time already used on "time on the site" temporary access
         Whitelist.loadCache(this) // last known list, so it works offline
+        val stopFilter = android.content.IntentFilter(PlaybackService.ACTION_STOP)
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(stopReceiver, stopFilter, Context.RECEIVER_NOT_EXPORTED)
+        else registerReceiver(stopReceiver, stopFilter)       // (before Android 13, only this app's own anyway)
         io.execute { AdRules.load(applicationContext); AdRules.update(applicationContext) }   // AdGuard's rules (updated daily)
         // Ad list: load the saved copy (or the one in the app) first, then fetch a fresh one if a week
         // has passed. In that order, so an old copy can never overwrite a fresh one.
@@ -187,6 +207,9 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         isResumedNow = true
+        main.removeCallbacks(soundCheck)
+        PlaybackService.stop(this)                            // back in the app: no "playing" notification
+        main.removeCallbacks(playCheck); main.postDelayed(playCheck, 3_000)
         refreshWhitelist() // check GitHub every time the app comes to the front
         io.execute { AdRules.update(applicationContext) }   // AdGuard's ad rules: once a day (checked at most hourly)
         maybeAutoCheckForUpdate()
@@ -199,7 +222,176 @@ class MainActivity : Activity() {
         isResumedNow = false
         main.removeCallbacks(refreshTask)
         main.removeCallbacks(tempTask)
+        keepPlayingIfSound()
         super.onPause()
+    }
+
+    // ---------- the player tab: a site's sound keeps playing while you browse elsewhere ----------
+
+    private var player: WebView? = null          // the playing page, kept running out of sight
+    private var playerSite = ""
+    private var playerIdleChecks = 0
+    private var mainPlaying = false              // is the open page playing sound? (checked every few seconds)
+    private var playerBar: LinearLayout? = null
+
+    /** Leaving the open page for [target] (another site) while it plays: it should move to the player tab. */
+    private fun leavesPlayingSite(target: String?): Boolean {
+        if (!mainPlaying || target == null) return false
+        val here = siteKeyOf(web.url) ?: return false
+        val there = siteKeyOf(target)
+        return there == null || (there != here && !there.endsWith(".$here") && !here.endsWith(".$there"))
+    }
+
+    /** Moves the playing page to the player tab (it keeps playing), and opens a fresh tab to browse on. */
+    private fun moveToPlayer() {
+        val old = web
+        val box = old.parent as? android.widget.FrameLayout ?: return
+        stopPlayer()                                           // only one at a time
+        playerSite = siteKeyOf(old.url) ?: "a website"
+        // The player: no navigating on its own, no pop-ups, ad blocking by its own site.
+        val site = Uri.parse(old.url ?: "").host
+        old.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?) = true
+            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                if (request == null || request.isForMainFrame) return null
+                val host = request.url.host ?: return null
+                val groups = adGroups(site)
+                if ("ads" in groups && AdBlock.isAd(host, Whitelist.state.adblockExceptions)) return AdBlock.blockedResponse()
+                if (groups.isNotEmpty() && !adExcepted(host) && AdRules.blocks(request.url, site, groups)) return AdBlock.blockedResponse()
+                return null
+            }
+        }
+        old.webChromeClient = object : WebChromeClient() {
+            override fun onJsAlert(v: WebView?, u: String?, m: String?, r: android.webkit.JsResult?) = true.also { r?.cancel() }
+            override fun onJsConfirm(v: WebView?, u: String?, m: String?, r: android.webkit.JsResult?) = true.also { r?.cancel() }
+            override fun onJsPrompt(v: WebView?, u: String?, m: String?, d: String?, r: android.webkit.JsPromptResult?) = true.also { r?.cancel() }
+            override fun onJsBeforeUnload(v: WebView?, u: String?, m: String?, r: android.webkit.JsResult?) = true.also { r?.confirm() }
+        }
+        old.layoutParams = android.widget.FrameLayout.LayoutParams(1, 1)   // out of sight, still running
+        old.alpha = 0f
+        old.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        player = old
+        playerIdleChecks = 0
+        // A fresh tab to browse on (under the loading bar).
+        val fresh = WebView(this)
+        box.addView(fresh, box.indexOfChild(loadBar), android.widget.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        web = fresh
+        mainPlaying = false
+        setupWebView()
+        showPlayerBar()
+    }
+
+    /** "Open" on the player bar: back to the playing page (the tab you were browsing in closes). */
+    private fun openPlayer() {
+        val p = player ?: return
+        val cur = web
+        val box = cur.parent as? android.widget.FrameLayout ?: return
+        player = null
+        hidePlayerBar()
+        p.layoutParams = android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        p.alpha = 1f
+        p.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        box.removeView(cur)
+        runCatching { cur.stopLoading(); cur.destroy() }
+        web = p
+        setupWebView()                                         // the full browser again
+        mainPlaying = true
+        updateUi()
+    }
+
+    /** "Stop" on the player bar (or the notification): the playing page closes. */
+    private fun stopPlayer() {
+        val p = player ?: return
+        player = null
+        hidePlayerBar()
+        runCatching {
+            p.stopLoading(); p.loadUrl("about:blank")
+            (p.parent as? ViewGroup)?.removeView(p)
+            p.destroy()
+        }
+        if (!isResumedNow) PlaybackService.stop(this)
+    }
+
+    /** The slim bar under the top bar while the player tab plays: "Playing from youtube.com", Open, Stop. */
+    private fun showPlayerBar() {
+        hidePlayerBar()
+        val box = web.parent as? View ?: return
+        val root = box.parent as? LinearLayout ?: return
+        fun dp(v: Int) = Ui.dp(this, v)
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setBackgroundColor(Ui.SOFT)
+            setPadding(dp(14), dp(2), dp(4), dp(2))
+            minimumHeight = dp(44)
+        }
+        bar.addView(android.widget.ImageView(this).apply {
+            setImageResource(R.drawable.ic_d_sound)
+            imageTintList = android.content.res.ColorStateList.valueOf(Ui.ACCENT_TEXT)
+        }, LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(10) })
+        bar.addView(Ui.text(this, "Playing from $playerSite", 14f, Ui.INK, "bold").apply {
+            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        fun action(label: String, run: () -> Unit) = bar.addView(Button(this).apply {
+            text = label; isAllCaps = false; typeface = Ui.boldFace; setTextColor(Ui.ACCENT_TEXT); background = null
+            minWidth = dp(56); minimumWidth = dp(56); setOnClickListener { run() }
+        })
+        action("Open") { openPlayer() }
+        action("Stop") { stopPlayer() }
+        root.addView(bar, root.indexOfChild(box), LinearLayout.LayoutParams(-1, -2))
+        playerBar = bar
+    }
+
+    private fun hidePlayerBar() {
+        playerBar?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        playerBar = null
+    }
+
+    /** Every few seconds while the app is open: is the page playing? And has the player stopped for a minute? */
+    private val playCheck = object : Runnable {
+        override fun run() {
+            if (!isResumedNow || isDestroyed) return
+            web.evaluateJavascript("(window.__wlbPlaying ? window.__wlbPlaying() : 0)") { n -> mainPlaying = (n?.trim()?.toIntOrNull() ?: 0) > 0 }
+            player?.evaluateJavascript("(window.__wlbPlaying ? window.__wlbPlaying() : 0)") { n ->
+                if ((n?.trim()?.toIntOrNull() ?: 0) > 0) playerIdleChecks = 0
+                else if (++playerIdleChecks >= 20) stopPlayer()     // nothing for a minute: it closes
+            }
+            main.postDelayed(this, 3_000)
+        }
+    }
+
+    // ---------- sound in the background ----------
+
+    /** Leaving the app with a site's sound playing: it keeps playing, with a "playing" notification (Stop on it). */
+    private fun keepPlayingIfSound() {
+        main.removeCallbacks(playCheck)
+        if (player != null) { PlaybackService.start(this, playerSite); main.postDelayed(soundCheck, 30_000); return }
+        val site = web.url?.let { Uri.parse(it).host?.removePrefix("www.") } ?: return
+        web.evaluateJavascript("(window.__wlbPlaying ? window.__wlbPlaying() : 0)") { n ->
+            if ((n?.trim()?.toIntOrNull() ?: 0) > 0 && !isResumedNow) {
+                PlaybackService.start(this, site)
+                main.postDelayed(soundCheck, 30_000)
+            }
+        }
+    }
+
+    /** While in the background: once nothing's playing any more, the notification goes. */
+    private val soundCheck = object : Runnable {
+        override fun run() {
+            if (isResumedNow || isDestroyed) return
+            (player ?: web).evaluateJavascript("(window.__wlbPlaying ? window.__wlbPlaying() : 0)") { n ->
+                if ((n?.trim()?.toIntOrNull() ?: 0) == 0) PlaybackService.stop(this@MainActivity)
+                else main.postDelayed(this, 30_000)
+            }
+        }
+    }
+
+    /** The notification's Stop: everything playing on the page stops, and the notification goes. */
+    private fun stopSound() {
+        if (player != null) stopPlayer()
+        else web.evaluateJavascript("window.__wlbStopAll && window.__wlbStopAll()", null)
+        PlaybackService.stop(this)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -208,6 +400,9 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        stopPlayer()
+        PlaybackService.stop(this)                              // closed: nothing keeps playing
+        runCatching { unregisterReceiver(stopReceiver) }
         main.removeCallbacksAndMessages(null)
         networkCallback?.let { runCatching { getSystemService(android.net.ConnectivityManager::class.java).unregisterNetworkCallback(it) } }
         io.shutdownNow()
@@ -242,7 +437,12 @@ class MainActivity : Activity() {
             displayZoomControls = false
             useWideViewPort = true                  // lets a desktop site lay out at desktop width
         }
-        phoneAgent = web.settings.userAgentString
+        if (phoneAgent.isEmpty() || web.settings.userAgentString.contains("Android")) phoneAgent = web.settings.userAgentString
+        registerDesktopScripts()
+        // Sound keeps playing in the background: on every page, before its own scripts (see PlaybackService).
+        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            runCatching { androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, PlaybackService.PAGE_SCRIPT, setOf("*")) }
+        }
 
         web.webViewClient = object : WebViewClient() {
             // Links, form posts, JS navigation and server redirects.
@@ -297,12 +497,15 @@ class MainActivity : Activity() {
                     if (trail.lastOrNull() != url) trail += url
                     while (trail.size > 20) trail.removeAt(0)
                 }
+                // A link to another site while this one plays: it keeps playing in the player tab.
+                if (request.isForMainFrame && !request.isRedirect && leavesPlayingSite(url)) { moveToPlayer(); navigate(url); return true }
                 if (Whitelist.isAllowed(url, request.isForMainFrame)) {
                     // Opening a page: its tracking codes (utm_source, fbclid…) are taken out of its address first.
                     if (request.isForMainFrame && request.method.equals("GET", ignoreCase = true)) {
-                        val clean = AdRules.cleanUrl(url, adGroups())
-                        if (clean != url) { view?.loadUrl(clean); return true }
+                        val clean = AdRules.cleanUrl(url, adGroups(request.url.host))
+                        if (clean != url) { registerEarlyScripts(clean); view?.loadUrl(clean); return true }
                     }
+                    if (request.isForMainFrame) registerEarlyScripts(url)     // AdGuard's scripts: before the page's own
                     // Going to a site with the other version (desktop or phone): open it again as that.
                     if (request.isForMainFrame && !request.isRedirect && useAgentFor(url)) { view?.loadUrl(url); return true }
                     return false
@@ -342,17 +545,18 @@ class MainActivity : Activity() {
                     return MediaBlock.emptyResponse()
                 }
                 // Ad blocking: things a page loads from ad and tracker domains get an empty answer.
-                if (request != null && !request.isForMainFrame && Whitelist.state.adblock) {
+                val pageHost = topUrl?.let { Uri.parse(it).host }
+                if (request != null && !request.isForMainFrame && "ads" in adGroups(pageHost)) {
                     val host = request.url.host
                     if (host != null && AdBlock.isAd(host, Whitelist.state.adblockExceptions)) return AdBlock.blockedResponse()
                 }
                 // AdGuard's lists, by group (ads, trackers, annoyances): particular addresses and paths. A harmless
                 // empty answer (also for its "stand-in" rules). Not for sites on the "Never block these" list.
                 if (request != null && !request.isForMainFrame) {
-                    val groups = adGroups()
+                    val groups = adGroups(pageHost)
                     val host = request.url.host
                     if (groups.isNotEmpty() && host != null && !adExcepted(host) &&
-                        AdRules.blocks(request.url, topUrl?.let { Uri.parse(it).host }, groups)) return AdBlock.blockedResponse()
+                        AdRules.blocks(request.url, pageHost, groups)) return AdBlock.blockedResponse()
                 }
                 // Content filters (adult, gambling, malware): anything a page loads from a listed site gets an
                 // empty answer, even from sites on the phone's lists, unless that site was approved "anyway".
@@ -395,6 +599,9 @@ class MainActivity : Activity() {
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 topUrl = url
+                if (!HomePage.isHome(url)) showLoading(8)          // at once: something is happening
+                view?.evaluateJavascript(PlaybackService.PAGE_SCRIPT, null)   // (if it didn't run first already)
+                if (isDesktop(url)) view?.evaluateJavascript(DESKTOP_SCRIPT, null)
                 addAdScripts(view, url, early = true)    // YouTube's: as early as possible (before its player reads its data)
                 blockedFrames.clear()
                 frameNoteClosedFor = null      // closing the bar only lasts until the page loads again
@@ -439,6 +646,11 @@ class MainActivity : Activity() {
         }
 
         web.webChromeClient = object : WebChromeClient() {
+            override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                if (HomePage.isHome(view?.url) && newProgress < 100) return          // the home page opens at once
+                showLoading(newProgress)
+            }
+
             // A website's own pop-ups (alert, confirm, prompt, "Leave this page?"): in the app's look, headed with
             // the site's name. The site always gets an answer (closing the card counts as Cancel / Stay).
             override fun onJsAlert(view: WebView?, url: String?, message: String?, result: android.webkit.JsResult?): Boolean =
@@ -486,6 +698,7 @@ class MainActivity : Activity() {
     // ---------- navigation ----------
 
     private fun navigate(input: String) {
+        if (leavesPlayingSite(input) && input.startsWith("http")) moveToPlayer()   // the sound keeps playing
         var text = input.trim()
         if (text.isEmpty()) return
         trail.clear() // typed or home page: a new route
@@ -499,8 +712,8 @@ class MainActivity : Activity() {
             text = "https://$text"
         }
         if (Whitelist.isAllowed(text)) {
-            val clean = AdRules.cleanUrl(text, adGroups())            // without tracking codes
-            useAgentFor(clean); web.loadUrl(clean)
+            val clean = AdRules.cleanUrl(text, adGroups(Uri.parse(text).host))   // without tracking codes
+            useAgentFor(clean); registerEarlyScripts(clean); web.loadUrl(clean)
         } else showBlocked(text)
     }
 
@@ -512,18 +725,43 @@ class MainActivity : Activity() {
         return Whitelist.state.adblockExceptions.any { h == it || h.endsWith(".$it") }
     }
 
+    /**
+     * AdGuard's scripts for the site about to open, registered to run before the page's own scripts (the way AdGuard
+     * runs them: YouTube reads its ad data as it loads, so later is too late). Called just before a page opens.
+     */
+    private var earlyScripts: androidx.webkit.ScriptHandler? = null
+    private fun registerEarlyScripts(url: String) {
+        if (!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) return
+        earlyScripts?.remove(); earlyScripts = null
+        val u = Uri.parse(url)
+        val host = u.host ?: return
+        if (u.scheme != "https" && u.scheme != "http") return
+        if (adExcepted(host)) return
+        val code = AdRules.pageScript(host, adGroups(host)) ?: return
+        earlyScripts = runCatching {
+            androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, code, setOf("https://$host", "http://$host"))
+        }.getOrNull()
+    }
+
     /** Hides ad elements on the page, and on YouTube removes its ads from the player's data (when ads are blocked). */
-    /** AdGuard's groups switched on for this phone (admin page: Block ads, Block trackers, Hide annoyances). */
-    private fun adGroups(): Set<String> {
+    /**
+     * AdGuard's groups switched on for this phone (admin page: Block ads, Block trackers, Hide annoyances), minus any
+     * switched off on the pages of [pageHost]'s site (admin page: Filters off on some sites).
+     */
+    private fun adGroups(pageHost: String? = null): Set<String> {
         val s = Whitelist.state
-        return buildSet { if (s.adblock) add("ads"); if (s.trackers) add("trackers"); if (s.annoyances) add("annoyances") }
+        val on = buildSet { if (s.adblock) add("ads"); if (s.trackers) add("trackers"); if (s.annoyances) add("annoyances") }
+        val h = pageHost?.lowercase()?.removePrefix("www.") ?: return on
+        val off = s.sitesFiltersOff.filterKeys { h == it || h.endsWith(".$it") }.values.flatten().toSet()
+        return on - off
     }
 
     private fun addAdScripts(view: WebView?, url: String?, early: Boolean = false) {
-        val groups = adGroups()
-        if (view == null || url == null || groups.isEmpty()) return
+        if (view == null || url == null) return
         if (!url.startsWith("http://") && !url.startsWith("https://")) return
         val host = Uri.parse(url).host ?: return
+        val groups = adGroups(host)
+        if (groups.isEmpty()) return
         if (adExcepted(host)) return
         AdRules.pageScript(host, groups)?.let { view.evaluateJavascript(it, null) }                // scripts and scriptlets
         if (!early) {                                                                               // once the page is there
@@ -548,6 +786,53 @@ class MainActivity : Activity() {
         return "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) $chrome Safari/537.36"
     }
 
+    /**
+     * On a desktop site, before its own scripts: lays the page out at desktop width (1024) whatever its viewport
+     * setting says (responsive sites choose their layout by width, not by who's asking), and answers "is this a
+     * phone?" and "touch points?" like a desktop. As Chrome's "Desktop site" does.
+     */
+    private val DESKTOP_SCRIPT = """
+(function () {
+  if (window.__wlbDesk) return; window.__wlbDesk = true;
+  var W = 'width=1024';
+  function fix(m) { if (m && m.getAttribute && (m.getAttribute('name') || '').toLowerCase() === 'viewport' && m.getAttribute('content') !== W) m.setAttribute('content', W); }
+  function ensure() {
+    var m = document.querySelector('meta[name="viewport" i]');
+    if (m) fix(m);
+    else if (document.head) { m = document.createElement('meta'); m.setAttribute('name', 'viewport'); m.setAttribute('content', W); document.head.appendChild(m); }
+  }
+  new MutationObserver(function (records) {
+    records.forEach(function (r) {
+      if (r.type === 'attributes') fix(r.target);
+      else r.addedNodes.forEach(function (n) { if (n.tagName === 'META') fix(n); });
+    });
+  }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ['content', 'name'] });
+  ensure();
+  document.addEventListener('DOMContentLoaded', ensure);
+  try { Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { configurable: true, get: function () { return 0; } }); } catch (e) {}
+  try {
+    var ua = navigator.userAgentData;
+    if (ua) {
+      var fake = { brands: ua.brands, mobile: false, platform: 'Linux',
+        getHighEntropyValues: function (h) { return ua.getHighEntropyValues(h).then(function (v) { return Object.assign({}, v, { mobile: false, platform: 'Linux', model: '' }); }); },
+        toJSON: function () { return { brands: ua.brands, mobile: false, platform: 'Linux' }; } };
+      Object.defineProperty(Navigator.prototype, 'userAgentData', { configurable: true, get: function () { return fake; } });
+    }
+  } catch (e) {}
+})();
+"""
+
+    /** The desktop sites' script, registered to run before their pages' own scripts (re-registered when they change). */
+    private var desktopScripts: androidx.webkit.ScriptHandler? = null
+    private fun registerDesktopScripts() {
+        if (!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) return
+        desktopScripts?.remove(); desktopScripts = null
+        val sites = desktopSites()
+        if (sites.isEmpty()) return
+        val origins = sites.flatMap { listOf("https://$it", "https://*.$it", "http://$it", "http://*.$it") }.toSet()
+        desktopScripts = runCatching { androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, DESKTOP_SCRIPT, origins) }.getOrNull()
+    }
+
     /** Sets how the browser introduces itself for [url]'s site: desktop or phone. True if it changed. */
     private fun useAgentFor(url: String?): Boolean {
         if (phoneAgent.isEmpty()) return false
@@ -567,6 +852,7 @@ class MainActivity : Activity() {
         val on = !isDesktop(cur)
         if (on) now.add(key) else now.removeAll { key == it || key.endsWith(".$it") }
         desktopPrefs.edit().putStringSet("sites", now).apply()
+        registerDesktopScripts()
         useAgentFor(cur)
         web.reload()
         toast(if (on) "Showing the desktop site" else "Showing the phone site")
@@ -665,6 +951,11 @@ class MainActivity : Activity() {
         openLinkFrom(intent)                                    // a link from another app while this one is open
     }
 
+    /** The "playing" notification's Stop (a message only this app can send). */
+    private val stopReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: Context?, i: Intent?) { if (i?.action == PlaybackService.ACTION_STOP) stopSound() }
+    }
+
     /** Is this app the phone's default browser? */
     private fun isPhonesBrowser(): Boolean {
         if (Build.VERSION.SDK_INT >= 29) {
@@ -692,6 +983,7 @@ class MainActivity : Activity() {
     }
 
     private fun goHome() {
+        if (leavesPlayingSite(HomePage.URL)) moveToPlayer()      // the sound keeps playing in the player tab
         val custom = Whitelist.state.homepage
         if (custom != null) navigate(custom) else web.loadUrl(HomePage.URL)
     }
@@ -1424,7 +1716,12 @@ class MainActivity : Activity() {
 
     private fun goBackSkippingBlocked() {
         val steps = backSteps()
-        if (steps != 0) web.goBackOrForward(steps) else goHome()
+        if (steps == 0) { goHome(); return }
+        // Going back to another site while this one plays: it keeps playing in the player tab.
+        val list = web.copyBackForwardList()
+        val target = list.getItemAtIndex(list.currentIndex + steps)?.url
+        if (target != null && leavesPlayingSite(target)) { moveToPlayer(); navigate(target); return }
+        web.goBackOrForward(steps)
     }
 
     /** wlb://request?action=allow&url=... and wlb://back, from the home page or blocked page. */
@@ -1693,8 +1990,8 @@ class MainActivity : Activity() {
                 return@button
             }
             if (Requests.recentlySent(this, action, Requests.sentKey(subject, media, kind))) {
-                toast("You already asked about $subject. Wait for an answer.")
-                d.dismiss()
+                d.dismiss()                                          // first, so the message isn't closed with it
+                toast("You already asked about $subject. Wait for an answer, or cancel it in My requests to ask again.")
                 return@button
             }
             val note = noteField.text.toString().trim()
@@ -2009,7 +2306,8 @@ class MainActivity : Activity() {
                 }
                 sent.forEach { item ->
                     val row = requestRow(item.status, item.summary, item.message, whenText(item), card = true)
-                    if (item.status != "waiting") { row.alpha = 0.5f; list.addView(row, LinearLayout.LayoutParams(gap)); return@forEach }
+                    // Answered, or a PIN already sent for it (it comes back if the PIN was wrong): shown faded, not tickable.
+                    if (item.status != "waiting" || item.pinChecking) { row.alpha = 0.5f; list.addView(row, LinearLayout.LayoutParams(gap)); return@forEach }
                     val wrap = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
                     val box = android.widget.CheckBox(this).apply {
                         buttonTintList = android.content.res.ColorStateList.valueOf(Ui.ACCENT)
@@ -2028,6 +2326,12 @@ class MainActivity : Activity() {
                     list.addView(wrap, LinearLayout.LayoutParams(gap))
                 }
                 d.add(list, 8)
+                // Nothing that can be ticked (e.g. all waiting for their PIN to be checked): no Approve or Deny.
+                if (sent.none { it.status == "waiting" && !it.pinChecking }) {
+                    if (sent.any { it.pinChecking }) d.add(Ui.text(this, "Waiting for GitHub to check the PIN.", 13.5f, Ui.MUTED), 8)
+                    d.show()
+                    return
+                }
                 denyButton = d.button("Deny", Ui.Kind.DANGER) {
                     if (picked.isEmpty()) toast("Tick the requests first")
                     else answerWithPin(picked.toList(), approve = false) { d.dismiss(); showMyRequests(approving = true) }
@@ -2129,8 +2433,6 @@ class MainActivity : Activity() {
             add(Ui.text(this@MainActivity, items.joinToString("\n") { "• " + it.summary }, 14.5f, Ui.INK2))
             add(Ui.label(this@MainActivity, "Approval PIN"))
             add(field, 6)
-            add(Ui.text(this@MainActivity, (if (approve) "Each gets what it asked for." else "Each is told: Denied with the approval PIN.") +
-                " GitHub checks the PIN, then removes it.", 13f, Ui.MUTED))
             button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
             button(if (approve) "Approve" else "Deny", if (approve) Ui.Kind.PRIMARY else Ui.Kind.DANGER) { dlg ->
                 val pin = field.text.toString().trim()
@@ -2738,8 +3040,8 @@ class MainActivity : Activity() {
             row("Name", (st.deviceName ?: Device.name(this) ?: "Not set") + if (st.registered) "" else " (not registered yet)"),
             row("Setting up", Requests.setupStatus(this)),
             row("Lists", st.listNames.ifEmpty { listOf("none") }.joinToString(", ") { n ->
-                // A phone's own list is named after its ID: show the person's name instead.
-                if (n.equals(id, ignoreCase = true)) "${st.deviceName ?: Device.name(this) ?: "This phone"} (own list)"
+                // A phone's personal list is named after its ID: show the person's name instead.
+                if (n.equals(id, ignoreCase = true)) "${st.deviceName ?: Device.name(this) ?: "This phone"} (personal list)"
                 else if (n == "public") "Everyone" else n
             }),
             row("Allowed sites", st.allow.distinct().size.toString()))

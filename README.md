@@ -184,7 +184,8 @@ Setup is done.
   - *"No list loaded"* means the app has never downloaded a list, so everything is blocked.
 - **⋮ menu:**
   - **Ask for a new site** and **Ask to block** send requests (section 3). **My requests** shows them all with their answers.
-  - **Clear cache** removes stored copies of pages and pictures, so sites load fresh. Nothing else changes.
+  - **Clear cache** removes stored copies of pages and pictures **for every site** (not just the one that's open), so
+    sites load fresh. Nothing else changes: logins are in **Cookies and site data**.
   - **Clear cookies and site data** asks which to clear. Use it to sign out, or when a site misbehaves.
     - **Just this site** signs you out of the open site only. It erases what that site has saved and resets its camera,
       microphone and location answers. "This site" means the site as it appears on the list, including its subdomains,
@@ -299,8 +300,12 @@ all on unless switched off:
 | **Block trackers** | Tracking Protection, URL Tracking | Trackers and analytics; tracking codes (`utm_source`, `fbclid`…) taken out of addresses when a page opens |
 | **Hide annoyances** | Cookie Notices, Popups, Mobile App Banners, Other Annoyances, Widgets, Social Media | Cookie notices, pop-ups, "get our app" banners, widgets, like and share buttons |
 
-If a site misbehaves, switching off just one group (for one phone, or all) usually finds the cause; **Hide
-annoyances** is the likeliest, as it occasionally hides something a site needs.
+**If a site doesn't look or work right,** admin page → **Settings** → **Filters off on some sites**: add the site and
+switch off just the group causing it, on that site's pages only (for every phone). It's usually **Annoyances**: its
+rules for every site occasionally hide something a particular site needs. The app also follows AdGuard's own
+per-site exceptions (`$generichide`, `$specifichide`, `$elemhide`, `$jsinject`, `$document`), which is how AdGuard
+itself keeps known sites from breaking. **Never block these addresses** is different: addresses that are never
+blocked wherever they're loaded (for something a site loads from another address).
 
 What the app follows from AdGuard's lists:
 - **Address rules:** particular addresses and paths, regular-expression patterns, rules for some sites only, and
@@ -308,7 +313,8 @@ What the app follows from AdGuard's lists:
   answer of the right type rather than a refusal, which keeps more sites working.
 - **Hiding page elements:** everywhere and site by site; **style rules** as written; **advanced element rules**
   ("hide the box containing *Sponsored*") run with **AdGuard's own ExtendedCss code**.
-- **AdGuard's scriptlets and site scripts,** run with **AdGuard's own code** for them (YouTube's ads especially).
+- **AdGuard's scriptlets and site scripts,** run with **AdGuard's own code** for them (YouTube's ads especially),
+  **before the page's own scripts**, as AdGuard runs them (needed for YouTube, which reads its ad data as it loads).
 - **Tracking codes in addresses**, taken out when a page opens.
 
 **Where it all comes from: AdGuard.** Phones download its lists and its scriptlet and ExtendedCss code **once a day**,
@@ -535,8 +541,9 @@ admin page, and without signing in to the admin page on their phone.
   digits (6 is best).
 - **On the phone, it's hidden:** the person asks as usual, then you open **⋮** → **My requests** and **tap its title
   7 times**. That's **approval mode**: tick one or more waiting requests, tap **Approve** or **Deny**, and type the PIN
-  once for all of them: GitHub checks it **once**, then answers each (a wrong PIN counts as one wrong try). **Exit** (or
-  closing My requests) leaves approval mode.
+  once for all of them: GitHub checks it **once**, answers each, and publishes the lists once for all of them (a wrong
+  PIN counts as one wrong try). Requests waiting for their PIN to be checked can't be ticked again; if the PIN was
+  wrong, they can. **Exit** (or closing My requests) leaves approval mode.
 - **Approve** gives each request exactly what was asked, including a time limit or "without photos", and the site
   opens by itself within a minute or two. **Deny** tells the person *"Denied with the approval PIN"*. You still get the
   notifications, marked *"Approved (or Denied) on the phone with the approval PIN"*.
@@ -1188,12 +1195,25 @@ People never see it.
   **My requests** (with how many are waiting), and **Settings**. On tiny screens, **Forward**, **Reload** and **Check
   the list** are a row of buttons at its top.
 - **⋮ → Desktop site** (on a site): shows that site's desktop version, remembered for that site until switched off
-  (shown **On** in the menu). Other sites stay as phone sites.
+  (shown **On** in the menu). Other sites stay as phone sites. Like Chrome's, it introduces itself as a desktop
+  browser **and** lays the page out at desktop width (zoomed out to fit), so sites that adapt to the screen's width
+  (most do) show their desktop layout too.
 - **⋮ → Settings** holds **Appearance**, **Phone's browser**, **Cookies and site data**, **Clear cache**, **App update**
   and **About this phone**.
 - **Sheets that slide up from the bottom** can be dragged by their handle: down to close, up to fill the screen.
 - **First launch** asks for the person's **first and last name**. **About this phone** shows the phone's own list by
   the person's name.
+
+### Sound in the background
+A site's sound (music, a podcast, a video's sound) **keeps playing when you leave the app** or the screen turns off:
+a **"Playing from youtube.com"** notification shows, with **Stop**. It goes when you come back, or once nothing's
+playing. (Sites that stop playing when they're hidden, like YouTube, are told they're still showing.)
+
+**Browsing elsewhere while it plays:** leaving a site that's playing (a link, an address, **Home** or **Back**) moves
+it to a hidden **player tab**, where it keeps playing, and the new page opens in a fresh tab. A slim bar under the
+top bar says **"Playing from youtube.com"**, with **Open** (back to it, still playing; the tab you were browsing in
+closes) and **Stop**. One player at a time; it can't navigate on its own, and closes by itself after a minute of
+silence.
 
 ### Websites' own messages, and uploading files
 - **A website's own pop-ups** (an alert, *"Are you sure?"*, a box to type in, or *"Leave this page?"*) show in the

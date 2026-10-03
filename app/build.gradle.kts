@@ -63,3 +63,8 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 }
+
+dependencies {
+    // Google's WebView additions: lets AdGuard's scripts run before a page's own scripts (as AdGuard does).
+    implementation("androidx.webkit:webkit:1.11.0")
+}

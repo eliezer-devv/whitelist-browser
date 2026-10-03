@@ -70,6 +70,7 @@ object Whitelist {
         val adblockExceptions: List<String> = emptyList(), // domains never blocked as ads
         val trackers: Boolean = true,                      // AdGuard's tracker lists (and tracking codes in addresses)
         val annoyances: Boolean = true,                    // AdGuard's annoyance lists (cookie notices, pop-ups, widgets, social)
+        val sitesFiltersOff: Map<String, Set<String>> = emptyMap(), // site -> groups switched off on its pages
         // Embedded content allowed on a site: site -> sites whose content may show inside its pages
         // (a list's "embeds", approved from a request after the phone blocked it).
         val embeds: Map<String, List<String>> = emptyMap(),
@@ -293,7 +294,14 @@ object Whitelist {
             trackers = b.optBoolean("trackers", true),
             annoyances = b.optBoolean("annoyances", true),
             adblockExceptions = b.optJSONArray("adblockExceptions")?.let { a ->
-                (0 until a.length()).mapNotNull { normalize(a.optString(it)) } } ?: emptyList()
+                (0 until a.length()).mapNotNull { normalize(a.optString(it)) } } ?: emptyList(),
+            sitesFiltersOff = b.optJSONObject("sitesFiltersOff")?.let { o ->
+                o.keys().asSequence().mapNotNull { k ->
+                    val site = normalize(k)?.removePrefix("www.") ?: return@mapNotNull null
+                    val groups = o.optJSONArray(k) ?: return@mapNotNull null
+                    site to (0 until groups.length()).map { groups.optString(it) }.toSet()
+                }.toMap()
+            } ?: emptyMap()
         )
     }
 
@@ -370,6 +378,7 @@ object Whitelist {
             .put("trackers", filter("trackers")).put("annoyances", filter("annoyances"))
             .put("pin", if (device?.has("pin") == true) device.optBoolean("pin") else devices?.optBoolean("pin", false) ?: false)
             .put("adblockExceptions", devices?.optJSONArray("adblockExceptions") ?: JSONArray())
+            .put("sitesFiltersOff", devices?.optJSONObject("sitesFiltersOff") ?: JSONObject())
             .toString()
         val now = System.currentTimeMillis()
         state = parseBundle(bundle, now)

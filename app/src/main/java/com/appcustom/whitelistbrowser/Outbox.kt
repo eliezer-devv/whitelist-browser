@@ -59,7 +59,12 @@ object Outbox {
     }
 
     /** "Don't send": takes a request that hasn't been sent yet out of the outbox. */
-    fun cancel(ctx: Context, id: String) = remove(ctx, id)
+    /** Withdraws a request that hasn't been sent: it can be asked again straight away. */
+    @Synchronized fun cancel(ctx: Context, id: String) {
+        val items = read(ctx)
+        for (i in 0 until items.length()) items.getJSONObject(i).let { if (it.optString("id") == id) Requests.forget(ctx, it.optJSONObject("request")) }
+        remove(ctx, id)
+    }
 
     @Synchronized fun has(ctx: Context, kind: String): Boolean {
         val items = read(ctx)

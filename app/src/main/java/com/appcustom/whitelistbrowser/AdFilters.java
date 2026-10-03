@@ -62,6 +62,20 @@ public final class AdFilters {
     private final List<RemoveParam> removeParams = new ArrayList<>();
     private final Map<String, List<String>> siteStyles = new HashMap<>();   // site -> style rules (#$#)
     private final Map<String, List<String>> siteExtended = new HashMap<>(); // site -> advanced element rules (#?#, #$?#)
+    // AdGuard's per-site exceptions (how it keeps sites from breaking): site -> what's switched off there.
+    private static final String NO_GENERIC = "generichide", NO_SPECIFIC = "specifichide", NO_HIDING = "elemhide",
+        NO_SCRIPTS = "jsinject", NOTHING = "document";
+    private final Map<String, Set<String>> siteOff = new HashMap<>();
+    private static final Set<String> EXCEPTION_KINDS = new HashSet<>(java.util.Arrays.asList(
+        "generichide", "ghide", "specifichide", "shide", "elemhide", "ehide", "jsinject", "document", "doc", "content", "urlblock"));
+
+    private boolean off(String host, String what) {
+        for (String p : withParents(host)) {
+            Set<String> o = siteOff.get(p);
+            if (o != null && (o.contains(what) || o.contains(NOTHING))) return true;
+        }
+        return false;
+    }
     public int read, kept;
 
     private static final Pattern COSMETIC = Pattern.compile("^(.*?)(#@?%#|#@?\\$\\??#|#@?\\?#|#@?#)(.+)$");
@@ -135,6 +149,27 @@ public final class AdFilters {
         String[] onlyOn = null, notOn = null;
         String removeParam = null;
         int dollar = pattern.lastIndexOf('$');
+        if (exception && dollar > 0 && pattern.startsWith("||")) {
+            boolean any = false;
+            Set<String> kinds = new HashSet<>();
+            for (String o : pattern.substring(dollar + 1).split(",")) {
+                o = o.trim().toLowerCase();
+                if (EXCEPTION_KINDS.contains(o)) { any = true; kinds.add(o); }
+            }
+            if (any) {
+                Matcher hm = Pattern.compile("^[a-z0-9.-]+").matcher(pattern.substring(2).toLowerCase());
+                if (!hm.find()) return false;
+                String host = hm.group().replaceFirst("^www\\.", "");
+                Set<String> off = siteOff.computeIfAbsent(host, k -> new HashSet<>());
+                for (String k : kinds) {
+                    if (k.equals("ghide")) k = NO_GENERIC; else if (k.equals("shide")) k = NO_SPECIFIC; else if (k.equals("ehide")) k = NO_HIDING;
+                    else if (k.equals("doc")) k = NOTHING;
+                    else if (k.equals("content") || k.equals("urlblock")) continue;
+                    off.add(k);
+                }
+                return true;
+            }
+        }
         // Options after the last "$" (a rule for every address is just "$option", with nothing before it).
         if (dollar >= 0 && !(pattern.startsWith("/") && pattern.endsWith("/"))) {
             for (String o : pattern.substring(dollar + 1).split(",")) {
@@ -258,6 +293,7 @@ public final class AdFilters {
         host = host.toLowerCase().replaceFirst("^www\\.", "");
         String page = pageHost == null ? null : pageHost.toLowerCase().replaceFirst("^www\\.", "");
         boolean third = page == null || !siteOf(page).equals(siteOf(host));
+        if (page != null && off(page, NOTHING)) return false;
         List<String> hosts = withParents(host);
         for (String h : hosts) {
             List<NetRule> rs = allow.get(h);
@@ -324,6 +360,7 @@ public final class AdFilters {
     /** Advanced element rules for [host]'s pages, for AdGuard's ExtendedCss code ("selector { display: none … }"). */
     public List<String> extendedFor(String host) {
         String h = host.toLowerCase().replaceFirst("^www\\.", "");
+        if (off(h, NO_HIDING) || off(h, NO_SPECIFIC)) return new ArrayList<>();
         List<String> out = new ArrayList<>();
         for (String p : withParents(h)) { List<String> e = siteExtended.get(p); if (e != null) out.addAll(e); }
         return out;
@@ -333,8 +370,9 @@ public final class AdFilters {
     public String hideCss(String host) {
         String h = host.toLowerCase().replaceFirst("^www\\.", "");
         StringBuilder css = new StringBuilder();
-        for (String s : genericCss) css.append(s).append("{display:none!important}");
-        for (String p : withParents(h)) {
+        if (off(h, NO_HIDING)) return "";
+        if (!off(h, NO_GENERIC)) for (String s : genericCss) css.append(s).append("{display:none!important}");
+        if (!off(h, NO_SPECIFIC)) for (String p : withParents(h)) {
             List<String> own = siteCss.get(p);
             if (own != null) for (String s : own) css.append(s).append("{display:none!important}");
         }
@@ -352,6 +390,7 @@ public final class AdFilters {
     /** AdGuard's script rules for [host] ("//scriptlet('name', 'arg'…)" or a script), minus those switched off there. */
     public List<String> scriptsFor(String host) {
         String h = host.toLowerCase().replaceFirst("^www\\.", "");
+        if (off(h, NO_SCRIPTS)) return new ArrayList<>();
         List<String> sites = withParents(h);
         Set<String> off = new HashSet<>();
         for (String p : sites) { Set<String> o = scriptsOff.get(p); if (o != null) off.addAll(o); }

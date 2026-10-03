@@ -21,7 +21,8 @@ object MyRequests {
      *  hand, or answered more than 30 days ago). [asked] also identifies it. */
     class Item(val number: Int, val summary: String, val asked: Long, val status: String,
                val message: String, val answered: Long, val seen: Boolean, val archived: Boolean = false,
-               val request: JSONObject? = null)   // what was asked (to tell when the change has reached the phone)
+               val request: JSONObject? = null,   // what was asked (to tell when the change has reached the phone)
+               val pinChecking: Boolean = false)  // a PIN was sent for it: waiting for GitHub to check it
 
     @Synchronized private fun read(ctx: Context): JSONArray =
         runCatching { JSONArray(ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("items", "[]")) }
@@ -40,7 +41,7 @@ object MyRequests {
         val old = status != "waiting" && answered > 0 && System.currentTimeMillis() - answered > AUTO_ARCHIVE_MS
         return Item(o.optInt("number"), o.optString("summary"), o.optLong("asked"), status, o.optString("message"),
             answered, o.optBoolean("seen", true), o.optBoolean("archived", false) || (old && !o.optBoolean("restored", false)),
-            o.optJSONObject("request"))
+            o.optJSONObject("request"), status == "waiting" && o.optBoolean("pinChecking", false))
     }
 
     /** A request was sent (as GitHub issue [number]). [request]: what it asked for. */
@@ -83,13 +84,15 @@ object MyRequests {
         val items = read(ctx)
         for (i in 0 until items.length()) {
             val o = items.getJSONObject(i)
-            if (o.optInt("number") in numbers && o.optString("status", "waiting") == "waiting") o.put("message", "Checking the PIN…")
+            if (o.optInt("number") in numbers && o.optString("status", "waiting") == "waiting")
+                o.put("message", "Checking the PIN…").put("pinChecking", true).put("pinSentAt", System.currentTimeMillis())
         }
         write(ctx, items)
     }
 
     /** A waiting request was withdrawn on the phone ("Cancel request"). */
     @Synchronized fun markCancelled(ctx: Context, asked: Long) {
+        read(ctx).let { items -> for (i in 0 until items.length()) items.getJSONObject(i).let { if (it.optLong("asked") == asked) Requests.forget(ctx, it.optJSONObject("request")) } }
         val items = read(ctx)
         for (i in 0 until items.length()) {
             val o = items.getJSONObject(i)
@@ -171,8 +174,12 @@ object MyRequests {
                     val items = read(ctx)
                     for (i in 0 until items.length()) {
                         val o = items.getJSONObject(i)
-                        if (o.optInt("number") == number && o.optString("message") != answer.second) {
-                            o.put("message", answer.second).put("answered", System.currentTimeMillis()).put("seen", false)
+                        if (o.optInt("number") != number) continue
+                        // A notice from before the PIN was sent (an earlier wrong PIN, say) isn't the answer to it.
+                        if (o.optBoolean("pinChecking") && answer.third in 1 until o.optLong("pinSentAt") - 60_000L) continue
+                        if (o.optString("message") != answer.second || o.optBoolean("pinChecking")) {
+                            // e.g. "Wrong PIN": it can be ticked again in approval mode.
+                            o.put("message", answer.second).put("answered", System.currentTimeMillis()).put("seen", false).put("pinChecking", false)
                         }
                     }
                     write(ctx, items)
@@ -193,6 +200,7 @@ object MyRequests {
                     if (o.optInt("number") == number) {
                         o.put("status", status).put("message", message)
                             .put("answered", System.currentTimeMillis()).put("seen", false)
+                        Requests.forget(ctx, o.optJSONObject("request"))      // answered: it can be asked again
                     }
                 }
                 write(ctx, items)

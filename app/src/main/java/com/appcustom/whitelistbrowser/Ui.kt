@@ -233,7 +233,11 @@ object Ui {
             // track (a clear dark outline) with a smaller dark knob, so it stands out even on a white card.
             val on = intArrayOf(android.R.attr.state_checked)
             trackDrawable = android.graphics.drawable.StateListDrawable().apply {
-                addState(on, GradientDrawable().apply { setColor(ACCENT); cornerRadius = dp(ctx, 14).toFloat(); setSize(dp(ctx, 46), dp(ctx, 28)) })
+                // On: outlined too (a deeper shade of the accent; lighter in dark mode), so it stands out even
+                // when the accent is pale (e.g. with the phone's own colours).
+                addState(on, GradientDrawable().apply {
+                    setColor(ACCENT); setStroke(dp(ctx, 2), outlineOf(ACCENT)); cornerRadius = dp(ctx, 14).toFloat(); setSize(dp(ctx, 46), dp(ctx, 28))
+                })
                 addState(intArrayOf(), GradientDrawable().apply {
                     setColor(SEG); setStroke(dp(ctx, 2), MUTED); cornerRadius = dp(ctx, 14).toFloat(); setSize(dp(ctx, 46), dp(ctx, 28))
                 })
@@ -573,6 +577,14 @@ object Ui {
             var showing: AppDialog? = null
                 private set
         }
+    }
+
+    /** A switch's outline when on: the accent, deeper (light mode) or lighter (dark mode). */
+    fun outlineOf(c: Int): Int {
+        val f = if (dark) 0.45f else 0.35f
+        val to = if (dark) 255 else 0
+        fun mix(x: Int) = (x + (to - x) * f).toInt()
+        return Color.rgb(mix(Color.red(c)), mix(Color.green(c)), mix(Color.blue(c)))
     }
 
     /** The time wheels in the app's look: numbers in its colours and fonts, no grey lines. */

@@ -65,6 +65,11 @@
     .empty { padding: 1.5rem .5rem .5rem; }
     .ask { margin-top: 1.4rem; padding: .7rem 1.1rem; font-size: .9rem; }
   }
+  a.tile.opening { opacity: .6; transform: scale(.96); transition: opacity .15s, transform .15s; position: relative; }
+  a.tile.opening::after { content: ""; position: absolute; top: 6px; right: 6px; width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--accent, #1F5F55); border-right-color: transparent; animation: wlb-spin .7s linear infinite; }
+  @keyframes wlb-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { a.tile.opening::after { animation: none; } }
 </style>
 </head>
 <body>
@@ -218,6 +223,12 @@
   document.addEventListener('mouseup', end);
   grid.addEventListener('contextmenu', e => e.preventDefault());
   grid.addEventListener('click', e => { if (swallowClick) { e.preventDefault(); e.stopPropagation(); swallowClick = false; } }, true);
+  // A tap that opens a site: the tile shows it at once (dimmed, with a small spinner) while the site opens.
+  grid.addEventListener('click', e => {
+    const a = e.target.closest('a.tile');
+    if (a && !e.defaultPrevented) a.classList.add('opening');
+  });
+  window.addEventListener('pageshow', () => document.querySelectorAll('a.tile.opening').forEach(t => t.classList.remove('opening')));
 
   // The menu: open the site's home page, or where it was left off.
   const ICON_HOME = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>';

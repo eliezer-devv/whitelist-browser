@@ -183,7 +183,9 @@
     background: #EAE7E0; border: 2px solid var(--muted); position: relative; margin: 0; flex: none; cursor: pointer; transition: background .15s, border-color .15s; }
   .sw::after { content: ""; position: absolute; top: 4px; left: 4px; width: 16px; height: 16px; border-radius: 50%; background: var(--muted);
     transition: left .15s, top .15s, width .15s, height .15s, background .15s; }
-  .sw:checked { background: var(--accent); border-color: var(--accent); }
+  .sw:checked { background: var(--accent); border-color: color-mix(in srgb, var(--accent) 65%, black); }
+  :root[data-theme="dark"] .sw:checked { border-color: color-mix(in srgb, var(--accent) 55%, white); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .sw:checked { border-color: color-mix(in srgb, var(--accent) 55%, white); } }
   .sw:checked::after { top: 1px; left: 19px; width: 22px; height: 22px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
   .sw:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   .radio { display: flex; align-items: flex-start; gap: 12px; min-height: 52px; padding: 12px 14px; border-bottom: 1px solid var(--line2); cursor: pointer; }
@@ -1006,6 +1008,7 @@ function render() {
   else if (!S.connected || (S.sub && S.sub.name === 'connect')) node = connectScreen();
   else if (S.sub) node = ({ site: siteScreen, temp: tempScreen, block: blockScreen, nomedia: noMediaScreen, import: importScreen,
     listsettings: listSettingsScreen, phone: phoneScreen, archived: archivedScreen, neverblock: neverBlockScreen, pin: pinScreen,
+    sitefilters: siteFiltersScreen,
     approvalpin: approvalPinScreen, embeds: embedsScreen, request: requestDetailsScreen })[S.sub.name]();
   else node = ({ requests: requestsScreen, sites: sitesScreen, phones: phonesScreen, settings: settingsScreen })[S.tab]();
   view.replaceChildren(node);
@@ -1759,10 +1762,45 @@ function noMediaScreen() {
     box('onvText', 'Videos back on for', L.videosOn || []), box('onsText', 'Sound back on for', L.soundOn || []),
     h('button', { type: 'button', class: 'btn p wide', id: 'npDone', onclick: apply }, 'Done'));
 }
-const neverBlockScreen = () => linesScreen({ backTo: 'Settings', title: 'Never block these', sub: 'Exceptions to all the filters, for every phone', id: 'neverText',
-  hint: 'If a site breaks because something it needs is blocked by a filter, add that address here, one per line.',
+const neverBlockScreen = () => linesScreen({ backTo: 'Settings', title: 'Never block these addresses', sub: 'Wherever they\'re loaded, for every phone', id: 'neverText',
+  hint: 'If a site breaks because something it loads from another address is blocked, add that address here, one per line. ' +
+    '(To switch filters off on a whole site\'s pages, use "Filters off on some sites".)',
   value: (S.D.adblockExceptions || []).join('\n'), placeholder: 'googletagmanager.com', check: normalize,
   apply: lines => { S.D.adblockExceptions = [...new Set(lines.map(normalize))]; markDevices(); } });
+
+// Filters off on some sites' pages, group by group (for every phone): { "site.com": ["ads", "trackers", "annoyances"] }.
+function siteFiltersScreen() {
+  const D = S.D;
+  const m = D.sitesFiltersOff && typeof D.sitesFiltersOff === 'object' ? D.sitesFiltersOff : (D.sitesFiltersOff = {});
+  const GROUPS = [['ads', 'Ads'], ['trackers', 'Trackers'], ['annoyances', 'Annoyances']];
+  const field = h('input', { class: 'inp', id: 'sfNew', type: 'url', autocapitalize: 'off', spellcheck: 'false', placeholder: 'e.g. theyeshivaworld.com' });
+  const add = () => {
+    const d = (normalize(field.value) || '').replace(/^www\./, '');
+    if (!d) { field.classList.add('bad'); return say('That doesn\'t look like a website address', true); }
+    if (!m[d]) m[d] = ['annoyances'];                   // usually the one that breaks a site; the others can be added
+    markDevices(); render();
+  };
+  field.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+  const rows = Object.keys(m).sort().map(site => h('div', { class: 'card', style: 'gap:10px' },
+    h('div', { style: 'display:flex;align-items:center;gap:8px' },
+      h('span', { style: 'font-weight:700;flex:1;min-width:0;overflow-wrap:anywhere' }, site),
+      h('button', { type: 'button', class: 'btn g', 'aria-label': `Remove ${site}`, onclick: () => { delete m[site]; markDevices(); render(); } }, 'Remove')),
+    h('span', { class: 'small', style: 'color:var(--muted)' }, 'Switched off on its pages:'),
+    h('div', { class: 'chips', style: 'gap:8px' }, GROUPS.map(([k, t]) => {
+      const off = (m[site] || []).includes(k);
+      return h('button', { type: 'button', class: 'lc pick', 'aria-pressed': String(off), onclick: () => {
+        m[site] = off ? m[site].filter(x => x !== k) : [...(m[site] || []), k];
+        if (!m[site].length) delete m[site];
+        markDevices(); render();
+      } }, off ? icon('check', 15, 2.4) : null, t);
+    }))));
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Settings'), screenTitle('Filters off on some sites', 'For every phone'),
+    h('p', { class: 'hint' }, 'If a site doesn\'t look or work right, switch off just the filter causing it, on that site\'s pages only. ' +
+      'Usually it\'s Annoyances. (The adult, gambling and malware filters are switched off per site in the site\'s settings in a list: ' +
+      '"Open even if a filter lists it".)'),
+    h('div', { style: 'display:flex;gap:8px' }, field, h('button', { type: 'button', class: 'btn p', id: 'sfAdd', onclick: add }, 'Add')),
+    ...rows);
+}
 
 // ---------- import ----------
 function importScreen() {
@@ -2102,7 +2140,8 @@ function settingsScreen() {
         h('input', { type: 'checkbox', class: 'sw', id: key, checked: D[key] !== false, onchange: e => { D[key] = e.target.checked; markDevices(); } }))),
       ...FILTERS.map(([key, title, desc]) => h('label', { class: 'tg', for: key }, h('span', { class: 'grow' }, h('span', { class: 't' }, title), h('span', { class: 's' }, desc)),
         h('input', { type: 'checkbox', class: 'sw', id: key, checked: D[key] !== false, onchange: e => { D[key] = e.target.checked; markDevices(); } }))),
-      row('shield', 'Never block these (all filters)', (D.adblockExceptions || []).length || 'None', () => open({ name: 'neverblock' }), 'openNever'))),
+      row('shield', 'Filters off on some sites', Object.keys(D.sitesFiltersOff || {}).length || 'None', () => open({ name: 'sitefilters' }), 'openSiteFilters'),
+      row('shield', 'Never block these addresses', (D.adblockExceptions || []).length || 'None', () => open({ name: 'neverblock' }), 'openNever'))),
     section('New phones', h('div', { class: 'card', style: 'gap:8px' },
       h('span', { style: 'font-weight:600' }, 'Start with these lists'),
       h('div', { class: 'chips', style: 'gap:8px' }, S.lists.map(l => {

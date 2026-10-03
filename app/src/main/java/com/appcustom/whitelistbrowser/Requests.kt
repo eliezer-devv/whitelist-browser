@@ -29,6 +29,12 @@ object Requests {
     private const val REPEAT_WAIT_MS = 30 * 60 * 1000L
 
     /** True if the same request was already sent in the last 30 minutes. */
+    /** Forgets that something was asked (it was cancelled, or answered): it can be asked again straight away. */
+    fun forget(ctx: Context, request: JSONObject?) {
+        val key = request?.optString("sentKey")?.takeIf { it.isNotEmpty() } ?: return
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(key).apply()
+    }
+
     fun recentlySent(ctx: Context, action: Action, subject: String): Boolean {
         val last = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("${action.word}|$subject", 0L)
         return System.currentTimeMillis() - last < REPEAT_WAIT_MS
@@ -107,7 +113,7 @@ object Requests {
             .putLong("${action.word}|${sentKey(subject, media, mediaKind)}", System.currentTimeMillis()).apply()
         return Outbox.add(ctx, "issue", payload,
             summary = if (frames.isNotEmpty()) "Embedded content on $domain (from ${frames.joinToString(", ")})" else "$headline: $subject",
-            request = marker)
+            request = JSONObject(marker.toString()).put("sentKey", "${action.word}|${sentKey(subject, media, mediaKind)}"))   // (kept on the phone)
     }
 
     /** Sends a saved request and returns its issue number. Called by [Outbox.flush]. */
@@ -117,14 +123,24 @@ object Requests {
      * The answer to request [number]: (status, message) once it's been answered, null while it's
      * still waiting. Blocking. Throws on connection problems.
      */
-    fun answerTo(number: Int): Pair<String, String>? {
-        val issue = get("issues/$number") ?: return Pair("closed", "This request was removed.")
+    /** A GitHub time ("2026-10-03T12:34:56Z") in milliseconds (0 if it can't be read). */
+    private fun githubTime(t: String): Long = runCatching {
+        java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+            .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.parse(t)!!.time
+    }.getOrDefault(0L)
+
+    /** The answer to request [number] (kind, message, when it was posted), or null while it's still waiting. */
+    fun answerTo(number: Int): Triple<String, String, Long>? = answerPair(number)
+
+    private fun answerPair(number: Int): Triple<String, String, Long>? {
+        val issue = get("issues/$number") ?: return Triple("closed", "This request was removed.", 0L)
         if (JSONObject(issue).optString("state") != "closed") {
             // Still waiting: a notice for the phone, if there is one (e.g. "Wrong PIN, so it was sent for approval").
             val open = JSONArray(get("issues/$number/comments?per_page=100") ?: "[]")
             for (i in open.length() - 1 downTo 0) {
-                val o = hidden(open.getJSONObject(i).optString("body"), NOTICE_SEALED) ?: continue
-                return Pair("notice", o.optString("message"))
+                val c = open.getJSONObject(i)
+                val o = hidden(c.optString("body"), NOTICE_SEALED) ?: continue
+                return Triple("notice", o.optString("message"), githubTime(c.optString("created_at")))
             }
             return null
         }
@@ -134,11 +150,11 @@ object Requests {
             val body = comments.getJSONObject(i).optString("body")
             val o = hidden(body, RESPONSE_SEALED) ?: continue
             val outcome = o.optString("outcome")
-            return Pair(if (outcome == "approved" || outcome == "denied") outcome else "closed", o.optString("message"))
+            return Triple(if (outcome == "approved" || outcome == "denied") outcome else "closed", o.optString("message"), 0L)
         }
         // Closed on GitHub without a reply the phone can read.
-        return if (JSONObject(issue).optString("state_reason") == "not_planned") Pair("denied", "Not approved.")
-            else Pair("closed", "Closed without an answer.")
+        return if (JSONObject(issue).optString("state_reason") == "not_planned") Triple("denied", "Not approved.", 0L)
+            else Triple("closed", "Closed without an answer.", 0L)
     }
 
     private val NOTICE_SEALED = Regex("<!-- whitelist-notice-sealed\\s*([\\s\\S]*?)-->")
