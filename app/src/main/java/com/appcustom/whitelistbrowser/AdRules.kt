@@ -46,6 +46,8 @@ object AdRules {
     fun start(ctx: Context) {
         val app = ctx.applicationContext
         worker.execute {
+            // Low priority: the screen and pages stay smooth while the rules load.
+            runCatching { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND) }
             if (!loaded) loadSafely(app)
             update(app)
         }
@@ -76,6 +78,7 @@ object AdRules {
         try {
             Config.AD_FILTER_GROUPS.map { (group, lists) ->
                 pool.submit(Runnable {
+                    runCatching { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND) }
                     val f = AdFilters()
                     val counts = ArrayList<String>()
                     for ((name, _) in lists) {

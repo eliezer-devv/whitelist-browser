@@ -117,6 +117,10 @@ public final class AdFilters {
     private static final int MAX_REGEX = 2000;           // address patterns written as regular expressions
 
     private final Map<String, List<NetRule>> block = new HashMap<>();
+    // "||site^" with no options (most rules: about 200,000): one sorted list of names, searched by halving. A lookup
+    // table entry each used several times the memory.
+    private String[] plainHosts = new String[0];
+    private final ArrayList<String> plainHostsNew = new ArrayList<>();
     private final Map<String, List<NetRule>> allow = new HashMap<>();
     private int anywhereCount = 0;
     private final Set<String> anywhereSeen = new HashSet<>();
@@ -156,12 +160,25 @@ public final class AdFilters {
 
     /** Adds one list's text. */
     public void add(String listText) {
-        for (String raw : listText.split("\r?\n")) {
-            String l = raw.trim();
+        // Line by line (splitting the whole list at once briefly took twice its memory).
+        int start = 0, n = listText.length();
+        while (start < n) {
+            int end = listText.indexOf('\n', start);
+            if (end < 0) end = n;
+            String l = listText.substring(start, end).trim();
+            start = end + 1;
             // Comments, and headers like "[Adblock Plus 2.0]" (but not "[$path=…]" rules).
             if (l.isEmpty() || l.charAt(0) == '!' || (l.charAt(0) == '[' && !l.startsWith("[$"))) continue;
             read++;
             if (addRule(l)) kept++;
+        }
+        // The new "whole site" names joined to the sorted list.
+        if (!plainHostsNew.isEmpty()) {
+            java.util.TreeSet<String> all = new java.util.TreeSet<>(java.util.Arrays.asList(plainHosts));
+            all.addAll(plainHostsNew);
+            plainHosts = all.toArray(new String[0]);
+            plainHostsNew.clear();
+            plainHostsNew.trimToSize();
         }
     }
 
@@ -307,6 +324,7 @@ public final class AdFilters {
             if (!path.isEmpty() && "/^:?*".indexOf(path.charAt(0)) < 0) return false;
             NetRule r = path.isEmpty() && !third && onlyOn == null && notOn == null ? WHOLE_SITE
                 : new NetRule(path.isEmpty() ? null : path, third, onlyOn, notOn);
+            if (r == WHOLE_SITE && !exception) { plainHostsNew.add(host); return true; }   // (the compact list)
             (exception ? allow : block).computeIfAbsent(host, k -> new ArrayList<>(1)).add(r);
             return true;
         }
@@ -417,6 +435,7 @@ public final class AdFilters {
             if (rs != null) for (NetRule r : rs) if (appliesOn(r, page) && r.matches(rest)) return false;
         }
         for (String h : hosts) {
+            if (java.util.Arrays.binarySearch(plainHosts, h) >= 0) return true;         // a whole site
             List<NetRule> rs = block.get(h);
             if (rs == null) continue;
             for (NetRule r : rs) {
@@ -569,7 +588,7 @@ public final class AdFilters {
     }
 
     public String summary() {
-        int b = 0, s = 0, sc = 0;
+        int b = plainHosts.length, s = 0, sc = 0;
         for (List<NetRule> l : block.values()) b += l.size();
         for (List<String> l : siteCss.values()) s += l.size();
         for (List<String> l : scripts.values()) sc += l.size();
