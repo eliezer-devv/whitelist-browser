@@ -37,6 +37,17 @@ object AdminAlerts {
     }
     fun active(ctx: Context) = isAdminPhone() && wanted(ctx) && Requests.isSetUp()
 
+    /** Has Android allowed this app's notifications (Android 13+ asks the person)? */
+    fun allowed(ctx: Context): Boolean = Build.VERSION.SDK_INT < 33 ||
+        ctx.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    /** The last check, for the log's snapshot: when, and what came of it. */
+    fun lastCheck(ctx: Context): String = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("lastCheck", null) ?: "none yet"
+    private fun noteCheck(ctx: Context, result: String) {
+        val t = java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.UK).format(java.util.Date())
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("lastCheck", "$t: $result").apply()
+    }
+
     /** The background check: on for an admin phone that wants them, off otherwise. */
     fun schedule(ctx: Context) {
         val js = ctx.getSystemService(JobScheduler::class.java) ?: return
@@ -56,11 +67,16 @@ object AdminAlerts {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         // The first time: from now on (not earlier ones). After that: since the last one seen.
-        val since: String = p.getString("since", null) ?: run { p.edit().putString("since", iso(now)).apply(); return }
+        val since: String = p.getString("since", null) ?: run {
+            p.edit().putString("since", iso(now)).apply()
+            noteCheck(ctx, "started (from now on)"); AppLog.i("Notifications", "Admin phone: looking for new requests from now on")
+            return
+        }
         val raw = runCatching { Requests.read("issues/comments?since=$since&sort=created&direction=asc&per_page=100") }
-            .onFailure { AppLog.w("Notifications", "Couldn't check: ${it.message}") }.getOrNull() ?: return
+            .onFailure { AppLog.w("Notifications", "Couldn't check: ${it.message}"); noteCheck(ctx, "failed (${it.message})") }.getOrNull() ?: return
         val marker = Regex("<!-- whitelist-admin-${Regex.escape(Device.id(ctx))}\\s*([\\s\\S]*?)-->")
         var latest: String = since
+        var found = 0
         val list = JSONArray(raw)
         for (i in 0 until list.length()) {
             val c = list.getJSONObject(i)
@@ -70,7 +86,10 @@ object AdminAlerts {
             val m = marker.find(c.optString("body").orEmpty()) ?: continue
             val note = runCatching { Seal.open(JSONObject(m.groupValues[1].trim())) }.getOrNull() ?: continue
             notify(ctx, note.optString("title"), note.optString("text"), note.optInt("number", i))
+            found++
         }
+        noteCheck(ctx, "${list.length()} new comments, $found for this phone" + if (!allowed(ctx)) " (Android isn't allowing notifications)" else "")
+        if (found > 0 && !allowed(ctx)) AppLog.w("Notifications", "$found to show, but Android isn't allowing this app's notifications")
         if (latest != since) p.edit().putString("since", latest).apply()
     }
 

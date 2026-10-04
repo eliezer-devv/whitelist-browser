@@ -234,6 +234,7 @@ class MainActivity : Activity() {
         AppLog.i("App", "Opened")
         InstallReceiver.showConfirm = { confirm -> runCatching { startActivity(confirm) }.onFailure { AppLog.e("Update", "Couldn't show the installer", it) } }
         installWaitingUpdate()
+        askForAdminNotifications()
         main.removeCallbacks(soundCheck)                      // (the playing notification stays while something plays)
         web.settings.mediaPlaybackRequiresUserGesture = true  // pages start sound only after a tap again
         player?.settings?.mediaPlaybackRequiresUserGesture = true
@@ -418,6 +419,18 @@ class MainActivity : Activity() {
             if (!isResumedNow || isDestroyed) return
             if (AdminAlerts.active(this@MainActivity)) io.execute { AdminAlerts.check(applicationContext) }
             main.postDelayed(this, 60_000)
+        }
+    }
+
+    /** An admin phone with phone notifications on, but Android not allowing them: asked (at most once a day). */
+    private fun askForAdminNotifications() {
+        if (!AdminAlerts.isAdminPhone() || !AdminAlerts.wanted(this) || AdminAlerts.allowed(this) || Build.VERSION.SDK_INT < 33) return
+        val p = getSharedPreferences("adminAlerts", Context.MODE_PRIVATE)
+        if (System.currentTimeMillis() - p.getLong("asked", 0L) < 86_400_000L) return
+        p.edit().putLong("asked", System.currentTimeMillis()).apply()
+        AppLog.i("Notifications", "Asking Android to allow notifications (admin phone)")
+        withAndroidPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) { granted ->
+            AppLog.i("Notifications", if (granted.isEmpty()) "Notifications not allowed" else "Notifications allowed")
         }
     }
 
@@ -2386,6 +2399,9 @@ class MainActivity : Activity() {
                 androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)),
             "Groups on: ${adGroups().joinToString().ifEmpty { "none" }}; blocked since the app started: ${AdBlock.blockedCount.get()}",
             "Now playing: ${PlaybackService.lastPlaying.ifEmpty { "nothing" }}",
+            "Admin phone: " + (if (!AdminAlerts.isAdminPhone()) "no" else "yes; phone notifications " +
+                (if (AdminAlerts.wanted(this)) "on" else "off") + "; Android " + (if (AdminAlerts.allowed(this)) "allows them" else "doesn't allow them") +
+                "; last check: " + AdminAlerts.lastCheck(this)),
             "Desktop sites: ${desktopSites().joinToString().ifEmpty { "none" }}",
             "Waiting to send: ${Outbox.count(this)}" + (Outbox.lastProblem?.let { " ($it)" } ?: "")
         ).joinToString("\n") { "  $it" }
@@ -3120,7 +3136,16 @@ class MainActivity : Activity() {
         val rows = listOf(
             row(R.drawable.ic_d_theme, "Appearance", look) { showAppearance() },
             *(if (AdminAlerts.isAdminPhone()) arrayOf(row(R.drawable.ic_d_inbox, "Phone notifications",
-                if (AdminAlerts.wanted(this@MainActivity)) "On: new requests, logs and crashes, as notifications on this phone" else "Off") {
+                when {
+                    !AdminAlerts.wanted(this@MainActivity) -> "Off"
+                    !AdminAlerts.allowed(this@MainActivity) -> "Blocked by Android: tap to allow notifications"
+                    else -> "On: new requests, logs and crashes, as notifications on this phone"
+                }) {
+                // On, but Android blocks them: its settings for this app's notifications.
+                if (AdminAlerts.wanted(this@MainActivity) && !AdminAlerts.allowed(this@MainActivity)) {
+                    runCatching { startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)) }
+                    return@row
+                }
                 val on = !AdminAlerts.wanted(this@MainActivity)
                 AdminAlerts.setWanted(this@MainActivity, on)
                 if (on && Build.VERSION.SDK_INT >= 33) withAndroidPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) { granted ->
