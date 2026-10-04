@@ -342,8 +342,13 @@ class PlaybackService : Service() {
       if (last) try { last.currentTime = t; } catch (e) {}
       return;
     }
-    if ((a === 'seekbackward' || a === 'seekforward') && !handlers[a]) {
-      if (last) try { last.currentTime = Math.max(0, last.currentTime + (a === 'seekforward' ? 10 : -10)); } catch (e) {}
+    // Back / forward 10 seconds: done here, on the page's player (sites' own handlers can ignore the amount asked:
+    // YouTube Music's always moves 5).
+    if (a === 'seekbackward' || a === 'seekforward') {
+      if (last) try {
+        var t = last.currentTime + (a === 'seekforward' ? 10 : -10);
+        last.currentTime = Math.max(0, isFinite(last.duration) ? Math.min(t, last.duration - 0.25) : t);
+      } catch (e) {}
       return;
     }
     if (handlers[a]) { try { handlers[a]({ action: a, seekOffset: 10 }); return; } catch (e) {} }

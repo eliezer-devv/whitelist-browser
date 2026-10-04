@@ -2297,6 +2297,12 @@ class MainActivity : Activity() {
                             minutes: Int = 0, unverified: Boolean = false,
                             frames: List<String> = emptyList(), mediaKind: String = "both", tile: Boolean = true,
                             timeMode: String? = null, item: String? = null) {
+        // Already asked (whichever way this one came: the request sheet, embedded parts, …): not sent again.
+        val subject = (if (scope == Requests.Scope.PAGE) pageUrl?.let { Whitelist.pageKey(it) } else null) ?: domain
+        if (Requests.alreadyAsked(this, Requests.fullKey(action, subject, media, mediaKind, frames))) {
+            toast("You already asked about this. Wait for an answer, or cancel it in My requests to ask again.")
+            return
+        }
         toast("Sending request")
         updateIo.execute {
             val outcome = runCatching {
@@ -3374,20 +3380,22 @@ class MainActivity : Activity() {
             add(Ui.text(this@MainActivity, "The log lists the sites opened (names only). It's sent to whoever manages this browser only " +
                 "when you tap Send to admin, when they ask for it, or after the app crashes.", 12.5f, Ui.MUTED), 4)
             val ctx = this@MainActivity
+            // (Equal shares of the width, as tall as their words need: large text sizes wrap instead of being cut off.)
             fun logButton(label: String, onClick: () -> Unit) = Button(ctx).apply {
                 text = label; isAllCaps = false; typeface = Ui.boldFace; stateListAnimator = null
                 setTextColor(Ui.ACCENT_TEXT)
                 background = Ui.rounded(Ui.CARD, Ui.dp(ctx, 14).toFloat(), Ui.OUTLINE, Ui.dp(ctx, 1))
                 minHeight = Ui.dp(ctx, 44); minimumHeight = Ui.dp(ctx, 44)
-                setPadding(Ui.dp(ctx, 16), 0, Ui.dp(ctx, 16), 0)
+                maxLines = 2
+                setPadding(Ui.dp(ctx, 12), Ui.dp(ctx, 8), Ui.dp(ctx, 12), Ui.dp(ctx, 8))
                 setOnClickListener { onClick() }
             }
             add(LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
                 addView(logButton("Send to admin") { sendLog("sent from the phone") },
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(ctx, 44)))
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 if (AdminAlerts.isAdminPhone()) addView(logButton("Share log") { shareLog() },
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(ctx, 44)).apply { marginStart = Ui.dp(ctx, 10) })
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = Ui.dp(ctx, 10) })
             }, 8)
             button("Copy ID", Ui.Kind.SECONDARY) { copy() }
             button("Close", Ui.Kind.PRIMARY) { it.dismiss() }

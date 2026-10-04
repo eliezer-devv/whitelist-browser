@@ -41,6 +41,27 @@ class AdminActivity : Activity() {
         Toast.makeText(this, "No other browser on this phone to open it with", Toast.LENGTH_LONG).show()
     }
 
+    /** A file from the admin page, saved to the phone's Downloads folder. True if it was. */
+    private fun saveToDownloads(name: String, mime: String, base64: String): Boolean = runCatching {
+        val bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT)
+        val safe = name.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "download" }
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Downloads.DISPLAY_NAME, safe)
+                put(android.provider.MediaStore.Downloads.MIME_TYPE, mime)
+                put(android.provider.MediaStore.Downloads.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return@runCatching false
+            contentResolver.openOutputStream(uri)?.use { it.write(bytes) } ?: return@runCatching false
+        } else {
+            @Suppress("DEPRECATION")
+            val dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+            java.io.File(dir, safe).writeBytes(bytes)
+        }
+        AppLog.i("Download", "Saved $safe from the admin page (${bytes.size / 1024} KB)")
+        true
+    }.getOrElse { AppLog.e("Download", "Saving $name from the admin page failed", it); false }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         Ui.applyTheme(this)                         // the same light or dark as the rest of the app
         setTheme(if (Ui.dark) R.style.AppThemeDark else R.style.AppTheme)
@@ -55,6 +76,12 @@ class AdminActivity : Activity() {
         web.settings.allowFileAccess = false
         web.settings.allowContentAccess = false
 
+        // The admin page's downloads (spreadsheets, a log): saved to the phone's Downloads. Android's browser ignores a
+        // page's own downloads here.
+        web.addJavascriptInterface(object {
+            @android.webkit.JavascriptInterface
+            fun save(name: String, mime: String, base64: String): Boolean = saveToDownloads(name, mime, base64)
+        }, "WLBAdmin")
         web.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 val url = request?.url ?: return null

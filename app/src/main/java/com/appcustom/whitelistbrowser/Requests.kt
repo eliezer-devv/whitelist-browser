@@ -58,10 +58,7 @@ object Requests {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(key).apply()
     }
 
-    fun recentlySent(ctx: Context, action: Action, subject: String): Boolean {
-        val last = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("${action.word}|$subject", 0L)
-        return System.currentTimeMillis() - last < REPEAT_WAIT_MS
-    }
+    fun recentlySent(ctx: Context, action: Action, subject: String): Boolean = alreadyAsked(ctx, "${action.word}|$subject")
 
     /**
      * Saves a request in the outbox (it's sent by [Outbox.flush], now or when there's internet).
@@ -87,6 +84,21 @@ object Requests {
     /** What "already asked about this" remembers a request by. */
     fun sentKey(subject: String, media: Media, kind: String) =
         "$subject|${media.word}" + if (media != Media.UNCHANGED && kind != "both") ":$kind" else ""
+
+    /** The whole key a request is remembered by (embedded parts: which ones, so other parts can still be asked). */
+    fun fullKey(action: Action, subject: String, media: Media, kind: String, frames: List<String> = emptyList()) =
+        "${action.word}|${sentKey(subject, media, kind)}" + if (frames.isNotEmpty()) "|frames:" + frames.sorted().joinToString(",") else ""
+
+    /**
+     * Already asked: in the last 30 minutes, or still waiting for an answer (however long ago). Cancelling it or an
+     * answer arriving lets it be asked again.
+     */
+    fun alreadyAsked(ctx: Context, key: String): Boolean {
+        val last = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(key, 0L)
+        if (last == 0L) return false                                   // (forgotten: cancelled or answered)
+        if (System.currentTimeMillis() - last < REPEAT_WAIT_MS) return true
+        return MyRequests.all(ctx).any { !it.archived && it.status == "waiting" && it.request?.optString("sentKey") == key }
+    }
 
     fun queue(ctx: Context, action: Action, scope: Scope, media: Media, domain: String, pageUrl: String?, note: String,
               hops: List<Hop> = emptyList(), minutes: Int = 0, unverified: Boolean = false,
@@ -133,10 +145,10 @@ object Requests {
             .put("body", "🔒 A request from a phone. Answer it on the admin page.\n\n${Seal.hiddenPart(marker)}")
             .put("labels", JSONArray().put("site request"))
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putLong("${action.word}|${sentKey(subject, media, mediaKind)}", System.currentTimeMillis()).apply()
+            .putLong(fullKey(action, subject, media, mediaKind, frames), System.currentTimeMillis()).apply()
         return Outbox.add(ctx, "issue", payload,
             summary = if (frames.isNotEmpty()) "Embedded content on $domain (from ${frames.joinToString(", ")})" else "$headline: $subject",
-            request = JSONObject(marker.toString()).put("sentKey", "${action.word}|${sentKey(subject, media, mediaKind)}"))   // (kept on the phone)
+            request = JSONObject(marker.toString()).put("sentKey", fullKey(action, subject, media, mediaKind, frames)))   // (kept on the phone)
     }
 
     /** Sends a saved request and returns its issue number. Called by [Outbox.flush]. */

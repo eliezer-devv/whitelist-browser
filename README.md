@@ -244,7 +244,7 @@ podcasts, sound files, audio players) doesn't play (see below for how videos are
   on** entry to the list it goes into (`photosOn`, `videosOn`, `soundOn`) whenever another of the phone's lists, or the
   whole site, still has them off. A "back on" wins over every "off", for the phones using that list. Switching a
   site's **No photos** (etc.) on in a list removes that list's "back on" for the site. See and edit them on the admin
-  page → **Sites** → **No photos, videos or sound on some pages**. (A few sites send a
+  page → **Sites** → the site → **Pages without photos, videos or sound**. (A few sites send a
 video's sound as a separate .m4a or .aac file, so while videos are allowed, those two formats aren't blocked.) This is off by default. It can be turned on
 in three ways:
 - **For a whole site:** the **No photos**, **No videos** and **No sound** switches on the site's screen on the admin page.
@@ -382,7 +382,7 @@ page; otherwise their space shows *"Blocked: content from vimeo.com"*.
   **Approve** on the admin page) lets content from those sites show **inside bbc.co.uk's pages only**. The sites
   themselves still don't open, and the ad and content filters still apply. `approve public` does it for everyone.
   Once it's approved, reloading the page shows the blocked parts.
-- **To see or change what's allowed,** admin page → **Sites** → **Embedded content allowed**. You can remove any, or
+- **To see or change what's allowed,** admin page → **Sites** → the site → **Embedded content allowed**. You can remove any, or
   add one yourself (a site, and what may show inside it: a whole site like `player.vimeo.com`, or one exact part like
   `youtube.com/embed/abc`). They're stored in the list's `embeds`.
 - **For a site you trust completely,** turn on **Allow content embedded from other sites** on its screen instead:

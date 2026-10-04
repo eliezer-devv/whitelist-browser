@@ -581,12 +581,7 @@ function logScreen() {
     logText(id, file).then(t => { S.logView = { file, text: t }; render(); }).catch(e => { S.logView = { file, text: 'Couldn\'t load it: ' + e.message }; render(); });
   }
   const text = S.logView.text;
-  const download = () => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([text || ''], { type: 'text/plain' }));
-    a.download = `whitelist-browser-log-${id}-${file}`;
-    document.body.appendChild(a); a.click(); a.remove();
-  };
+  const download = () => saveFile(new Blob([text || ''], { type: 'text/plain' }), `whitelist-browser-log-${id}-${file}`);
   const name = (S.D.devices[id] && S.D.devices[id].name) || id;
   return h('main', { class: 'stack' }, backLink(name, () => open({ name: 'phone', id })), screenTitle('Log', `${name} · ${logLabel(file)}`),
     h('button', { type: 'button', class: 'btn s', id: 'logDownload', disabled: text == null, onclick: download }, 'Download'),
@@ -1000,6 +995,25 @@ function loadSheetJs() {
     document.head.append(sc);
   });
 }
+// Saves a file: in the app's admin screen, to the phone's Downloads (Android's browser ignores a page's own
+// downloads there); elsewhere, the browser's usual download.
+function saveFile(blob, name) {
+  if (INAPP && window.WLBAdmin && window.WLBAdmin.save) {
+    const r = new FileReader();
+    r.onload = () => {
+      const ok = window.WLBAdmin.save(name, blob.type || 'application/octet-stream', String(r.result).split(',')[1] || '');
+      say(ok ? `Saved ${name} to the phone's Downloads.` : `Couldn't save ${name}.`, !ok);
+    };
+    r.readAsDataURL(blob);
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 function exportCsv() {
   const q = v => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
   const lines = ['domain,name,home page,tile opens,subdomains,only these pages,no photos,no videos,no sound'];
@@ -1008,11 +1022,7 @@ function exportCsv() {
     lines.push([s.domain.trim(), s.name.trim(), s.home ? 'yes' : 'no', s.url.trim(), s.subdomains ? 'yes' : 'no', s.pages.join(' '),
       s.noPhotos ? 'yes' : 'no', s.noVideos ? 'yes' : 'no', s.noSound ? 'yes' : 'no'].map(q).join(','));
   });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\r\n') + '\r\n'], { type: 'text/csv' }));
-  a.download = `${S.current}-sites.csv`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  saveFile(new Blob(['\ufeff' + lines.join('\r\n') + '\r\n'], { type: 'text/csv' }), `${S.current}-sites.csv`);
 }
 
 // Everything in one spreadsheet: a tab for each list, and a Phones tab (with all their details).
@@ -1043,7 +1053,8 @@ async function exportAll() {
       yn(d.adblock), yn(d.trackers), yn(d.annoyances), yn(d.adult), yn(d.gambling), yn(d.malware),
       d.approvalPin === 'none' ? 'none' : d.approvalPin ? 'own PIN' : 'usual', d.requestsTo ? listLabel(d.requestsTo) : 'usual', d.registered || '']));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(phones), tabName('Phones'));
-    XLSX.writeFile(wb, `whitelist-browser-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    saveFile(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+      `whitelist-browser-${new Date().toISOString().slice(0, 10)}.xlsx`);
     say('Downloaded: a tab for each list, and one for the phones.');
   } catch (e) { say(`Couldn't make the spreadsheet: ${e.message}`, true); }
 }
@@ -1589,14 +1600,12 @@ function sitesScreen() {
     h('div', { class: 'h2row' }, h('h2', { class: 'sec' }, 'Allowed ', h('span', { class: 'muted', style: 'font-weight:500' }, `· ${L.sites.length}`)),
       h('button', { type: 'button', class: 'btn p sm', id: 'addSite', onclick: () => open({ name: 'site', index: -1 }) }, icon('plus', 18, 2.2), 'Add site')),
     L.sites.length ? h('div', { class: 'group', id: 'siteList' }, rows)
-      : h('div', { class: 'card empty' }, h('b', null, 'No sites yet'), 'Tap Add site, or import a spreadsheet below.'),
+      : h('div', { class: 'card empty' }, h('b', null, 'No sites yet'), 'Tap Add site, or import a spreadsheet (List settings).'),
+    // (Pages without photos, videos or sound, and embedded content allowed, are in each site's settings; import and
+    // the list-wide overviews in List settings.)
     h('div', { class: 'group' },
       moreRow('clock', 'Open something temporarily', null, () => open({ name: 'temp' }), 'openTemp'),
       moreRow('ban', 'Always blocked', L.block.length, () => open({ name: 'block' }), 'openBlock'),
-      moreRow('photooff', 'No photos, videos or sound on some pages', new Set([...L.noPhotoPages, ...L.noVideoPages, ...L.noSoundPages]).size, () => open({ name: 'nomedia' }), 'openNoMedia'),
-      moreRow('link', 'Embedded content allowed', Object.values((L.extra && L.extra.embeds) || {}).reduce((n, v) => n + (Array.isArray(v) ? v.length : 0), 0),
-        () => open({ name: 'embeds' }), 'openEmbeds'),
-      moreRow('table', 'Import from a spreadsheet', null, () => open({ name: 'import' }), 'openImport'),
       moreRow('gear', 'List settings', null, () => open({ name: 'listsettings' }), 'openListSettings')));
 }
 
@@ -1669,6 +1678,8 @@ function siteScreen() {
     h('div', { class: 'group' },
       toggle('sFrames', 'Allow content embedded from other sites', 'Embedded videos, maps and sign-in boxes work, from any site. Leaving this site is still blocked, and the ad and adult filters still apply.', 'frames')),
     d.frames ? h('p', { class: 'warn' }, 'Only for sites you trust: whatever this site chooses to embed will show, even from sites that aren\'t on your lists.') : null,
+    !isNew && normalize(d.domain) ? siteEmbeds(normalize(d.domain).replace(/^www\./, ''), d.frames) : null,
+    !isNew && normalize(d.domain) ? sitePagesMedia(normalize(d.domain).replace(/^www\./, '')) : null,
     h('div', { class: 'group' },
       toggle('sUnfiltered', 'Open even if a filter lists it', 'For a site the adult, gambling or malware filter blocks, that you\'ve checked and want to allow anyway.', 'unfiltered')),
     d.unfiltered ? h('p', { class: 'warn', style: 'background:var(--red-soft);color:#7A2A1D' }, 'The adult, gambling and malware filters don\'t apply to this site. Only for sites you\'ve checked yourself.') : null,
@@ -1871,11 +1882,10 @@ function importScreen() {
     ta, h('div', { class: 'field' }, h('label', { for: 'bulkFile' }, 'Or choose a file (.csv, .xlsx)'), file),
     h('div', { class: 'group' }, mode('merge'), mode('replace')),
     h('button', { type: 'button', class: 'btn p wide', id: 'bulkImport', onclick: run }, 'Import'),
-    INAPP ? h('p', { class: 'hint' }, 'To download the list or a template, use the admin page on a computer.') :
     h('div', { class: 'acts', style: 'justify-content:center' },
       h('button', { type: 'button', class: 'btn s sm', onclick: exportCsv }, 'Download this list as a spreadsheet'),
       h('button', { type: 'button', class: 'btn s sm', id: 'exportAll', onclick: exportAll }, 'Download everything (all lists and phones)'),
-      h('a', { class: 'btn s sm', href: 'sites-template.csv', download: '' }, 'Download a template')));
+      INAPP ? null : h('a', { class: 'btn s sm', href: 'sites-template.csv', download: '' }, 'Download a template')));
 }
 
 // ---------- list settings ----------
@@ -1901,7 +1911,86 @@ function listSettingsScreen() {
     h('div', { class: 'group' }, h('div', { class: 'tg', style: 'cursor:default' }, h('span', { class: 'grow' }, h('span', { class: 't' }, 'Phones check for changes every'),
       h('span', { class: 's' }, 'Lower is quicker, but uses a little more data')),
       h('div', { class: 'stepper' }, h('button', { type: 'button', 'aria-label': 'Fewer minutes', onclick: () => step(-1) }, '−'), val, h('button', { type: 'button', 'aria-label': 'More minutes', onclick: () => step(1) }, '+')))),
+    // Import, and the list-wide overviews (each site's own are in its settings).
+    h('div', { class: 'group' },
+      settingsRow('table', 'Import from a spreadsheet', null, () => open({ name: 'import' }), 'openImport'),
+      settingsRow('photooff', 'Pages without photos, videos or sound (all sites)', new Set([...L.noPhotoPages, ...L.noVideoPages, ...L.noSoundPages]).size,
+        () => open({ name: 'nomedia' }), 'openNoMedia'),
+      settingsRow('link', 'Embedded content allowed (all sites)', Object.values((L.extra && L.extra.embeds) || {}).reduce((n, v) => n + (Array.isArray(v) ? v.length : 0), 0),
+        () => open({ name: 'embeds' }), 'openEmbeds')),
     S.current !== 'public' ? h('button', { type: 'button', class: 'btn dline wide', id: 'delList', onclick: deleteList }, `Delete the ${listLabel(S.current)} list`) : null);
+}
+function settingsRow(ic, label, count, onclick, id) {
+  return h('button', { type: 'button', class: 'row', onclick, id },
+    h('span', { class: 'ic' }, icon(ic, 20)), h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, label)),
+    count != null ? h('span', { class: 'count' }, count) : null, h('span', { class: 'chev' }, icon('chev', 18)));
+}
+
+// ---------- in a site's settings: its pages without photos, videos or sound, and its embedded content ----------
+// (Kept in the list itself, like the list-wide screens: saved with Save.)
+function sitePagesMedia(dom) {
+  const L = S.L, sub = S.sub;
+  const under = e => { const host = e.split('/')[0].replace(/^www\./, ''); return host === dom || host.endsWith('.' + dom); };
+  const kinds = [['noPhotoPages', 'photos'], ['noVideoPages', 'videos'], ['noSoundPages', 'sound']];
+  const pages = [...new Set(kinds.flatMap(([k]) => L[k].filter(under)))].sort();
+  if (!sub.pmKinds) sub.pmKinds = ['photos'];
+  const add = () => {
+    const raw = $('sPageAdd').value.trim();
+    const entry = blockEntry(raw);
+    if (!entry || !hasPath(entry)) return say('Type a page address, e.g. ' + dom + '/some/page', true);
+    if (!under(entry)) return say(`That page isn't on ${dom}.`, true);
+    if (!sub.pmKinds.length) return say('Pick photos, videos or sound.', true);
+    kinds.forEach(([k, w]) => { if (sub.pmKinds.includes(w) && !L[k].includes(entry)) L[k].push(entry); });
+    sub.pmText = '';
+    markList(); render();
+  };
+  return h('div', { class: 'card', style: 'gap:10px', id: 'sPageMedia' },
+    h('span', { style: 'font-weight:700' }, 'Pages without photos, videos or sound'),
+    h('span', { class: 'small', style: 'color:var(--muted)' }, 'Just these pages of the site (the switches above are for the whole site).'),
+    pages.length ? h('div', { class: 'group' }, pages.map(p => h('div', { class: 'row' },
+      h('span', { class: 'grow' }, h('span', { style: 'font-weight:600;overflow-wrap:anywhere' }, p),
+        h('span', { class: 'dom' }, 'No ' + kinds.filter(([k]) => L[k].includes(p)).map(([, w]) => w).join(', '))),
+      h('button', { type: 'button', class: 'btn d sm', 'aria-label': `Remove ${p}`, onclick: () => {
+        kinds.forEach(([k]) => { L[k] = L[k].filter(x => x !== p); }); markList(); render(); } }, icon('trash', 18)))))
+      : null,
+    // (What's typed is kept when a chip is tapped: tapping redraws the screen.)
+    h('input', { class: 'inp', id: 'sPageAdd', placeholder: `${dom}/some/page`, autocapitalize: 'off', spellcheck: 'false', value: sub.pmText || '',
+      oninput: e => { sub.pmText = e.target.value; }, onkeydown: e => { if (e.key === 'Enter') add(); } }),
+    h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center' },
+      ...kinds.map(([, w]) => { const on = sub.pmKinds.includes(w);
+        return h('button', { type: 'button', class: 'lc pick', 'aria-pressed': String(on), onclick: () => {
+          sub.pmKinds = on ? sub.pmKinds.filter(x => x !== w) : [...sub.pmKinds, w]; render(); } }, on ? icon('check', 15, 2.4) : null, w[0].toUpperCase() + w.slice(1)); }),
+      h('button', { type: 'button', class: 'btn s sm', id: 'sPageAddBtn', onclick: add }, 'Add page')));
+}
+function siteEmbeds(dom, framesOn) {
+  const L = S.L;
+  const E = (L.extra && L.extra.embeds && typeof L.extra.embeds === 'object') ? L.extra.embeds : {};
+  const mine = E[dom] || [];
+  const save = list => {
+    const next = { ...E };
+    if (list.length) next[dom] = [...new Set(list)].sort(); else delete next[dom];
+    L.extra = { ...(L.extra || {}) };
+    if (Object.keys(next).length) L.extra.embeds = next; else delete L.extra.embeds;
+    markList(); render();
+  };
+  const add = () => {
+    const from = normalize($('sEmbedAdd').value.trim());
+    if (!from) return say('Type the site the content comes from, e.g. youtube.com', true);
+    S.sub.emText = '';
+    save([...mine, from]);
+  };
+  return h('div', { class: 'card', style: 'gap:10px', id: 'sEmbeds' },
+    h('span', { style: 'font-weight:700' }, 'Embedded content allowed'),
+    framesOn ? h('span', { class: 'small', style: 'color:var(--muted)' }, 'All of it, from any site: "Allow content embedded from other sites" is on.')
+      : h('span', { class: 'small', style: 'color:var(--muted)' }, 'Videos, maps and so on from these sites show inside its pages.'),
+    mine.length ? h('div', { class: 'group' }, mine.map(f => h('div', { class: 'row' },
+      h('span', { class: 'ic' }, icon('link', 20)), h('span', { class: 'grow' }, h('span', { style: 'font-weight:600' }, f)),
+      h('button', { type: 'button', class: 'btn d sm', 'aria-label': `Remove ${f}`, onclick: () => save(mine.filter(x => x !== f)) }, icon('trash', 18)))))
+      : null,
+    framesOn ? null : h('div', { style: 'display:flex;gap:8px' },
+      h('input', { class: 'inp', id: 'sEmbedAdd', placeholder: 'youtube.com', autocapitalize: 'off', spellcheck: 'false', style: 'flex:1;min-width:0',
+        value: S.sub.emText || '', oninput: e => { S.sub.emText = e.target.value; }, onkeydown: e => { if (e.key === 'Enter') add(); } }),
+      h('button', { type: 'button', class: 'btn s sm', id: 'sEmbedAddBtn', onclick: add }, 'Add')));
 }
 
 // ============================================================================================
