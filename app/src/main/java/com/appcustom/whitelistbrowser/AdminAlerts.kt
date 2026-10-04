@@ -60,7 +60,7 @@ object AdminAlerts {
         val raw = runCatching { Requests.read("issues/comments?since=$since&sort=created&direction=asc&per_page=100") }
             .onFailure { AppLog.w("Notifications", "Couldn't check: ${it.message}") }.getOrNull() ?: return
         val marker = Regex("<!-- whitelist-admin-${Regex.escape(Device.id(ctx))}\\s*([\\s\\S]*?)-->")
-        var latest = since
+        var latest: String = since                              // (checked above: it's there)
         val list = JSONArray(raw)
         for (i in 0 until list.length()) {
             val c = list.getJSONObject(i)

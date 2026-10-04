@@ -3094,7 +3094,7 @@ class MainActivity : Activity() {
                 }
                 toast(if (on) "Phone notifications on" else "Phone notifications off")
                 showSettings()                                    // (the row closed the sheet: open again, updated)
-            }) else emptyArray()),
+            }) else emptyArray<LinearLayout>()),
             row(R.drawable.ic_d_globe, "Phone's browser",
                 if (isPhonesBrowser()) "This is the phone's browser: links from other apps open here"
                 else "Make it the phone's browser, so links from other apps open here") { becomePhonesBrowser() },
