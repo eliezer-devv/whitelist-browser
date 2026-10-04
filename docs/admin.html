@@ -147,7 +147,11 @@
   .tile { width: 40px; height: 40px; flex: none; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); display: grid; place-items: center; font-weight: 700; font-size: 17px; }
   .tile.big { width: 56px; height: 56px; border-radius: 16px; font-size: 24px; background: #fff; }
 
+  /* The lists scroll; "+" (new list) stays at the right end, and the lists fade out under it. */
+  .listrow { display: flex; align-items: center; gap: 8px; }
+  .listrow .listchips { flex: 1; min-width: 0; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-right: 24px; }
   .listchips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 4px; scrollbar-width: none; }
+  .logtext { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--card, #fff); border: 1px solid var(--line, #E7E3DB); border-radius: 14px; padding: 12px; margin: 0; max-width: 100%; box-sizing: border-box; }
   .listchips::-webkit-scrollbar { display: none; }
   .lc { flex: none; min-height: 38px; padding: 0 14px; border-radius: 19px; font-size: 14px; font-weight: 600; white-space: nowrap; background: #fff; border: 1px solid var(--field); }
   .lc[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -354,6 +358,7 @@ function h(tag, props, ...kids) {
   return el;
 }
 const ICONS = {
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
   inbox: '<path d="M4 13l2.5-7h11L20 13"/><path d="M4 13v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5h-5l-1.5 2h-3L9 13z"/>',
   globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.5 2.6 3.5 5.4 3.5 8.5s-1 5.9-3.5 8.5c-2.5-2.6-3.5-5.4-3.5-8.5s1-5.9 3.5-8.5z"/>',
   phone: '<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 17.5h2"/>',
@@ -542,6 +547,45 @@ async function moveFile(from, to, message) {   // keeps the content exactly
   return true;
 }
 // Issues (requests): needs the token's Issues permission.
+// ---------- a phone's logs (logs/<ID>/ in the private repository, kept 30 days) ----------
+async function logFiles(id) {
+  const res = await fetch(`${repoBase()}/contents/logs/${id}`, { headers: headers(), cache: 'no-store' });
+  if (res.status === 404) return [];                            // none yet
+  if (!res.ok) throw new Error(explain(res.status, 'The logs'));
+  return (await res.json()).filter(f => f.type === 'file' && f.name.endsWith('.txt')).sort((a, b) => b.name.localeCompare(a.name));
+}
+async function logText(id, name) {
+  const res = await fetch(`${repoBase()}/contents/logs/${id}/${encodeURIComponent(name)}`,
+    { headers: { ...headers(), Accept: 'application/vnd.github.raw' }, cache: 'no-store' });
+  if (!res.ok) throw new Error(explain(res.status, 'The log'));
+  return res.text();
+}
+// "2026-10-04_06-57_asked-for.txt" -> "4 Oct, 07:57 · asked for" (in this computer's time)
+function logLabel(name) {
+  const m = name.match(/^(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})_?(.*)\.txt$/);
+  if (!m) return name;
+  const when = new Date(`${m[1]}T${m[2]}:${m[3]}:00Z`);
+  return when.toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + (m[4] ? ' · ' + m[4].replace(/-/g, ' ') : '');
+}
+function logScreen() {
+  const { id, file } = S.sub;
+  if (!S.logView || S.logView.file !== file) {
+    S.logView = { file, text: null };
+    logText(id, file).then(t => { S.logView = { file, text: t }; render(); }).catch(e => { S.logView = { file, text: 'Couldn\'t load it: ' + e.message }; render(); });
+  }
+  const text = S.logView.text;
+  const download = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text || ''], { type: 'text/plain' }));
+    a.download = `whitelist-browser-log-${id}-${file}`;
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+  const name = (S.D.devices[id] && S.D.devices[id].name) || id;
+  return h('main', { class: 'stack' }, backLink(name, () => open({ name: 'phone', id })), screenTitle('Log', `${name} · ${logLabel(file)}`),
+    h('button', { type: 'button', class: 'btn s', id: 'logDownload', disabled: text == null, onclick: download }, 'Download'),
+    h('pre', { class: 'logtext' }, text == null ? 'Loading…' : text));
+}
+
 async function apiGet(path) {
   const res = await fetch(`${repoBase()}/${path}`, { headers: headers(), cache: 'no-store' });
   if (res.status === 403 || res.status === 404) throw new Error('NO_ISSUES');
@@ -1013,6 +1057,7 @@ function render() {
   else if (!S.connected || (S.sub && S.sub.name === 'connect')) node = connectScreen();
   else if (S.sub) node = ({ site: siteScreen, temp: tempScreen, block: blockScreen, nomedia: noMediaScreen, import: importScreen,
     listsettings: listSettingsScreen, phone: phoneScreen, archived: archivedScreen, neverblock: neverBlockScreen, pin: pinScreen,
+    log: logScreen,
     approvalpin: approvalPinScreen, embeds: embedsScreen, request: requestDetailsScreen })[S.sub.name]();
   else node = ({ requests: requestsScreen, sites: sitesScreen, phones: phonesScreen, settings: settingsScreen })[S.tab]();
   view.replaceChildren(node);
@@ -1527,10 +1572,11 @@ function sitesScreen() {
   return h('main', { class: 'stack' },
     screenTitle('Sites', 'What each list lets phones open'),
     siteSearch,
-    h('div', { class: 'listchips', role: 'group', 'aria-label': 'Lists' },
-      [...publicListNames(), ...S.lists.filter(n => !isPublicList(n))].map(n => h('button', { type: 'button', class: 'lc', 'aria-pressed': String(n === S.current),
-        title: isPublicList(n) ? 'Public list' : null, onclick: () => switchList(n) }, isPublicList(n) ? icon('globe', 14) : null, listLabel(n))),
-      h('button', { type: 'button', class: 'lc add', 'aria-label': 'New list', onclick: newList }, icon('plus', 18))),
+    h('div', { class: 'listrow' },
+      h('div', { class: 'listchips', role: 'group', 'aria-label': 'Lists' },
+        [...publicListNames(), ...S.lists.filter(n => !isPublicList(n))].map(n => h('button', { type: 'button', class: 'lc', 'aria-pressed': String(n === S.current),
+          title: isPublicList(n) ? 'Public list' : null, onclick: () => switchList(n) }, isPublicList(n) ? icon('globe', 14) : null, listLabel(n)))),
+      h('button', { type: 'button', class: 'lc add', 'aria-label': 'New list', title: 'New list', onclick: newList }, icon('plus', 18))),
     h('p', { class: 'hint', style: 'margin-top:-4px' }, info),
     temps,
     h('div', { class: 'h2row' }, h('h2', { class: 'sec' }, 'Allowed ', h('span', { class: 'muted', style: 'font-weight:500' }, `· ${L.sites.length}`)),
@@ -1925,6 +1971,32 @@ function phonesScreen() {
           h('span', { class: 'muted small', style: 'display:block' }, 'A tab for each list, and one for the phones')), h('span', { class: 'chev' }, icon('chev', 18)))),
     h('p', { class: 'hint' }, 'Each phone asks for the person\'s first and last name when it\'s first opened. Its own list is named after its ID, and shown by the person\'s name. Tap a phone to rename it or change its lists.'));
 }
+// A phone's logs: "Get log" (the phone sends it at its next check), and the ones it has sent (newest first).
+function logsSection(id, d) {
+  if (!S.logFiles || S.logFiles.id !== id) {
+    S.logFiles = { id, list: null };
+    logFiles(id).then(l => { if (S.logFiles.id === id) { S.logFiles.list = l; render(); } })
+      .catch(e => { if (S.logFiles.id === id) { S.logFiles.list = []; S.logFiles.err = e.message; render(); } });
+  }
+  const list = S.logFiles.list;
+  const newest = list && list[0] ? Date.parse(list[0].name.slice(0, 10) + 'T' + list[0].name.slice(11, 16).replace('-', ':') + ':00Z') : 0;
+  const waiting = d.logRequested && d.logRequested > newest + 60000;
+  const ask = async () => {
+    d.logRequested = Date.now(); markDevices();
+    await saveAll();
+    say('Asked. The phone sends its log at its next check, within a few minutes (once it\'s online and the app is open).');
+    render();
+  };
+  return h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Logs'),
+    h('p', { class: 'hint', style: 'margin:0' }, 'The app\'s log, from this phone: when you ask, when its user sends it, or after a crash. Kept 30 days.'),
+    h('button', { type: 'button', class: 'btn s', id: 'pGetLog', onclick: ask }, 'Get log'),
+    waiting ? h('p', { class: 'hint', style: 'margin:0' }, `Asked ${new Date(d.logRequested).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: waiting for the phone.`) : null,
+    list == null ? h('p', { class: 'hint', style: 'margin:0' }, 'Looking for logs…')
+      : list.length ? h('div', { class: 'group' }, list.map(f => h('button', { type: 'button', class: 'row', onclick: () => open({ name: 'log', id, file: f.name }) },
+          h('span', { class: 'grow' }, h('span', { class: 't' }, logLabel(f.name))), h('span', { class: 'chev' }, icon('chev', 18)))))
+      : h('p', { class: 'hint', style: 'margin:0' }, S.logFiles.err ? 'Couldn\'t look for logs: ' + S.logFiles.err : 'No logs yet.'));
+}
+
 function phoneScreen() {
   const id = S.sub.id;
   const d = S.D.devices[id];
@@ -1994,6 +2066,11 @@ function phoneScreen() {
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Ads'), ads),
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Filters'), ...filterRows,
       h('p', { class: 'hint', style: 'margin:0' }, 'Usual follows Settings → Filters.')),
+    h('label', { class: 'tg', for: 'pAdmin' }, h('span', { class: 'grow' }, h('span', { class: 't' }, 'Admin phone'),
+        h('span', { class: 's' }, 'Gets phone notifications about new requests, logs and crashes (it can switch them off in its Settings)')),
+      h('input', { type: 'checkbox', class: 'sw', id: 'pAdmin', checked: d.admin === true, onchange: e => {
+        if (e.target.checked) d.admin = true; else delete d.admin; markDevices(); } })),
+    logsSection(id, d),
     h('div', { class: 'stack', style: 'gap:8px;margin-top:8px' },
       d.blocked ? h('button', { type: 'button', class: 'btn s wide', id: 'pUnblock', onclick: unblock }, 'Unblock this phone')
         : h('button', { type: 'button', class: 'btn dline wide', id: 'pBlock', onclick: block }, 'Block this phone'),
@@ -2141,6 +2218,13 @@ function settingsScreen() {
       h('button', { type: 'button', class: 'row', id: 'openApprovalPin', onclick: () => open({ name: 'approvalpin', scope: 'all' }) }, h('span', { class: 'ic' }, icon('shield', 20)),
         h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'PIN for all phones'),
           h('span', { class: 'dom' }, D.approvalPin ? 'Set: type it on a phone to approve a request there' : 'Not set')),
+        h('span', { class: 'chev' }, icon('chev', 18))))),
+    section('Notifications', h('div', { class: 'group' },
+      h('a', { class: 'row', id: 'ghEmails', href: 'https://github.com/settings/notifications', target: '_blank', rel: 'noopener' },
+        h('span', { class: 'ic' }, icon('bell', 20)),
+        h('span', { class: 'grow' }, h('span', { class: 't' }, 'Turn off GitHub emails'),
+          h('span', { class: 's' }, 'Opens GitHub\'s notification settings: under "Participating", untick Email. ' +
+            'Turn on phone notifications first (Phones → your phone → Admin phone), so you\'re never without either.')),
         h('span', { class: 'chev' }, icon('chev', 18))))),
     section('GitHub', h('div', { class: 'group' },
       h('div', { class: 'row' }, h('span', { class: 'ic', style: 'color:#2E8B57' }, icon('check', 20, 2.2)),

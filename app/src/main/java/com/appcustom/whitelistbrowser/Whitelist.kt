@@ -72,6 +72,8 @@ object Whitelist {
         val trackers: Boolean = true,                      // AdGuard's tracker lists (and tracking codes in addresses)
         val annoyances: Boolean = true,                    // AdGuard's annoyance lists (cookie notices, pop-ups, widgets, social)
         val sitesFiltersOff: Map<String, Set<String>> = emptyMap(), // site -> groups switched off on its pages
+        val logRequested: Long = 0L,                       // the admin page asked for this phone's log (when)
+        val adminPhone: Boolean = false,                   // an admin phone (phone notifications; set on the admin page)
         // Embedded content allowed on a site: site -> sites whose content may show inside its pages
         // (a list's "embeds", approved from a request after the phone blocked it).
         val embeds: Map<String, List<String>> = emptyMap(),
@@ -295,6 +297,8 @@ object Whitelist {
             pinApproval = b.optBoolean("pin", false),
             malware = b.optBoolean("malware", true),
             trackers = b.optBoolean("trackers", true),
+            logRequested = device?.optLong("logRequested", 0L) ?: 0L,
+            adminPhone = device?.optBoolean("admin", false) ?: false,
             annoyances = b.optBoolean("annoyances", true),
             adblockExceptions = b.optJSONArray("adblockExceptions")?.let { a ->
                 (0 until a.length()).mapNotNull { normalize(a.optString(it)) } } ?: emptyList(),

@@ -27,11 +27,19 @@ object CrashLog {
                     (ours.ifEmpty { e.stackTrace.take(6).toList() }).forEach { append("at ${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}\n") }
                 }
                 // commit(): written before the app closes
-                app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("last", text.trim()).commit()
+                app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("last", text.trim()).putBoolean("unsent", true).commit()
                 AppLog.e("Crash", text.trim())
             }
             before?.uncaughtException(t, e)
         }
+    }
+
+    /** A crash not sent to the admin yet: true once (it's then marked sent). */
+    fun takeUnsent(ctx: Context): Boolean {
+        val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!p.getBoolean("unsent", false)) return false
+        p.edit().putBoolean("unsent", false).apply()
+        return true
     }
 
     /** The last crash recorded, or null. */

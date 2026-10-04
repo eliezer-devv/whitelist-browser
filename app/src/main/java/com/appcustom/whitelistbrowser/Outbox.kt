@@ -33,6 +33,9 @@ object Outbox {
     @Synchronized fun add(ctx: Context, kind: String, payload: JSONObject, summary: String? = null, request: JSONObject? = null): String {
         val id = UUID.randomUUID().toString()
         val items = read(ctx)
+        if (kind == "log") {                                     // only the newest log waits
+            for (i in items.length() - 1 downTo 0) if (items.getJSONObject(i).optString("kind") == "log") items.remove(i)
+        }
         items.put(JSONObject().put("id", id).put("kind", kind).put("payload", payload)
             .put("summary", summary ?: "").put("created", System.currentTimeMillis())
             .apply { if (request != null) put("request", request) })   // what it asks for (kept on the phone)
@@ -40,7 +43,10 @@ object Outbox {
         return id
     }
 
-    @Synchronized fun count(ctx: Context) = read(ctx).length()
+    @Synchronized fun count(ctx: Context): Int {                // (requests and registrations, not logs)
+        val items = read(ctx)
+        return (0 until items.length()).count { items.getJSONObject(it).optString("kind") != "log" }
+    }
 
     /** Requests not sent yet: (summary, time asked), oldest first. */
     @Synchronized fun waitingRequests(ctx: Context): List<Pair<String, Long>> {
@@ -92,6 +98,7 @@ object Outbox {
             try {
                 val payload = item.getJSONObject("payload")
                 if (item.optString("kind") == "register") Requests.deliverRegistration(ctx, payload)
+                else if (item.optString("kind") == "log") { Requests.deliverIssue(payload); AppLog.i("Log", "Sent to the admin") }  // not one of My requests
                 else MyRequests.sent(ctx, Requests.deliverIssue(payload), item.optString("summary"), item.optLong("created"),
                     item.optJSONObject("request"))
                 remove(ctx, id)

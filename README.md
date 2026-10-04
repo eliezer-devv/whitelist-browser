@@ -317,6 +317,12 @@ What the app follows from AdGuard's lists:
   **before the page's own scripts**, as AdGuard runs them (needed for YouTube, which reads its ad data as it loads).
 - **Tracking codes in addresses**, taken out when a page opens.
 
+**YouTube's last resort (the app's own):** AdGuard's scriptlets run first, but on a phone's built-in browser some
+YouTube ads still get through (AdGuard's own app stops them by editing YouTube's replies, which a browser can't). So
+while YouTube's player shows an ad, the app mutes it, jumps to its end and presses **Skip**, and puts the sound and
+speed back afterwards; at most a flash of the ad shows. Nothing is done when no ad shows. Each one is noted in the
+log. It follows **Block ads**.
+
 **Checking it:** **⋮ → Settings → About this phone** shows **Ad lists** (how many rules each list gave) and **Ad blocking
 on this page** (for the open page: AdGuard's scriptlets and scripts there, elements hidden, whether scripts run before
 the page's own, and any scriptlet AdGuard's code is missing).
@@ -1208,12 +1214,35 @@ People never see it.
 - **First launch** asks for the person's **first and last name**. **About this phone** shows the phone's own list by
   the person's name.
 
+### Phone notifications for you (admin phones)
+Make your own phone an **admin phone** (admin page → **Phones** → your phone → **Admin phone**): it then gets phone
+notifications for **new requests** ("New request from Emma Smith: open nasa.gov"), **new phones**, **logs someone
+sent**, and **crashes**. Tapping one opens the app's admin screen (still with its PIN).
+- **Only the admin page decides** which phones are admin phones (it reaches the phone in its sealed lists): using the
+  admin screen on someone's phone doesn't make it one.
+- **How quickly:** within a minute while the app is open; otherwise Android lets the phone check every 15 minutes or
+  so (instant notifications would need an outside push service such as Google's).
+- **On the phone:** ⋮ → **Settings** → **Phone notifications** switches them off and on (shown on admin phones only).
+- **Each note is sealed for that phone:** nobody else can read what was asked.
+- **Instead of GitHub's emails:** once phone notifications work, admin page → **Settings** → **Turn off GitHub emails**
+  opens GitHub's settings (under "Participating", untick Email).
+
 ### The app's log (to see what went wrong)
 The app keeps a small rolling log on the phone (about the last few days): which sites opened and how long they took,
 what was blocked on them, script errors pages report, list checks, downloads, ad-blocking updates, requests, the
 playing notification, app updates, and crashes. **Site names only**: never full page addresses, searches or anything
-typed. It stays on the phone until you share it: **⋮ → Settings → About this phone → Share log** (WhatsApp, email,
-Drive, or save it to a file). **Last crash** in About this phone shows the most recent crash.
+typed. It stays on the phone until it's sent to you (below). Admin phones can also share their own log (**⋮ → Settings
+→ About this phone → Share log**: WhatsApp, email, Drive, or save it to a file). A shared log starts with the technical details at that moment (ad blocking and its
+lists, what's playing, the last crash…), which About this phone doesn't show.
+
+**Logs sent to you (sealed, like requests):** a phone's log reaches you in three ways, never on a schedule:
+- **Get log** on the admin page (**Phones** → the phone → **Logs**): the phone sends it at its next check (within a
+  few minutes, once it's online with the app open).
+- **Send to admin** on the phone (**About this phone**): an admin phone gets a notification ("Emma Smith sent a log").
+- **After a crash:** the next time the app opens (admin phones get a notification).
+
+They're kept in the private repository (`logs/<phone ID>/`) for 30 days; the admin page lists them on each phone's
+screen, to read or download. About this phone tells its user when logs are sent.
 
 ### App updates in the background
 Tapping the update banner downloads the new version with Android's own download manager (with its progress
@@ -1221,7 +1250,8 @@ notification), so it **carries on if you minimise or close the app**. When it's 
 this app?" screen shows; if the app isn't open then, a **"Update ready: tap to install"** notification opens it.
 
 ### Sound in the background
-A site's sound (music, a podcast, a video's sound) **keeps playing when you leave the app** or the screen turns off:
+While a site plays sound, its **media notification** shows (in the app too), so it **keeps playing when you leave the
+app** or the screen turns off:
 a **media notification** shows what's playing as the site describes it (title, artist, artwork), with **Previous**,
 **Play/Pause** and **Next** where the site has them, and **Stop**. The same controls work on the lock screen, in the
 quick settings media panel, and with headphone and Bluetooth buttons. Where a site has no previous / next, there's

@@ -29,6 +29,29 @@ object Requests {
     private const val REPEAT_WAIT_MS = 30 * 60 * 1000L
 
     /** True if the same request was already sent in the last 30 minutes. */
+    /**
+     * Sends the app's log to whoever manages this browser ([why]: "sent from the phone", "asked for", "after a crash"):
+     * compressed, and sealed like a request (only GitHub's automation can read it). Queued, so it goes once online;
+     * only the newest waits. Trimmed to its most recent part if it's too big for one message.
+     */
+    fun queueLog(ctx: Context, why: String, text: String) {
+        if (!isSetUp()) return
+        var keep = text.length
+        while (true) {
+            val part = if (keep >= text.length) text else "(earlier entries left out)\n" + text.takeLast(keep)
+            val gz = java.io.ByteArrayOutputStream().also { o -> java.util.zip.GZIPOutputStream(o).use { it.write(part.toByteArray(Charsets.UTF_8)) } }.toByteArray()
+            val marker = JSONObject().put("type", "log").put("device", Device.id(ctx)).put("why", why)
+                .put("version", BuildConfig.VERSION_NAME).put("gz", android.util.Base64.encodeToString(gz, android.util.Base64.NO_WRAP))
+            val body = "🔒 A log from a phone.\n\n${Seal.hiddenPart(marker)}"
+            if (body.length < 60_000 || keep < 5_000) {                  // GitHub's limit for one message is 65,536
+                Outbox.add(ctx, "log", JSONObject().put("title", "Log from a phone").put("body", body), summary = "Log ($why)")
+                AppLog.i("Log", "Queued for the admin ($why, ${gz.size / 1024} KB compressed)")
+                return
+            }
+            keep /= 2
+        }
+    }
+
     /** Forgets that something was asked (it was cancelled, or answered): it can be asked again straight away. */
     fun forget(ctx: Context, request: JSONObject?) {
         val key = request?.optString("sentKey")?.takeIf { it.isNotEmpty() } ?: return
@@ -165,6 +188,9 @@ object Requests {
         sealed.find(body)?.let { m -> runCatching { Seal.open(JSONObject(m.groupValues[1].trim())) }.getOrNull() }
 
     /** GET from the repo's API. Null if it doesn't exist (404/410). Throws on other problems. */
+    /** Reads [path] from the private repository's API (null if it isn't there). Blocking. */
+    fun read(path: String): String? = get(path)
+
     private fun get(path: String): String? {
         val conn = URL("https://api.github.com/repos/${PrivateRepo.FULL}/$path").openConnection() as HttpURLConnection
         try {

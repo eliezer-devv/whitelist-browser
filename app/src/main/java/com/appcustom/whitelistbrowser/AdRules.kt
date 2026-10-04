@@ -52,27 +52,35 @@ object AdRules {
 
     /** Reads everything (in the background): at start, and after each update. */
     fun load(ctx: Context) {
-        val loaded = HashMap<String, AdFilters>()
-        val counts = ArrayList<String>()
-        for ((group, lists) in Config.AD_FILTER_GROUPS) {
-            val f = AdFilters()
-            for ((name, _) in lists) {
-                val before = f.kept
-                val text = read(ctx, name)
-                if (text != null) f.add(text)
-                val n = f.kept - before
-                val label = name.removePrefix("adguard-").removeSuffix(".txt").replaceFirstChar { it.uppercase() }
-                counts += "$label " + when {
-                    text == null -> "missing"
-                    // Nothing usable in it: what it was (to see why), e.g. an error page or a notice.
-                    n == 0 -> "0 (of ${text.lines().size} lines, starting \"${text.trim().lines().firstOrNull().orEmpty().take(50)}\")"
-                    n >= 1000 -> "${n / 1000}k"
-                    else -> "$n"
+        // The three groups (ads, trackers, annoyances) are read side by side: about a third of the time.
+        val loaded = java.util.concurrent.ConcurrentHashMap<String, AdFilters>()
+        val countsByGroup = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(Config.AD_FILTER_GROUPS.size)
+        try {
+            Config.AD_FILTER_GROUPS.map { (group, lists) ->
+                pool.submit {
+                    val f = AdFilters()
+                    val counts = ArrayList<String>()
+                    for ((name, _) in lists) {
+                        val before = f.kept
+                        val text = read(ctx, name)
+                        if (text != null) f.add(text)
+                        val n = f.kept - before
+                        val label = name.removePrefix("adguard-").removeSuffix(".txt").replaceFirstChar { it.uppercase() }
+                        counts += "$label " + when {
+                            text == null -> "missing"
+                            // Nothing usable in it: what it was (to see why), e.g. an error page or a notice.
+                            n == 0 -> "0 (of ${text.lines().size} lines, starting \"${text.trim().lines().firstOrNull().orEmpty().take(50)}\")"
+                            n >= 1000 -> "${n / 1000}k"
+                            else -> "$n"
+                        }
+                    }
+                    loaded[group] = f
+                    countsByGroup[group] = counts
                 }
-            }
-            loaded[group] = f
-        }
-        listsSummary = counts.joinToString(" · ")
+            }.forEach { it.get() }                                   // (an error in one is passed on)
+        } finally { pool.shutdown() }
+        listsSummary = Config.AD_FILTER_GROUPS.keys.flatMap { countsByGroup[it].orEmpty() }.joinToString(" · ")
         val lib = read(ctx, "scriptlets.json")?.let { parseScriptlets(it) }
         groups = loaded
         extendedCss = read(ctx, "extended-css.js")?.takeIf { it.contains("ExtendedCss") }
@@ -112,7 +120,7 @@ object AdRules {
         var got = 0
         for ((name, urls) in Config.AD_FILTER_GROUPS.values.flatten()) {
             // The first address that gives a list (several may be given, " | " between them).
-            val text = urls.split(" | ").map { it.trim() }.firstNotNullOfOrNull { u -> download(u)?.takeIf { it.lines().size >= 20 } }
+            val text = urls.split(" | ").map { it.trim() }.firstNotNullOfOrNull { u -> download(u)?.takeIf { hasRules(it) } }
             if (text == null) { AppLog.w("Ad blocking", "Daily download of $name: none of its addresses worked"); continue }
             File(dir(ctx), "$name.new").writeText(text)
             File(dir(ctx), "$name.new").renameTo(File(dir(ctx), name))
@@ -129,6 +137,12 @@ object AdRules {
             loadSafely(ctx)
         }
     }
+
+    /** Does a downloaded list have any rules (not just a header: AdGuard sends that for some variants)? */
+    private fun hasRules(text: String): Boolean = text.lineSequence().count { l ->
+        val t = l.trim()
+        t.isNotEmpty() && !t.startsWith("!") && !(t.startsWith("[") && !t.startsWith("[$"))
+    } >= 5
 
     private fun download(url: String): String? = runCatching {
         val c = URL(url).openConnection() as HttpURLConnection
@@ -157,6 +171,43 @@ object AdRules {
             ", ${rules.size - names.size} scripts, $hidden elements hidden. Scripts run first: ${if (runsFirst) "yes" else "no (they may run too late)"}" +
             (if (missing.isNotEmpty()) ". AdGuard's code is missing: ${missing.joinToString(", ")}" else "")
     }
+
+    /** YouTube, YouTube Music, YouTube's phone site (and its "no cookies" embeds)? */
+    fun isYouTube(host: String?): Boolean {
+        val h = host?.lowercase() ?: return false
+        return h == "youtube.com" || h.endsWith(".youtube.com") || h == "youtube-nocookie.com" || h.endsWith(".youtube-nocookie.com")
+    }
+
+    /**
+     * YouTube's last resort (the app's own, not AdGuard's): while YouTube's player shows an ad (it marks itself
+     * "ad-showing"), the ad is muted, sped up and jumped to its end, and any Skip button pressed; banner ads over the
+     * video are closed. The sound and speed go back as they were when it's over. Nothing is done when no ad shows.
+     * Each ad skipped is noted for the app's log.
+     */
+    private const val YOUTUBE_SKIP = """
+(function () {
+  if (window.__wlbYtSkip) return; window.__wlbYtSkip = true;
+  var saved = null, count = 0;
+  var SKIP = '.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .ytp-ad-skip-button-container button, ' +
+    '.ytm-skip-ad-button, ytm-skip-ad-button button, button[class*="skip-ad"], button[id^="skip-button"]';
+  function player() { return document.querySelector('.html5-video-player') || document.querySelector('#movie_player'); }
+  function adShowing(p) { return !!(p && (p.classList.contains('ad-showing') || p.classList.contains('ad-interrupting'))); }
+  function tick() {
+    var p = player(), v = p ? p.querySelector('video') : document.querySelector('video');
+    if (adShowing(p) && v) {
+      if (!saved) { saved = { muted: v.muted, rate: v.playbackRate }; count++; try { console.log('[wlb] YouTube ad skipped (' + count + ' on this page)'); } catch (e) {} }
+      try { v.muted = true; v.playbackRate = 16; if (isFinite(v.duration) && v.duration > 0.5 && v.currentTime < v.duration - 0.3) v.currentTime = v.duration - 0.1; } catch (e) {}
+      var b = document.querySelector(SKIP); if (b) try { b.click(); } catch (e) {}
+    } else if (saved && v) {
+      try { v.muted = saved.muted; v.playbackRate = saved.rate || 1; } catch (e) {}
+      saved = null;
+    }
+    var close = document.querySelector('.ytp-ad-overlay-close-button, .ytp-ad-overlay-close-container button');
+    if (close) try { close.click(); } catch (e) {}
+  }
+  setInterval(tick, 250);
+})();
+"""
 
     /** Is this address (loaded by a page on [pageHost]) blocked by the groups switched on ([which])? */
     fun blocks(url: android.net.Uri, pageHost: String?, which: Set<String>): Boolean {
@@ -217,6 +268,8 @@ object AdRules {
                 code.append("try{").append(rule).append("\n}catch(e){}\n")
             }
         }
+        // YouTube: a last resort for ads that get past AdGuard's scriptlets (with "Block ads" on).
+        if (isYouTube(h) && "ads" in which) code.append(YOUTUBE_SKIP).append("\n")
         if (code.isEmpty()) return null
         return "(function(){if(window.__wlbAg)return;window.__wlbAg=1;\n$code})();"
     }
