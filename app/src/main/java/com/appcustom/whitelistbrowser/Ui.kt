@@ -558,9 +558,14 @@ object Ui {
          * dialog is open, since one at the bottom of the screen would be hidden behind it.
          */
         private var noteView: TextView? = null
+        private var noteBaseReserve: Int? = null                 // the scrolling part's room before a ribbon showed
         fun note(text: String) {
             val parent = buttons.parent as? LinearLayout ?: return
             noteView?.let { parent.removeView(it) }
+            // The scrolling part gives up the ribbon's height while it shows (it was sized to leave room for the
+            // buttons only, so the ribbon pushed them off the screen).
+            val scroll = (0 until parent.childCount).map { parent.getChildAt(it) }.filterIsInstance<MaxHeightScrollView>().firstOrNull()
+            val base = noteBaseReserve ?: scroll?.reservedDp?.also { noteBaseReserve = it }
             val v = Ui.text(ctx, text, 14f, Ui.AMBER_INK, "bold").apply {
                 background = Ui.rounded(Ui.AMBER_BG, Ui.dp(ctx, 12).toFloat())
                 setPadding(Ui.dp(ctx, 14), Ui.dp(ctx, 10), Ui.dp(ctx, 14), Ui.dp(ctx, 10))
@@ -570,7 +575,19 @@ object Ui {
             })
             v.announceForAccessibility(text)
             noteView = v
-            v.postDelayed({ if (noteView === v) { parent.removeView(v); noteView = null } }, 4500)
+            if (scroll != null && base != null) {
+                val m = Ui.dp(ctx, 16)
+                v.measure(View.MeasureSpec.makeMeasureSpec(maxOf(parent.width - 2 * m, 1), View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                scroll.reservedDp = base + (v.measuredHeight / ctx.resources.displayMetrics.density).toInt() + 8
+                scroll.requestLayout()
+            }
+            v.postDelayed({
+                if (noteView === v) {
+                    parent.removeView(v); noteView = null
+                    if (scroll != null && base != null) { scroll.reservedDp = base; scroll.requestLayout() }
+                }
+            }, 4500)
         }
 
         companion object {

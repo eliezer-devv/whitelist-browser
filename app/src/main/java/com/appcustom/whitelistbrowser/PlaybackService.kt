@@ -308,6 +308,23 @@ class PlaybackService : Service() {
       Object.defineProperty(Navigator.prototype, 'mediaSession', { configurable: true, get: function () { return session; } });
     }
   } catch (e) {}
+  // A site that registers no Previous / Next (Spotify's web player on a phone): its own buttons on the page, by their
+  // usual labels; only visible ones that aren't disabled.
+  var PAGE_BUTTONS = {
+    nexttrack: '[data-testid="control-button-skip-forward"], button[aria-label="Next" i], button[aria-label="Next track" i], button[aria-label="Next song" i]',
+    previoustrack: '[data-testid="control-button-skip-back"], button[aria-label="Previous" i], button[aria-label="Previous track" i], button[aria-label="Previous song" i]'
+  };
+  function pageButton(a) {
+    var q = PAGE_BUTTONS[a]; if (!q) return null;
+    try {
+      var list = document.querySelectorAll(q);
+      for (var i = 0; i < list.length; i++) {
+        var b = list[i], r = b.getBoundingClientRect();
+        if (!b.disabled && b.getAttribute('aria-disabled') !== 'true' && r.width > 0 && r.height > 0) return b;
+      }
+    } catch (e) {}
+    return null;
+  }
   // What's playing, as the site last described it: kept, since some sites clear it when paused.
   var lastMeta = null;
   window.__wlbPlaying = function () {
@@ -330,7 +347,7 @@ class PlaybackService : Service() {
     } catch (e) {}
     var pos = last && isFinite(last.currentTime) ? last.currentTime : 0, len = last && isFinite(last.duration) ? last.duration : 0;
     return { playing: window.__wlbPlaying() > 0, has: has, title: (md && md.title) || document.title || '', artist: (md && md.artist) || '',
-      album: (md && md.album) || '', art: art, prev: !!handlers.previoustrack, next: !!handlers.nexttrack,
+      album: (md && md.album) || '', art: art, prev: !!handlers.previoustrack || !!pageButton('previoustrack'), next: !!handlers.nexttrack || !!pageButton('nexttrack'),
       pos: Math.round(pos * 1000), len: Math.round(len * 1000) };
   };
   // A media button pressed (notification, lock screen, headphones): the site's own handler if it has one.
@@ -352,6 +369,8 @@ class PlaybackService : Service() {
       return;
     }
     if (handlers[a]) { try { handlers[a]({ action: a, seekOffset: 10 }); return; } catch (e) {} }
+    // No handler from the site: its own Previous / Next button on the page.
+    var pb = pageButton(a); if (pb) { try { pb.click(); } catch (e) {} return; }
     if (a === 'play' && last) { try { last.play(); } catch (e) {} }
     if (a === 'pause') window.__wlbStopAll();
   };
