@@ -27,6 +27,20 @@ class AdminActivity : Activity() {
     private var fileCallback: ValueCallback<Array<Uri>>? = null
 
     @SuppressLint("SetJavaScriptEnabled")
+    /**
+     * Opens [url] outside this app: in the GitHub app if it's installed, else in another browser (not this one,
+     * which only opens the sites on its lists).
+     */
+    private fun openOutside(url: Uri) {
+        val view = Intent(Intent.ACTION_VIEW, url)
+        val gh = Intent(view).setPackage("com.github.android")
+        if (runCatching { startActivity(gh) }.isSuccess) return
+        @Suppress("DEPRECATION")
+        val other = packageManager.queryIntentActivities(view, 0).map { it.activityInfo.packageName }.firstOrNull { it != packageName }
+        if (other != null && runCatching { startActivity(Intent(view).setPackage(other)) }.isSuccess) return
+        Toast.makeText(this, "No other browser on this phone to open it with", Toast.LENGTH_LONG).show()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         Ui.applyTheme(this)                         // the same light or dark as the rest of the app
         setTheme(if (Ui.dark) R.style.AppThemeDark else R.style.AppTheme)
@@ -54,6 +68,9 @@ class AdminActivity : Activity() {
                     return true
                 }
                 if (url.host == HomePage.HOST && url.path?.startsWith(PATH) == true) return false
+                // GitHub's own pages (its notification settings, say): the GitHub app, or else another browser.
+                val host = url.host?.lowercase().orEmpty()
+                if ((url.scheme == "https") && (host == "github.com" || host.endsWith(".github.com"))) { openOutside(url); return true }
                 Toast.makeText(this@AdminActivity, "Open links like this on a computer", Toast.LENGTH_SHORT).show()
                 return true
             }

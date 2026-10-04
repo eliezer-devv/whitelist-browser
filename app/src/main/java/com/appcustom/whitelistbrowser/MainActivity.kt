@@ -233,6 +233,7 @@ class MainActivity : Activity() {
         isResumedNow = true
         AppLog.i("App", "Opened")
         InstallReceiver.showConfirm = { confirm -> runCatching { startActivity(confirm) }.onFailure { AppLog.e("Update", "Couldn't show the installer", it) } }
+        installWaitingUpdate()
         main.removeCallbacks(soundCheck)                      // (the playing notification stays while something plays)
         web.settings.mediaPlaybackRequiresUserGesture = true  // pages start sound only after a tap again
         player?.settings?.mediaPlaybackRequiresUserGesture = true
@@ -391,6 +392,21 @@ class MainActivity : Activity() {
                 else if (++playerIdleChecks >= 20) stopPlayer()     // nothing for a minute: it closes
             }
             main.postDelayed(this, 3_000)
+        }
+    }
+
+    /**
+     * An update downloaded in the background (with the app closed, Android's "update?" screen can't always show):
+     * opening the app brings that screen up. Not more than every 10 minutes, if it's been closed without updating.
+     */
+    private fun installWaitingUpdate() {
+        val prefs = getSharedPreferences("updates", Context.MODE_PRIVATE)
+        if (System.currentTimeMillis() - prefs.getLong("prompted", 0L) < 10 * 60_000L) return
+        updateIo.execute {
+            val apk = Updater.waiting(applicationContext) ?: return@execute
+            prefs.edit().putLong("prompted", System.currentTimeMillis()).apply()
+            AppLog.i("Update", "A downloaded update is waiting: showing the installer")
+            runCatching { Updater.install(applicationContext, apk) }.onFailure { AppLog.e("Update", "Installing failed", it) }
         }
     }
 
@@ -1494,6 +1510,14 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
             toast("Allow this app to install updates, then come back and tap the banner again")
             startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+            return
+        }
+        // Android 13+: notifications need permission, so "Update ready: tap to install" can show with the app closed.
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+            !getSharedPreferences("updates", Context.MODE_PRIVATE).getBoolean("askedNotify", false)) {
+            getSharedPreferences("updates", Context.MODE_PRIVATE).edit().putBoolean("askedNotify", true).apply()
+            toast("Allow notifications, so you're told when the update is ready to install")
+            withAndroidPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) { startUpdate(release) }
             return
         }
         updating = true
@@ -3308,7 +3332,7 @@ class MainActivity : Activity() {
             add(Ui.label(this@MainActivity, "Filters"))
             add(table(listOf(
                 row("Ads and trackers", if (st.adblock || st.trackers) "On · ${AdBlock.blockedCount.get()} blocked" else "Off"),
-                row("Annoyances", if (st.annoyances) "Hidden" else "Shown"),
+                row("Annoyances", if (st.annoyances) "On" else "Off"),
                 row("Adult content", f(st.adult, Filters.adult)),
                 row("Gambling", f(st.gambling, Filters.gambling)),
                 row("Malware and scams", f(st.malware, Filters.malware)))), 6)

@@ -148,8 +148,14 @@
   .tile.big { width: 56px; height: 56px; border-radius: 16px; font-size: 24px; background: #fff; }
 
   /* The lists scroll; "+" (new list) stays at the right end, and the lists fade out under it. */
-  .listrow { display: flex; align-items: center; gap: 8px; }
-  .listrow .listchips { flex: 1; min-width: 0; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-right: 24px; }
+  /* The lists scroll under "+" (new list): a long, gentle fade into it, and the button see-through, so what's behind
+     still shows. */
+  .listrow { position: relative; }
+  .listrow .listchips { padding-right: 52px; }
+  .listrow::after { content: ''; position: absolute; top: 0; bottom: 4px; right: 0; width: 120px; pointer-events: none;
+    background: linear-gradient(to right, transparent, color-mix(in srgb, var(--bg) 55%, transparent) 60%, color-mix(in srgb, var(--bg) 80%, transparent)); }
+  .listrow .lc.add { position: absolute; right: 2px; top: 2px; z-index: 1; background: color-mix(in srgb, var(--bg) 60%, transparent);
+    -webkit-backdrop-filter: blur(1.5px); backdrop-filter: blur(1.5px); }
   .listchips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 4px; scrollbar-width: none; }
   .logtext { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--card, #fff); border: 1px solid var(--line, #E7E3DB); border-radius: 14px; padding: 12px; margin: 0; max-width: 100%; box-sizing: border-box; }
   .listchips::-webkit-scrollbar { display: none; }
@@ -297,6 +303,7 @@
   :root[data-theme="dark"] .lc[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
   :root[data-theme="dark"] .pick[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--mint); }
   :root[data-theme="dark"] .lc.add { background: transparent; border-color: #56696A; }
+  :root[data-theme="dark"] .listrow .lc.add { background: color-mix(in srgb, var(--bg) 60%, transparent); }
   :root[data-theme="dark"] .seg, :root[data-theme="dark"] .chip, :root[data-theme="dark"] .av.grey { background: #364748; }
   :root[data-theme="dark"] .seg button[aria-pressed="true"] { background: #435657; color: var(--ink); }
   :root[data-theme="dark"] .chip.amber { color: var(--amber-ink); }

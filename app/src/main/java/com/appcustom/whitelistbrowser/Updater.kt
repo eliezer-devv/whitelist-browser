@@ -84,6 +84,19 @@ object Updater {
         return finished(ctx, id)
     }
 
+    /**
+     * A downloaded update, newer than this app, still waiting to be installed (the download finished with the app
+     * closed, say, and Android's "update?" screen wasn't shown): its file, or null.
+     */
+    fun waiting(ctx: Context): File? {
+        val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val name = p.getString("file", null) ?: return null
+        val code = name.removePrefix("update-").removeSuffix(".apk").toIntOrNull() ?: return null
+        if (code <= BuildConfig.VERSION_CODE) return null
+        val id = p.getLong("id", -1L).takeIf { it >= 0 } ?: return null
+        return finished(ctx, id)
+    }
+
     /** Is the update [r] downloading right now? */
     fun downloading(ctx: Context, r: Release): Boolean {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
