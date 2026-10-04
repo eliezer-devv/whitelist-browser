@@ -760,8 +760,10 @@ class MainActivity : Activity() {
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 if (pageStartedAt > 0 && url?.startsWith("http") == true) {
+                    val frameSites = synchronized(blockedFrames) { blockedFrames.keys.take(5) }
                     AppLog.i("Page", "Opened ${AppLog.site(url)} in ${System.currentTimeMillis() - pageStartedAt} ms; blocked: " +
                         "${pageAds.get()} ads/trackers, ${pageMedia.get()} photos/videos/sound, ${pageFrames.get()} embedded parts" +
+                        (if (pageFrames.get() > 0 && frameSites.isNotEmpty()) " (from ${frameSites.joinToString()})" else "") +
                         (if (pageScriptErrors.get() > 0) "; ${pageScriptErrors.get()} script errors" else ""))
                     pageStartedAt = 0L
                 }
@@ -785,7 +787,12 @@ class MainActivity : Activity() {
                 if ((photosOffHere && !photosBefore) || (videosOffHere && !videosBefore) || (soundOffHere && !soundBefore)) {
                     view?.evaluateJavascript(MediaBlock.script(photosOffHere, videosOffHere, soundOffHere, Whitelist.mediaAllowList()), null)
                 }
-                if ((!photosOffHere && photosBefore) || (!videosOffHere && videosBefore) || (!soundOffHere && soundBefore)) view?.reload()
+                if ((!photosOffHere && photosBefore) || (!videosOffHere && videosBefore) || (!soundOffHere && soundBefore)) {
+                    // Allowed again on this page: a reload shows them. Not while sound plays (it would end the song):
+                    // then at the page's next load.
+                    if (mainPlaying) AppLog.i("Page", "${AppLog.site(url)}: photos/videos/sound allowed here now; not reloaded while sound plays")
+                    else { AppLog.i("Page", "${AppLog.site(url)}: reloaded (photos/videos/sound allowed on this page)"); view?.reload() }
+                }
                 updateUi()
             }
         }
@@ -1256,7 +1263,11 @@ class MainActivity : Activity() {
                 if (isDestroyed) return@post
                 Whitelist.lastError = error
                 // Photos and videos were switched on or off for the open page: reload it.
-                if (mediaChanged(web.url)) { setMediaMode(web.url); web.reload() }
+                if (mediaChanged(web.url)) {
+                    setMediaMode(web.url)
+                    if (mainPlaying) AppLog.i("Page", "${AppLog.site(web.url)}: photos/videos/sound settings changed; not reloaded while sound plays")
+                    else { AppLog.i("Page", "${AppLog.site(web.url)}: reloaded (its photos/videos/sound settings changed)"); web.reload() }
+                }
                 // Home page shows the list, so redraw it when the list changed.
                 if (HomePage.isHome(web.url) && !Whitelist.state.sameContent(before)) web.reload()
                 enforceCurrent()
