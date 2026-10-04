@@ -58,7 +58,7 @@ object AdRules {
         val pool = java.util.concurrent.Executors.newFixedThreadPool(Config.AD_FILTER_GROUPS.size)
         try {
             Config.AD_FILTER_GROUPS.map { (group, lists) ->
-                pool.submit {
+                pool.submit(Runnable {
                     val f = AdFilters()
                     val counts = ArrayList<String>()
                     for ((name, _) in lists) {
@@ -77,7 +77,7 @@ object AdRules {
                     }
                     loaded[group] = f
                     countsByGroup[group] = counts
-                }
+                })
             }.forEach { it.get() }                                   // (an error in one is passed on)
         } finally { pool.shutdown() }
         listsSummary = Config.AD_FILTER_GROUPS.keys.flatMap { countsByGroup[it].orEmpty() }.joinToString(" · ")

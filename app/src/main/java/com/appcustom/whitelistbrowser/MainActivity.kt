@@ -432,7 +432,6 @@ class MainActivity : Activity() {
         main.postDelayed(soundCheck, 3_000)
     }
 
-    /** While in the background: keeps the media controls up to date; they go after 10 minutes paused, or with nothing to play. */
     /**
      * The playing notification, every few seconds (in the app and away from it): it shows as soon as something
      * plays (Android always allows that while the app is on screen), keeps up with it, and goes after 30 seconds with
@@ -2357,7 +2356,6 @@ class MainActivity : Activity() {
         ).joinToString("\n") { "  $it" }
     }
 
-    /** About this phone → Share log: Android's share menu (WhatsApp, email, Drive, save to a file…). */
     /** The log as it's shared or sent: a heading, the details at this moment, the entries, and the last crash. */
     private fun logReport(): String {
         val all = AppLog.text()
@@ -2376,6 +2374,7 @@ class MainActivity : Activity() {
         if (!quiet) toast("Sending the log to whoever manages this browser")
     }
 
+    /** About this phone → Share log (admin phones): Android's share menu (WhatsApp, email, Drive, save to a file…). */
     private fun shareLog() {
         val text = logReport()
         val send = Intent(Intent.ACTION_SEND).setType("text/plain")
@@ -3302,10 +3301,26 @@ class MainActivity : Activity() {
                 row("Adult content", f(st.adult, Filters.adult)),
                 row("Gambling", f(st.gambling, Filters.gambling)),
                 row("Malware and scams", f(st.malware, Filters.malware)))), 6)
+            // The log: its own section (the bottom bar keeps Copy ID and Close, which fit across a phone).
+            add(Ui.label(this@MainActivity, "Log"))
             add(Ui.text(this@MainActivity, "The log lists the sites opened (names only). It's sent to whoever manages this browser only " +
-                "when you tap Send to admin, when they ask for it, or after the app crashes.", 12.5f, Ui.MUTED), 10)
-            if (AdminAlerts.isAdminPhone()) button("Share log", Ui.Kind.GHOST) { shareLog() }
-            button("Send to admin", Ui.Kind.GHOST) { sendLog("sent from the phone") }
+                "when you tap Send to admin, when they ask for it, or after the app crashes.", 12.5f, Ui.MUTED), 4)
+            val ctx = this@MainActivity
+            fun logButton(label: String, onClick: () -> Unit) = Button(ctx).apply {
+                text = label; isAllCaps = false; typeface = Ui.boldFace; stateListAnimator = null
+                setTextColor(Ui.ACCENT_TEXT)
+                background = Ui.rounded(Ui.CARD, Ui.dp(ctx, 14).toFloat(), Ui.OUTLINE, Ui.dp(ctx, 1))
+                minHeight = Ui.dp(ctx, 44); minimumHeight = Ui.dp(ctx, 44)
+                setPadding(Ui.dp(ctx, 16), 0, Ui.dp(ctx, 16), 0)
+                setOnClickListener { onClick() }
+            }
+            add(LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(logButton("Send to admin") { sendLog("sent from the phone") },
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(ctx, 44)))
+                if (AdminAlerts.isAdminPhone()) addView(logButton("Share log") { shareLog() },
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(ctx, 44)).apply { marginStart = Ui.dp(ctx, 10) })
+            }, 8)
             button("Copy ID", Ui.Kind.SECONDARY) { copy() }
             button("Close", Ui.Kind.PRIMARY) { it.dismiss() }
         }.show()

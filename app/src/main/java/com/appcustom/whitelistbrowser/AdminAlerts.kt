@@ -55,19 +55,19 @@ object AdminAlerts {
         if (!active(ctx)) return
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
-        val since = p.getString("since", null)
-        if (since == null) { p.edit().putString("since", iso(now)).apply(); return }      // from now on (not earlier ones)
+        // The first time: from now on (not earlier ones). After that: since the last one seen.
+        val since: String = p.getString("since", null) ?: run { p.edit().putString("since", iso(now)).apply(); return }
         val raw = runCatching { Requests.read("issues/comments?since=$since&sort=created&direction=asc&per_page=100") }
             .onFailure { AppLog.w("Notifications", "Couldn't check: ${it.message}") }.getOrNull() ?: return
         val marker = Regex("<!-- whitelist-admin-${Regex.escape(Device.id(ctx))}\\s*([\\s\\S]*?)-->")
-        var latest: String = since                              // (checked above: it's there)
+        var latest: String = since
         val list = JSONArray(raw)
         for (i in 0 until list.length()) {
             val c = list.getJSONObject(i)
-            val created = c.optString("created_at")
+            val created: String = c.optString("created_at").orEmpty()
             if (created > latest) latest = created
             if (created <= since) continue
-            val m = marker.find(c.optString("body")) ?: continue
+            val m = marker.find(c.optString("body").orEmpty()) ?: continue
             val note = runCatching { Seal.open(JSONObject(m.groupValues[1].trim())) }.getOrNull() ?: continue
             notify(ctx, note.optString("title"), note.optString("text"), note.optInt("number", i))
         }
