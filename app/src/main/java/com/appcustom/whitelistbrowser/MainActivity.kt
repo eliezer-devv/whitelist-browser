@@ -91,9 +91,10 @@ class MainActivity : Activity() {
     private lateinit var forwardBtn: ImageButton
 
     private val main = Handler(Looper.getMainLooper())
-    private val io = Executors.newSingleThreadExecutor()        // whitelist fetches
-    private val updateIo = Executors.newSingleThreadExecutor()  // app updates, requests, ad list downloads
-    private val traceIo = Executors.newSingleThreadExecutor()   // finding where stopped links lead
+    // (Each drops work handed to it after the screen has closed, rather than crashing the app.)
+    private val io = quietQueue()                                // whitelist fetches
+    private val updateIo = quietQueue()                          // app updates, requests, ad list downloads
+    private val traceIo = quietQueue()                           // finding where stopped links lead
     private lateinit var updateBanner: TextView
     private var availableUpdate: Updater.Release? = null
     private var updating = false
@@ -231,6 +232,7 @@ class MainActivity : Activity() {
         super.onResume()
         isResumedNow = true
         AppLog.i("App", "Opened")
+        InstallReceiver.showConfirm = { confirm -> runCatching { startActivity(confirm) }.onFailure { AppLog.e("Update", "Couldn't show the installer", it) } }
         main.removeCallbacks(soundCheck)                      // (the playing notification stays while something plays)
         web.settings.mediaPlaybackRequiresUserGesture = true  // pages start sound only after a tap again
         player?.settings?.mediaPlaybackRequiresUserGesture = true
@@ -246,6 +248,7 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         isResumedNow = false
+        InstallReceiver.showConfirm = null
         AppLog.i("App", "Left")
         main.removeCallbacks(refreshTask)
         main.removeCallbacks(tempTask)
@@ -1495,8 +1498,16 @@ class MainActivity : Activity() {
         }
         updating = true
         if (Config.LOCK_TASK) runCatching { stopLockTask() }       // the installer screen needs to open
+        // Already downloaded (Android's "update?" screen was closed, say): installed again, not downloaded again.
+        Updater.readyFile(applicationContext, release)?.let { apk ->
+            AppLog.i("Update", "Already downloaded: installing")
+            showBanner("Installing version ${release.versionName}")
+            updateIo.execute { runCatching { Updater.install(applicationContext, apk) }.onFailure { AppLog.e("Update", "Installing failed", it) } }
+            main.postDelayed({ updating = false }, 3_000)
+            return
+        }
         // Android's download manager: it carries on if the app is minimised or closed, and installs when it's done.
-        try { Updater.startDownload(applicationContext, release) }
+        try { if (!Updater.downloading(applicationContext, release)) Updater.startDownload(applicationContext, release) }
         catch (e: Exception) { updating = false; showBanner("Update failed: ${e.message ?: "unknown error"}. Tap to try again."); return }
         val name = release.versionName
         showBanner("Downloading version $name (it carries on if you close the app)")

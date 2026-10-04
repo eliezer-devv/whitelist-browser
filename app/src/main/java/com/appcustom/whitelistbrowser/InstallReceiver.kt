@@ -23,10 +23,11 @@ class InstallReceiver : BroadcastReceiver() {
                 }
                 confirm?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 if (confirm != null) {
-                    // The app open: Android's screen shows. In the background, Android doesn't let an app open a
-                    // screen, so a notification does it ("Tap to install").
-                    runCatching { context.startActivity(confirm) }
-                    notify(context, "Update ready", "Tap to install the new version of Whitelist Browser", confirm)
+                    // The app open: its screen opens Android's "update?" screen (a background part of an app often
+                    // isn't allowed to). Otherwise a notification does it ("Tap to install").
+                    val show = showConfirm
+                    if (show != null) android.os.Handler(android.os.Looper.getMainLooper()).post { show(confirm) }
+                    else notify(context, "Update ready", "Tap to install the new version of Whitelist Browser", confirm)
                 }
             }
             PackageInstaller.STATUS_SUCCESS -> Unit // Android restarts the app on the new version
@@ -43,6 +44,8 @@ class InstallReceiver : BroadcastReceiver() {
     private fun toast(ctx: Context, text: String) = Toast.makeText(ctx, text, Toast.LENGTH_LONG).show()
 
     companion object {
+        /** Set while the app's screen is open: it opens Android's "update?" screen itself. */
+        @Volatile var showConfirm: ((Intent) -> Unit)? = null
         private const val CHANNEL = "updates"
         private const val ID = 4418
 

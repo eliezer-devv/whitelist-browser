@@ -88,7 +88,12 @@ object Outbox {
      * Sends what's waiting, oldest first. Stops at the first connection problem (the rest waits for
      * next time). Items GitHub refuses for good (e.g. an expired key) are dropped. Blocking.
      */
-    fun flush(ctx: Context): Result {
+    private val sending = Any()
+
+    /** Sends what's waiting, oldest first. One at a time: two at once could both send the same thing. */
+    fun flush(ctx: Context): Result = synchronized(sending) { flushNow(ctx) }
+
+    private fun flushNow(ctx: Context): Result {
         val sent = HashSet<String>()
         val refused = HashMap<String, String>()
         if (!Requests.isSetUp()) return Result(sent, refused)

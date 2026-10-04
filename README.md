@@ -296,7 +296,7 @@ all on unless switched off:
 
 | Switch | AdGuard's lists | What it does |
 |---|---|---|
-| **Block ads** | Base (includes EasyList), Mobile Ads, Quick Fixes, plus the DNS list | Ads, including YouTube's |
+| **Block ads** | Base (includes EasyList), Mobile Ads, plus the DNS list | Ads, including YouTube's |
 | **Block trackers** | Tracking Protection, URL Tracking | Trackers and analytics; tracking codes (`utm_source`, `fbclid`…) taken out of addresses when a page opens |
 | **Hide annoyances** | Cookie Notices, Popups, Mobile App Banners, Other Annoyances, Widgets, Social Media | Cookie notices, pop-ups, "get our app" banners, widgets, like and share buttons |
 

@@ -20,7 +20,7 @@ import android.os.IBinder
 class PlaybackService : Service() {
 
     private var session: android.media.session.MediaSession? = null
-    private val artLoader = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val artLoader = quietQueue()
     private var artUrl: String? = null
     private var art: android.graphics.Bitmap? = null
 

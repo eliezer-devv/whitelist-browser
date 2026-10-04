@@ -76,6 +76,22 @@ object Updater {
         return id
     }
 
+    /** The update [r], already downloaded and waiting to be installed (or null). */
+    fun readyFile(ctx: Context, r: Release): File? {
+        val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (p.getString("version", null) != r.versionName) return null
+        val id = p.getLong("id", -1L).takeIf { it >= 0 } ?: return null
+        return finished(ctx, id)
+    }
+
+    /** Is the update [r] downloading right now? */
+    fun downloading(ctx: Context, r: Release): Boolean {
+        val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (p.getString("version", null) != r.versionName) return false
+        val pct = progress(ctx) ?: return false
+        return pct < 100
+    }
+
     /** How far the update's download has got: a percentage, or null if there isn't one going. */
     fun progress(ctx: Context): Int? {
         val id = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("id", -1L).takeIf { it >= 0 } ?: return null

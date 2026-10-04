@@ -54,3 +54,11 @@ object AppLog {
     /** The whole log, for sharing (newest last). */
     @Synchronized fun text(): String = runCatching { file?.readText() }.getOrNull().orEmpty()
 }
+
+/**
+ * A work queue (one task at a time) that quietly drops work handed to it after it's shut down, rather than crashing
+ * the app: work handed over by something that finished late, after the screen closed, isn't needed any more.
+ */
+fun quietQueue(): java.util.concurrent.ExecutorService = java.util.concurrent.ThreadPoolExecutor(
+    1, 1, 0L, java.util.concurrent.TimeUnit.MILLISECONDS, java.util.concurrent.LinkedBlockingQueue(),
+    java.util.concurrent.ThreadPoolExecutor.DiscardPolicy())
