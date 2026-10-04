@@ -83,6 +83,15 @@
             </intent-filter>
         </activity>
 
+        <!-- The app has just been updated (even when it isn't running): a notification says so. -->
+        <receiver
+            android:name=".UpdatedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Admin phones: the background check for new requests, logs and crashes (phone notifications). -->
         <service
             android:name=".AdminCheckJob"

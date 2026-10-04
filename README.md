@@ -1246,8 +1246,14 @@ screen, to read or download. About this phone tells its user when logs are sent.
 
 ### App updates in the background
 Tapping the update banner downloads the new version with Android's own download manager (with its progress
-notification), so it **carries on if you minimise or close the app**. When it's done, Android's "Do you want to update
-this app?" screen shows; if the app isn't open then, a **"Update ready: tap to install"** notification opens it.
+notification), so it **carries on if you minimise or close the app**, and then **installs by itself**: on Android 12
+and newer without asking (where the app installed its current version itself, as it does once it has updated itself
+once). Installing closes the app for a moment, so if something's playing it waits until that stops. Afterwards, a
+notification says **"Whitelist Browser updated to 1.0.x"** (tap to open it).
+
+If Android wants to ask first (older Android, or the app was last installed by hand), its "Do you want to update this
+app?" screen shows when the app's open, else a **"Update ready: tap to install"** notification opens it. Android
+doesn't let an app open that screen by itself while it isn't on screen.
 
 ### Sound in the background
 While a site plays sound, its **media notification** shows (in the app too), so it **keeps playing when you leave the

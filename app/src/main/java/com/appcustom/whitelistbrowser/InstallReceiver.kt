@@ -12,6 +12,7 @@ class InstallReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         AppLog.ready(context)
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
+        Updater.asking(context, status == PackageInstaller.STATUS_PENDING_USER_ACTION)   // (finished, or asking now)
         AppLog.i("Update", "Installer: status $status ${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE).orEmpty()}")
         when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {

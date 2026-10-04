@@ -18,7 +18,7 @@ class UpdateDownloadReceiver : BroadcastReceiver() {
         Thread {
             try {
                 val apk = Updater.finished(context.applicationContext, id)   // only the update's own download
-                if (apk != null) { AppLog.i("Update", "Downloaded; installing"); Updater.install(context.applicationContext, apk) }
+                if (apk != null) { AppLog.i("Update", "Downloaded"); Updater.installWhenFree(context.applicationContext) }
             } catch (e: Exception) {
                 AppLog.e("Update", "Installing failed", e)
                 InstallReceiver.notify(context, "Update failed", e.message ?: "unknown error", null)

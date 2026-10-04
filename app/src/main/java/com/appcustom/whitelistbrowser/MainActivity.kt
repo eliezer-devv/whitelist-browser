@@ -192,7 +192,15 @@ class MainActivity : Activity() {
         backBtn = findViewById(R.id.back)
         forwardBtn = findViewById(R.id.forward)
         updateBanner = findViewById(R.id.updateBanner)
-        updateBanner.setOnClickListener { availableUpdate?.let { startUpdate(it) } }
+        updateBanner.setOnClickListener {
+            val r = availableUpdate
+            if (r != null) startUpdate(r)
+            else updateIo.execute {                               // one already downloaded and waiting: installed now
+                val apk = Updater.waiting(applicationContext) ?: return@execute
+                main.post { showBanner("Installing the update: the app closes for a moment") }
+                runCatching { Updater.install(applicationContext, apk) }.onFailure { AppLog.e("Update", "Installing failed", it) }
+            }
+        }
 
         TempTime.load(this)       // time already used on "time on the site" temporary access
         AppLog.start(applicationContext)                      // the rolling log (About this phone → Share log)
@@ -203,7 +211,7 @@ class MainActivity : Activity() {
         val stopFilter = android.content.IntentFilter(PlaybackService.ACTION_MEDIA)
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(stopReceiver, stopFilter, Context.RECEIVER_NOT_EXPORTED)
         else registerReceiver(stopReceiver, stopFilter)       // (before Android 13, only this app's own anyway)
-        io.execute { AdRules.loadSafely(applicationContext); AdRules.update(applicationContext) }   // AdGuard's rules (updated daily)
+        AdRules.start(applicationContext)                      // AdGuard's rules: once per app run (updated daily)
         // Ad list: load the saved copy (or the one in the app) first, then fetch a fresh one if a week
         // has passed. In that order, so an old copy can never overwrite a fresh one.
         io.execute {
@@ -241,7 +249,7 @@ class MainActivity : Activity() {
         main.removeCallbacks(playCheck); main.postDelayed(playCheck, 3_000)
         main.removeCallbacks(adminTick); main.postDelayed(adminTick, 2_000)
         refreshWhitelist() // check GitHub every time the app comes to the front
-        io.execute { AdRules.update(applicationContext) }   // AdGuard's ad rules: once a day (checked at most hourly)
+        AdRules.start(applicationContext)                   // AdGuard's ad rules: once a day (checked at most hourly)
         maybeAutoCheckForUpdate()
         if (Config.LOCK_TASK) runCatching { startLockTask() }
         main.removeCallbacks(tempTask)
@@ -343,7 +351,7 @@ class MainActivity : Activity() {
             (p.parent as? ViewGroup)?.removeView(p)
             p.destroy()
         }
-        if (!isResumedNow) PlaybackService.stop(this)
+        if (!isResumedNow) { AppLog.i("Sound", "Player tab closed: the notification goes"); PlaybackService.stop(this) }
     }
 
     /** The slim bar under the top bar while the player tab plays: "Playing from youtube.com", Open, Stop. */
@@ -387,7 +395,7 @@ class MainActivity : Activity() {
             if (!isResumedNow || isDestroyed) return
             web.evaluateJavascript("(window.__wlbPlaying ? window.__wlbPlaying() : 0)") { n -> mainPlaying = (n?.trim()?.toIntOrNull() ?: 0) > 0 }
             // What's playing (the player tab's, or this page's): the notification shows while it plays.
-            mediaInfo(player ?: web) { info -> lastInfo = info; mediaTick(info) }
+            mediaInfo(soundView) { info -> lastInfo = info; mediaTick(info) }
             player?.evaluateJavascript("(window.__wlbPlaying ? window.__wlbPlaying() : 0)") { n ->
                 if ((n?.trim()?.toIntOrNull() ?: 0) > 0) playerIdleChecks = 0
                 else if (++playerIdleChecks >= 20) stopPlayer()     // nothing for a minute: it closes
@@ -397,17 +405,13 @@ class MainActivity : Activity() {
     }
 
     /**
-     * An update downloaded in the background (with the app closed, Android's "update?" screen can't always show):
-     * opening the app brings that screen up. Not more than every 10 minutes, if it's been closed without updating.
+     * An update downloaded but not installed yet (waiting for sound to stop, or Android wanted to ask first): the
+     * banner says so; tapping it installs it.
      */
     private fun installWaitingUpdate() {
-        val prefs = getSharedPreferences("updates", Context.MODE_PRIVATE)
-        if (System.currentTimeMillis() - prefs.getLong("prompted", 0L) < 10 * 60_000L) return
         updateIo.execute {
-            val apk = Updater.waiting(applicationContext) ?: return@execute
-            prefs.edit().putLong("prompted", System.currentTimeMillis()).apply()
-            AppLog.i("Update", "A downloaded update is waiting: showing the installer")
-            runCatching { Updater.install(applicationContext, apk) }.onFailure { AppLog.e("Update", "Installing failed", it) }
+            if (Updater.waiting(applicationContext) == null) return@execute
+            main.post { if (!isDestroyed && !updating) showBanner("An update is ready. Tap to install it (the app closes for a moment).") }
         }
     }
 
@@ -447,7 +451,9 @@ class MainActivity : Activity() {
             done(runCatching { org.json.JSONObject(text) }.getOrNull())
         }
     }
-    private val soundSite: String get() = if (player != null) playerSite else (siteKeyOf(web.url) ?: "a website")
+    /** The page whose sound the notification follows: this one if it's playing, else the player tab's (if any). */
+    private val soundView: WebView get() = if (mainPlaying || player == null) web else player!!
+    private val soundSite: String get() = if (soundView === player) playerSite else (siteKeyOf(web.url) ?: "a website")
     @Volatile private var lastInfo: org.json.JSONObject? = null
     private var nothingSince = 0L         // nothing to play since (a moment between songs isn't the end)
     private var pausedSince = 0L
@@ -460,7 +466,7 @@ class MainActivity : Activity() {
         if (!notifying) return
         AppLog.i("Sound", "Left the app while $soundSite plays: it keeps playing")
         // While away, a page may start sound without a tap (the next song, or a media button): restored on return.
-        (player ?: web).settings.mediaPlaybackRequiresUserGesture = false
+        soundView.settings.mediaPlaybackRequiresUserGesture = false
         main.postDelayed(soundCheck, 3_000)
     }
 
@@ -497,7 +503,7 @@ class MainActivity : Activity() {
     private val soundCheck = object : Runnable {
         override fun run() {
             if (isResumedNow || isDestroyed || !notifying) return
-            mediaInfo(player ?: web) { info -> if (!isResumedNow) { mediaTick(info); if (notifying) main.postDelayed(this, 3_000) } }
+            mediaInfo(soundView) { info -> if (!isResumedNow) { mediaTick(info); if (notifying) main.postDelayed(this, 3_000) } }
         }
     }
 
@@ -516,6 +522,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         stopPlayer()
+        if (notifying) AppLog.i("Sound", "The app's screen closed (swiped away, or Android closed it): the sound stops")
         PlaybackService.stop(this)                              // closed: nothing keeps playing
         runCatching { unregisterReceiver(stopReceiver) }
         main.removeCallbacksAndMessages(null)
@@ -1126,14 +1133,14 @@ class MainActivity : Activity() {
                 "play", "pause", "nexttrack", "previoustrack", "seekbackward", "seekforward" -> {
                     // Pressed on the page that's playing (the player tab, if there is one), then the controls catch up.
                     // A page may only start sound after a tap on it: a media button counts as one, just for a moment.
-                    val target = player ?: web
+                    val target = soundView
                     target.settings.mediaPlaybackRequiresUserGesture = false        // (until the app comes back)
                     if (isResumedNow) main.postDelayed({ runCatching { target.settings.mediaPlaybackRequiresUserGesture = true } }, 8_000)
                     target.evaluateJavascript("window.__wlbMediaDo && window.__wlbMediaDo('$cmd')", null)
                     main.removeCallbacks(soundCheck); main.postDelayed(soundCheck, 700)
                 }
                 else -> if (cmd?.startsWith("seekto:") == true && cmd.drop(7).all { it.isDigit() })      // dragging the progress bar
-                    (player ?: web).evaluateJavascript("window.__wlbMediaDo && window.__wlbMediaDo('$cmd')", null)
+                    soundView.evaluateJavascript("window.__wlbMediaDo && window.__wlbMediaDo('$cmd')", null)
             }
         }
     }
@@ -1538,7 +1545,7 @@ class MainActivity : Activity() {
         // Already downloaded (Android's "update?" screen was closed, say): installed again, not downloaded again.
         Updater.readyFile(applicationContext, release)?.let { apk ->
             AppLog.i("Update", "Already downloaded: installing")
-            showBanner("Installing version ${release.versionName}")
+            showBanner("Installing version ${release.versionName}: the app closes for a moment")
             updateIo.execute { runCatching { Updater.install(applicationContext, apk) }.onFailure { AppLog.e("Update", "Installing failed", it) } }
             main.postDelayed({ updating = false }, 3_000)
             return
@@ -1547,15 +1554,16 @@ class MainActivity : Activity() {
         try { if (!Updater.downloading(applicationContext, release)) Updater.startDownload(applicationContext, release) }
         catch (e: Exception) { updating = false; showBanner("Update failed: ${e.message ?: "unknown error"}. Tap to try again."); return }
         val name = release.versionName
-        showBanner("Downloading version $name (it carries on if you close the app)")
+        showBanner("Downloading version $name (it carries on if you close the app, and installs by itself)")
         val watch = object : Runnable {
             override fun run() {
                 if (isDestroyed) return
                 val pct = Updater.progress(applicationContext)
                 when {
                     pct == null -> { updating = false; showBanner("Update failed. Tap to try again.") }
-                    pct >= 100 -> { updating = false; showBanner("Installing version $name") }
-                    else -> { showBanner("Downloading version $name: $pct% (it carries on if you close the app)"); main.postDelayed(this, 1_000) }
+                    pct >= 100 -> { updating = false; showBanner(if (PlaybackService.isPlaying) "Version $name is ready: it installs once nothing's playing"
+                        else "Installing version $name: the app closes for a moment") }
+                    else -> { showBanner("Downloading version $name: $pct% (it carries on if you close the app, and installs by itself)"); main.postDelayed(this, 1_000) }
                 }
             }
         }

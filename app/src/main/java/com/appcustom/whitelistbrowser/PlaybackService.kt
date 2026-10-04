@@ -171,6 +171,8 @@ class PlaybackService : Service() {
 
     override fun onDestroy() {
         if (running === this) running = null
+        // An update waiting for the sound to stop: now.
+        if (Updater.isPending(applicationContext)) Thread { runCatching { Updater.installWhenFree(applicationContext) } }.start()
         AppLog.i("Sound", "Playing notification stopped")
         session?.let { it.isActive = false; it.release() }
         session = null
@@ -198,6 +200,8 @@ class PlaybackService : Service() {
 
         /** The running service, if any (to update it directly). */
         @Volatile private var running: PlaybackService? = null
+        /** Is the playing notification up (something's playing, or paused for a while)? */
+        val isPlaying: Boolean get() = running != null
 
         /**
          * Shows (or updates) the media notification: [info] is the page's own description of what's playing. A running
@@ -291,11 +295,16 @@ class PlaybackService : Service() {
           this.artwork = Array.isArray(init.artwork) ? init.artwork.slice() : [];
         };
       }
-      var session = {
-        metadata: null, playbackState: 'none',
-        setActionHandler: function (a, h) { handlers[a] = h; },
-        setPositionState: function () {}, setCameraActive: function () {}, setMicrophoneActive: function () {}
-      };
+      // A real MediaSession (some sites check "instanceof MediaSession", or that window.MediaSession exists).
+      var MS = window.MediaSession || function MediaSession() { this.metadata = null; this.playbackState = 'none'; };
+      if (!window.MediaSession) {
+        MS.prototype.setActionHandler = function (a, h) { handlers[a] = h; };
+        MS.prototype.setPositionState = function () {};
+        MS.prototype.setCameraActive = function () {};
+        MS.prototype.setMicrophoneActive = function () {};
+        window.MediaSession = MS;
+      }
+      var session = new MS();
       Object.defineProperty(Navigator.prototype, 'mediaSession', { configurable: true, get: function () { return session; } });
     }
   } catch (e) {}

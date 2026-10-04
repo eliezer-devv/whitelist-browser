@@ -76,6 +76,28 @@ object Updater {
         return id
     }
 
+    /**
+     * The download finished, or something that held it up has stopped: installed now, unless sound is playing (an
+     * update closes the app, which would cut it off): then it waits until the playing notification goes.
+     */
+    fun installWhenFree(ctx: Context) {
+        val apk = waiting(ctx) ?: return
+        val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (PlaybackService.isPlaying) {
+            if (!p.getBoolean("pending", false)) AppLog.i("Update", "Downloaded; installing once nothing's playing")
+            p.edit().putBoolean("pending", true).apply()
+            return
+        }
+        install(ctx, apk)
+    }
+
+    /** Android is asking about an update now (its "update?" screen), or has finished asking. */
+    fun asking(ctx: Context, now: Boolean) =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong("asking", if (now) System.currentTimeMillis() else 0L).apply()
+
+    /** An update that waited for the sound to stop. */
+    fun isPending(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("pending", false)
+
     /** The update [r], already downloaded and waiting to be installed (or null). */
     fun readyFile(ctx: Context, r: Release): File? {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -134,13 +156,22 @@ object Updater {
     }
 
     /**
-     * Hands the APK to Android's installer. Android shows its own confirmation screen and
-     * refuses the update unless it's signed with the same key as the installed app.
+     * Hands the APK to Android's installer, which refuses it unless it's signed with the same key as the installed
+     * app. Android 12+: without asking, where Android allows it (when this app installed its current version);
+     * otherwise Android asks first (InstallReceiver shows its screen, or "Tap to install").
      */
     fun install(ctx: Context, apk: File) {
         val installer = ctx.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
         params.setAppPackageName(ctx.packageName)
+        if (Build.VERSION.SDK_INT >= 31) params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+        // Android already asking about this update (in the last 2 minutes): not another (it asked twice in a row).
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (System.currentTimeMillis() - prefs.getLong("asking", 0L) < 120_000L) { AppLog.i("Update", "Android's already asking about it: not again"); return }
+        // An older one left unfinished: closed, so only one is ever asked about.
+        runCatching { installer.mySessions.forEach { installer.abandonSession(it.sessionId) } }
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("pending", false).apply()
+        AppLog.i("Update", "Installing" + if (Build.VERSION.SDK_INT >= 31) " (without asking, if Android allows)" else "")
         val sessionId = installer.createSession(params)
         installer.openSession(sessionId).use { session ->
             apk.inputStream().use { input ->

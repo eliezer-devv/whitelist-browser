@@ -36,12 +36,29 @@ object AdRules {
         return runCatching { ctx.assets.open("adlists/$name").bufferedReader().use { it.readText() } }.getOrNull()
     }
 
+    /**
+     * AdGuard's rules: loaded once per app run, on their own thread (closing the screen can't interrupt it), and
+     * after the daily download. (Loading again each time the screen was recreated kept two copies in memory at once,
+     * which ran out of it.) Then the daily download, if it's due.
+     */
+    private val worker = quietQueue()
+    @Volatile private var loaded = false
+    fun start(ctx: Context) {
+        val app = ctx.applicationContext
+        worker.execute {
+            if (!loaded) loadSafely(app)
+            update(app)
+        }
+    }
+
     /** [load], saying why if it can't (rather than "Not loaded yet" for ever). */
     fun loadSafely(ctx: Context) {
         status = "Loading…"
         val t0 = System.currentTimeMillis()
         try {
+            if (loaded) { groups = emptyMap(); synchronized(hideScripts) { hideScripts.clear() }; System.gc() }   // the old copy goes first
             load(ctx)
+            loaded = true
             AppLog.i("Ad blocking", "Loaded in ${System.currentTimeMillis() - t0} ms: $listsSummary; scriptlet code: ${scriptlets.size} scriptlets" +
                 (if (extendedCss == null) "; advanced element rules: not available" else ""))
         } catch (t: Throwable) {
