@@ -665,12 +665,16 @@ async function commandNow(cmd, { signed = true, minutes = 4 } = {}) {
 // ---------- What this admin sees: encrypted in the public repository, at a given version ----------
 const RAW = 'https://raw.githubusercontent.com';
 const DATA = { sha: null, key: null, index: null, cache: new Map() };
+// The public repository's newest version (null if GitHub didn't say: the branch name would give an old, cached copy).
 async function latestSha() {
-  try {
-    const res = await fetch(`${API}/repos/${C.owner}/${publicRepoName()}/commits/${branch()}`, { headers: { Accept: 'application/vnd.github.sha' }, cache: 'no-store' });
-    if (res.ok) return (await res.text()).trim();
-  } catch {}
-  return branch();
+  for (const auth of [true, false]) {
+    try {
+      const res = await fetch(`${API}/repos/${C.owner}/${publicRepoName()}/commits/${branch()}`,
+        { headers: { Accept: 'application/vnd.github.sha', ...(auth && ghToken() ? { Authorization: `Bearer ${ghToken()}` } : {}) }, cache: 'no-store' });
+      if (res.ok) { const t = (await res.text()).trim(); if (/^[0-9a-f]{40}$/.test(t)) return t; }
+    } catch {}
+  }
+  return null;
 }
 async function aesOpen(key, text) {
   const { iv, d } = JSON.parse(text);
@@ -680,7 +684,8 @@ async function aesOpen(key, text) {
 async function loadData(sha) {
   const s = getSession();
   if (!s) throw new Error('SIGNED_OUT');
-  sha = sha || await latestSha();
+  sha = sha || await latestSha() || s.sha;
+  if (!sha) return false;
   const at = p => `${RAW}/${C.owner}/${publicRepoName()}/${sha}/a/${s.ah}/${p}`;
   const kres = await fetch(at(`k/${s.dh}.json`), { cache: 'no-store' });
   if (kres.status === 404) return false;
@@ -692,7 +697,26 @@ async function loadData(sha) {
   const index = JSON.parse(await aesOpen(key, await ires.text()));
   Object.assign(DATA, { sha, key, index, at });
   ME = index.me;
+  const now = getSession();
+  if (now && now.sha !== sha) setSession({ ...now, sha });      // (the last version that opened here)
   return true;
+}
+// Opens this admin's data: at [sha] (just published), else the newest version, else the last one that opened here.
+// If none of those has it (GitHub can take a moment to show a new version), it asks GitHub's automation, which
+// publishes it again, and says if this device really was signed out. It never signs out by itself.
+async function openData(sha) {
+  const tryAt = async v => { try { return await loadAll(v); } catch { return false; } };
+  if (sha) for (let i = 0; i < 3; i++) { if (await tryAt(sha)) return true; await sleep(3000); }
+  else if (await tryAt()) return true;
+  const s = getSession();
+  if (s && s.sha && s.sha !== sha && await tryAt(s.sha)) {
+    command({ op: 'refresh' }).then(r => r.ok && refreshData(r.sha)).catch(() => {});     // (then the newest, quietly)
+    return true;
+  }
+  const r = await command({ op: 'refresh' });           // (signed out for real: this signs out, and throws)
+  if (!r.ok) throw new Error(r.error);
+  for (let i = 0; i < 5; i++) { if (await tryAt(r.sha)) return true; await sleep(4000); }
+  throw new Error('Your data isn\'t showing yet. Reload the page in a minute.');
 }
 async function fileText(path) {
   const f = DATA.index && DATA.index.files[path];
@@ -780,7 +804,7 @@ async function flushQueue() {
 }
 // After a save (or "Check for new requests"): the newest data, without losing what's being edited.
 async function refreshData(sha) {
-  if (!(await loadData(sha))) { await signedOutHere('This device was signed out.'); return; }
+  if (!(await loadData(sha).catch(() => false))) return;      // (not there yet: what's shown stays)
   OVER.clear();
   if (!S.devDirty) await loadDevices();
   const folder = await getRaw('docs/lists');
@@ -1390,7 +1414,7 @@ const pwField = (id, label, autocomplete) => h('div', { class: 'field' }, h('lab
 // Already signed in on this browser (another tab did it): open the admin. False if that didn't work.
 async function openSignedIn() {
   S.signin = null; S.starting = true; render();
-  try { const ok = await loadAll(); S.starting = false; if (ok) { render(); return true; } }
+  try { const ok = await openData(); S.starting = false; if (ok) { render(); return true; } }
   catch (e) { S.starting = false; say(e.message, true); }
   S.starting = false; render();
   return false;
@@ -1401,10 +1425,8 @@ async function finishSignIn(r, macKey) {
   setSession({ aid: r.aid, did: r.did, ah: r.ah, dh: r.dh, n: 0 });
   S.signin = null;
   try {
-    let ok = false;
-    for (let i = 0; i < 5 && !ok; i++) { ok = await loadAll(r.sha); if (!ok) await sleep(4000); }   // (just published)
-    if (!ok) throw new Error('Signed in, but your data isn\'t there yet. Reload the page in a minute.');
-    if (INAPP && !getPin()) { S.sub = { name: 'pin', first: true }; }
+    await openData(r.sha);                                     // (just published)
+    if (!getPin()) { S.sub = { name: 'pin', first: true }; }     // (a PIN to open it next time: needed in the app, offered elsewhere)
     render();
     say(`Signed in as ${ME.email}.`);
   } catch (e) { S.connected = false; render(); say(e.message, true); }
@@ -1581,10 +1603,15 @@ function pinScreen() {
     say(had ? 'PIN changed. Use the new one next time.' : 'PIN saved. Next time, just type it to open the admin.');
   };
   setTimeout(() => $('pinNew') && $('pinNew').focus(), 50);
-  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, first ? null : backLink('Settings'),
-    screenTitle(had ? 'Change the PIN' : 'Choose a PIN for this phone', first ? 'You\'ll type it each time you open the admin here, instead of your password.' : 'The old PIN stops working straight away.'),
+  const where = INAPP ? 'phone' : 'device';
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, first ? null : backLink('Your account', () => open({ name: 'account' })),
+    screenTitle(had ? 'Change the PIN' : `Choose a PIN for this ${where}`, first
+      ? `This ${where} stays signed in. A PIN locks the admin here: you type it each time you open it${INAPP ? '' : ' (useful on a device others use)'}.`
+      : had ? 'The old PIN stops working straight away.' : 'You\'ll type it each time you open the admin here.'),
     field('pinNew', 'New PIN'), field('pinAgain', 'The same PIN again'), saveBtn,
-    h('p', { class: 'hint' }, 'After 5 wrong PINs, this phone is signed out, and needs your email and password again.'));
+    first && !INAPP ? h('button', { type: 'button', class: 'btn d', id: 'pinSkip', onclick: () => { S.sub = null; render(); } }, 'Not now') : null,
+    had && !INAPP ? h('button', { type: 'button', class: 'btn d', id: 'pinRemove', onclick: () => { localStorage.removeItem(PIN_KEY); open({ name: 'account' }); say('PIN removed from this device.'); } }, 'Remove the PIN') : null,
+    h('p', { class: 'hint' }, `After 5 wrong PINs, this ${where} is signed out, and needs your email and password again.`));
 }
 function unlockScreen() {
   const pin = h('input', { class: 'inp', id: 'uPin', type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '8', placeholder: 'PIN', style: 'max-width:12rem;font-size:22px;letter-spacing:.2em' });
@@ -1600,7 +1627,7 @@ function unlockScreen() {
     }
     S.locked = false;
     go1.textContent = 'Opening…';
-    try { if (!(await loadAll())) return signedOutHere('This phone was signed out. Sign in again.'); render(); }
+    try { await openData(); render(); }
     catch (e) { go1.disabled = false; go1.textContent = 'Unlock'; say(e.message, true); }
   };
   go1.onclick = tryIt;
@@ -1676,7 +1703,7 @@ function accountScreen() {
     pwField('acOld', 'Current password', 'current-password'), pwField('acNew', 'New password', 'new-password'), pwField('acNew2', 'The same new password again', 'new-password'),
     h('p', { class: 'hint', style: 'margin:0' }, 'At least 8 characters, with a letter and a number.'), changePw,
     h('h2', { class: 'sec' }, 'This device'),
-    INAPP ? h('button', { type: 'button', class: 'btn s wide', id: 'openPin', onclick: () => open({ name: 'pin' }) }, getPin() ? 'Change the PIN' : 'Choose a PIN') : null,
+    h('button', { type: 'button', class: 'btn s wide', id: 'openPin', onclick: () => open({ name: 'pin' }) }, getPin() ? 'Change the PIN' : 'Lock with a PIN'),
     h('button', { type: 'button', class: 'btn dline wide', id: 'signOut', onclick: signOut }, 'Sign out on this device'));
 }
 
@@ -2877,7 +2904,7 @@ function accountSection(section) {
   const row = (ic, label, sub, onclick, id) => h('button', { type: 'button', class: 'row', onclick, id }, h('span', { class: 'ic' }, icon(ic, 20)),
     h('span', { class: 'grow' }, h('span', { class: 't' }, label), sub ? h('span', { class: 's' }, sub) : null), h('span', { class: 'chev' }, icon('chev', 18)));
   return section('Admin page', h('div', { class: 'group' },
-    row('shield', 'Your account', ME ? `${ME.email}${INAPP && getPin() ? ' · PIN on this phone' : ''}` : '', () => open({ name: 'account' }), 'openAccount'),
+    row('shield', 'Your account', ME ? `${ME.email}${getPin() ? ` · PIN on this ${INAPP ? 'phone' : 'device'}` : ''}` : '', () => open({ name: 'account' }), 'openAccount'),
     isOwner() ? row('phone', 'Admins', 'Add admins for some phones, and choose what they can do', () => { S.admins = null; open({ name: 'admins' }); }, 'openAdmins') : null,
     INAPP ? null : h('a', { class: 'row', href: status, target: '_blank', rel: 'noopener' }, h('span', { class: 'ic' }, icon('ext', 20)),
       h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Open the status page')))));
@@ -2946,10 +2973,10 @@ function settingsScreen() {
   // (From before sign-in: a GitHub token kept here. Not used any more, so not kept.)
   try { localStorage.removeItem('wl-admin-locked'); localStorage.removeItem('wl-admin'); } catch {}
   if (!LINK && getSession()) {
-    if (INAPP && getPin()) S.locked = true;                // the PIN first
+    if (getPin()) S.locked = true;                         // the PIN first
     else {
       S.starting = true; render();
-      try { if (!(await loadAll())) { S.starting = false; return signedOutHere('This device was signed out. Sign in again.'); } }
+      try { await openData(); }
       catch (e) { S.connected = false; say(e.message, true); }
       S.starting = false;
     }
