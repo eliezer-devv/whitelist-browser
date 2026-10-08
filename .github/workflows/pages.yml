@@ -28,6 +28,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: actions/configure-pages@v6
+      # The admin page sends its (sealed) commands with the requests token, the same one built into the app:
+      # filled in here, in the published copy only (stored reversed, never committed).
+      - name: Give the admin page the requests token
+        env:
+          REQUESTS_TOKEN: ${{ secrets.REQUESTS_TOKEN }}
+        run: |
+          rev="$(printf '%s' "$REQUESTS_TOKEN" | tr -d '[:space:]' | rev)"
+          sed -i "s/__REQUESTS_TOKEN_REV__/${rev}/" docs/admin.html
       - uses: actions/upload-pages-artifact@v5
         with:
           path: docs

@@ -106,7 +106,12 @@ jobs:
 
       # The admin page, for the hidden admin screen inside the app.
       - name: Add the admin page
-        run: cp docs/admin.html app/src/main/assets/admin.html
+        env:
+          REQUESTS_TOKEN: ${{ secrets.REQUESTS_TOKEN }}
+        run: |
+          cp docs/admin.html app/src/main/assets/admin.html
+          rev="$(printf '%s' "$REQUESTS_TOKEN" | tr -d '[:space:]' | rev)"
+          sed -i "s/__REQUESTS_TOKEN_REV__/${rev}/" app/src/main/assets/admin.html
 
       - name: Build signed APK
         env:
