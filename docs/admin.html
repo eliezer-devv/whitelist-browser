@@ -567,6 +567,7 @@ async function newMacSecret() {
 }
 async function forgetDevice() {
   DEV = null; setSession(null);
+  try { localStorage.removeItem('wl-admin-pin'); localStorage.removeItem('wl-admin-bio'); } catch {}   // (its locks go with it)
   await idb.del('device').catch(() => {}); await idb.del('mac').catch(() => {});
 }
 const deviceName = () => {
@@ -1421,12 +1422,14 @@ async function openSignedIn() {
 }
 // Signed in on this device: its session, and the signing key (kept here).
 async function finishSignIn(r, macKey) {
+  if (!macKey) { const p = await idb.get('macPending').catch(() => null); if (p && p.did === r.did) macKey = p.key; }
   if (macKey) await idb.set('mac', macKey);
-  setSession({ aid: r.aid, did: r.did, ah: r.ah, dh: r.dh, n: 0 });
+  await idb.del('macPending').catch(() => {});
+  setSession({ aid: r.aid, did: r.did, ah: r.ah, dh: r.dh, n: Number(r.seq) || 0 });
   S.signin = null;
   try {
     await openData(r.sha);                                     // (just published)
-    if (!getPin()) { S.sub = { name: 'pin', first: true }; }     // (a PIN to open it next time: needed in the app, offered elsewhere)
+    if (!getPin() && !getBio() && (INAPP || !noLockOffer())) { S.sub = { name: 'pin', first: true }; }   // (a lock for next time: needed in the app, offered elsewhere)
     render();
     say(`Signed in as ${ME.email}.`);
   } catch (e) { S.connected = false; render(); say(e.message, true); }
@@ -1456,6 +1459,8 @@ function signInScreen() {
       if (getSession() && await openSignedIn()) return;
       let dev = await deviceKeys();
       const mac = await newMacSecret();
+      // (Kept here meanwhile: if the email link is tapped in another tab of this browser, that tab can finish signing in.)
+      await idb.set('macPending', { did: dev.did, key: mac.key });
       const number = await postCommand({ p: JSON.stringify({ op: 'signin', email: em, password: pw, did: dev.did, enc: dev.enc, mac: mac.b64, name: deviceName(), rk: dev.enc, at: Date.now() }) });
       const seen = new Set();
       const first = await awaitAnswers(number, () => true, { seen });
@@ -1531,7 +1536,11 @@ function linkScreen() {
     if (!L.started) {
       L.started = true;
       command({ op: 'confirm', aid: L.aid, did: L.did, code: L.code }, { signed: false, minutes: 4 })
-        .then(r => { L.result = r; render(); }).catch(e => { L.result = { ok: false, error: e.message }; render(); });
+        .then(async r => {
+          // The link was tapped on the device that's signing in: it opens right here.
+          if (r.ok && r.active && DEV && r.did === DEV.did) { LINK.kind = 'done'; return finishSignIn(r); }
+          L.result = r; render();
+        }).catch(e => { L.result = { ok: false, error: e.message }; render(); });
     }
     const r = L.result;
     return h('main', { class: 'stack' }, screenTitle(r ? (r.ok ? 'Confirmed' : 'Not confirmed') : 'Confirming…', ''),
@@ -1588,8 +1597,50 @@ async function pinOk(pin) {
   }
   return false;
 }
+// ---------- Fingerprint (or face): a lock for this device, like the PIN ----------
+// In the app: Android's own fingerprint prompt. On the web: the device's own (Windows Hello, Touch ID, a phone's
+// fingerprint), through the browser's passkey support. Either way only this device checks it, like the PIN.
+const BIO_KEY = 'wl-admin-bio', NOLOCK_KEY = 'wl-admin-nolock';
+const getBio = () => { try { return JSON.parse(localStorage.getItem(BIO_KEY) || 'null'); } catch { return null; } };
+const noLockOffer = () => { try { return localStorage.getItem(NOLOCK_KEY) === '1'; } catch { return false; } };
+async function bioAvailable() {
+  try {
+    if (INAPP) return !!(window.WLBAdmin && WLBAdmin.canBiometric && WLBAdmin.canBiometric());
+    return !!(window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable());
+  } catch { return false; }
+}
+let bioWait = null;
+window.wlBioDone = ok => { if (bioWait) { const w = bioWait; bioWait = null; w(!!ok); } };
+// Asks for the fingerprint now. True if it matched.
+async function bioCheck(b = getBio()) {
+  if (!b) return false;
+  if (b.kind === 'app') return new Promise(res => { bioWait = res; try { WLBAdmin.biometric(); } catch { bioWait = null; res(false); } });
+  try {
+    const a = await navigator.credentials.get({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials: [{ type: 'public-key', id: b64u8(b.id) }], userVerification: 'required', timeout: 60000 } });
+    const flags = new Uint8Array(a.response.authenticatorData)[32];
+    return !!(flags & 0x04);                      // (the device checked the person, not just that it's there)
+  } catch { return false; }
+}
+// Sets it up for this device (asking for the fingerprint once). True if it worked.
+async function bioSetup() {
+  if (INAPP) { if (!(await bioCheck({ kind: 'app' }))) return false; localStorage.setItem(BIO_KEY, JSON.stringify({ kind: 'app' })); return true; }
+  try {
+    const c = await navigator.credentials.create({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { name: 'Whitelist admin' }, user: { id: crypto.getRandomValues(new Uint8Array(16)), name: (ME && ME.email) || 'admin', displayName: (ME && (ME.name || ME.email)) || 'Admin' },
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged' }, timeout: 60000 } });
+    localStorage.setItem(BIO_KEY, JSON.stringify({ kind: 'web', id: u8b64(c.rawId) }));
+    return true;
+  } catch { return false; }
+}
+
+// Locking the admin on this device: offered after signing in (in the app, one of them is needed), and in Your account.
 function pinScreen() {
-  const first = S.sub && S.sub.first, had = !!getPin();
+  const first = S.sub && S.sub.first, had = !!getPin(), bio = !!getBio();
+  const where = INAPP ? 'phone' : 'device';
+  if (S.bioOk === undefined) { S.bioOk = null; bioAvailable().then(v => { S.bioOk = v; if (S.sub && S.sub.name === 'pin') render(); }); }
+  const done = text => { S.sub = first ? null : { name: 'account' }; render(); if (text) say(text); };
   const field = (id, label) => h('div', { class: 'field' }, h('label', { for: id }, label),
     h('input', { class: 'inp', id, type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '8', placeholder: '4 to 8 digits', style: 'max-width:12rem;font-size:20px;letter-spacing:.2em' }));
   const saveBtn = h('button', { type: 'button', class: 'btn p wide', id: 'pinSave' }, had ? 'Change the PIN' : 'Save the PIN');
@@ -1599,45 +1650,69 @@ function pinScreen() {
     if (a !== b) { $('pinAgain').value = ''; return say('The two PINs don\'t match. Type it again.', true); }
     saveBtn.disabled = true;
     await setPin(a);
-    S.sub = null; render();
-    say(had ? 'PIN changed. Use the new one next time.' : 'PIN saved. Next time, just type it to open the admin.');
+    done(had ? 'PIN changed. Use the new one next time.' : 'PIN saved. Next time, just type it to open the admin.');
   };
-  setTimeout(() => $('pinNew') && $('pinNew').focus(), 50);
-  const where = INAPP ? 'phone' : 'device';
+  const bioBtn = S.bioOk ? h('button', { type: 'button', class: 'btn s wide', id: 'bioSet', onclick: async e => {
+    const btn = e.currentTarget;
+    if (bio) { localStorage.removeItem(BIO_KEY); return done('Fingerprint unlock is off on this ' + where + '.'); }
+    btn.disabled = true;
+    if (await bioSetup()) done('Done. Next time, just use your fingerprint to open the admin.');
+    else { btn.disabled = false; say('That didn\'t work. Try again, or choose a PIN.', true); }
+  } }, icon('shield', 18), bio ? 'Turn off fingerprint unlock' : 'Use my fingerprint (or face)') : null;
+  const never = !first || INAPP ? null : h('input', { type: 'checkbox', id: 'noLock' });
+  const skip = first && !INAPP ? h('button', { type: 'button', class: 'btn d', id: 'pinSkip', onclick: () => {
+    if (never && never.checked) { try { localStorage.setItem(NOLOCK_KEY, '1'); } catch {} }
+    done(never && never.checked ? 'OK, it won\'t ask again on this device (Your account → Lock with a PIN, any time).' : '');
+  } }, 'Not now') : null;
+  setTimeout(() => !S.bioOk && $('pinNew') && $('pinNew').focus(), 50);
   return h('main', { class: 'stack', style: 'padding-bottom:24px' }, first ? null : backLink('Your account', () => open({ name: 'account' })),
-    screenTitle(had ? 'Change the PIN' : `Choose a PIN for this ${where}`, first
-      ? `This ${where} stays signed in. A PIN locks the admin here: you type it each time you open it${INAPP ? '' : ' (useful on a device others use)'}.`
-      : had ? 'The old PIN stops working straight away.' : 'You\'ll type it each time you open the admin here.'),
-    field('pinNew', 'New PIN'), field('pinAgain', 'The same PIN again'), saveBtn,
-    first && !INAPP ? h('button', { type: 'button', class: 'btn d', id: 'pinSkip', onclick: () => { S.sub = null; render(); } }, 'Not now') : null,
-    had && !INAPP ? h('button', { type: 'button', class: 'btn d', id: 'pinRemove', onclick: () => { localStorage.removeItem(PIN_KEY); open({ name: 'account' }); say('PIN removed from this device.'); } }, 'Remove the PIN') : null,
+    screenTitle(first ? `Lock the admin on this ${where}?` : had ? 'Change the PIN' : 'Lock with a PIN or fingerprint', first
+      ? (INAPP ? 'This phone stays signed in, so the admin needs a lock here: anyone who taps the title 7 times would get in otherwise.'
+        : 'This device stays signed in. If others use it, a lock keeps them out of the admin: you unlock it each time you open it.')
+      : had ? 'The old PIN stops working straight away.' : 'You unlock it each time you open the admin here.'),
+    bioBtn,
+    bioBtn ? h('p', { class: 'hint', style: 'margin:0;text-align:center' }, 'or a PIN') : null,
+    field('pinNew', had ? 'New PIN' : 'PIN'), field('pinAgain', 'The same PIN again'), saveBtn,
+    skip, never ? h('label', { class: 'check', for: 'noLock' }, never, 'Don\'t ask again on this device') : null,
+    had && !INAPP ? h('button', { type: 'button', class: 'btn d', id: 'pinRemove', onclick: () => { localStorage.removeItem(PIN_KEY); done('PIN removed from this device.'); } }, 'Remove the PIN') : null,
     h('p', { class: 'hint' }, `After 5 wrong PINs, this ${where} is signed out, and needs your email and password again.`));
 }
 function unlockScreen() {
-  const pin = h('input', { class: 'inp', id: 'uPin', type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '8', placeholder: 'PIN', style: 'max-width:12rem;font-size:22px;letter-spacing:.2em' });
-  const go1 = h('button', { type: 'button', class: 'btn p wide', id: 'uGo' }, 'Unlock');
+  const P = getPin(), B = getBio();
+  const pin = P ? h('input', { class: 'inp', id: 'uPin', type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '8', placeholder: 'PIN', style: 'max-width:12rem;font-size:22px;letter-spacing:.2em' }) : null;
+  const go1 = P ? h('button', { type: 'button', class: 'btn p wide', id: 'uGo' }, 'Unlock') : null;
+  const open1 = async () => {
+    S.locked = false;
+    S.starting = true; render();
+    try { await openData(); } catch (e) { say(e.message, true); }
+    S.starting = false; render();
+  };
   const tryIt = async () => {
     go1.disabled = true;
     if (!(await pinOk(pin.value))) {
       go1.disabled = false; pin.value = '';
-      const P = getPin();
-      if (!P) { say('Too many wrong PINs, so this phone was signed out. Sign in again with your email and password.', true); S.locked = false; render(); }
-      else { const n = 5 - P.tries; say(`Wrong PIN. ${n} ${n === 1 ? 'try' : 'tries'} left.`, true); }
+      const now = getPin();
+      if (!now) { say('Too many wrong PINs, so this device was signed out. Sign in again with your email and password.', true); S.locked = false; render(); }
+      else { const n = 5 - now.tries; say(`Wrong PIN. ${n} ${n === 1 ? 'try' : 'tries'} left.`, true); }
       return;
     }
-    S.locked = false;
-    go1.textContent = 'Opening…';
-    try { await openData(); render(); }
-    catch (e) { go1.disabled = false; go1.textContent = 'Unlock'; say(e.message, true); }
+    open1();
   };
-  go1.onclick = tryIt;
-  pin.addEventListener('keydown', e => { if (e.key === 'Enter') tryIt(); });
-  setTimeout(() => pin.focus(), 50);
-  return h('main', { class: 'stack' }, screenTitle('Admin', 'Type your PIN'),
-    h('div', { class: 'field' }, h('label', { for: 'uPin' }, 'Your PIN'), pin), go1,
+  const bioBtn = B ? h('button', { type: 'button', class: P ? 'btn s wide' : 'btn p wide', id: 'uBio', onclick: async e => {
+    const btn = e.currentTarget; btn.disabled = true;
+    if (await bioCheck(B)) return open1();
+    btn.disabled = false; say(P ? 'Not recognised. Try again, or type your PIN.' : 'Not recognised. Try again.', true);
+  } }, icon('shield', 18), 'Unlock with fingerprint') : null;
+  if (go1) { go1.onclick = tryIt; pin.addEventListener('keydown', e => { if (e.key === 'Enter') tryIt(); }); }
+  // (In the app, the fingerprint prompt opens by itself; a browser needs a tap first.)
+  setTimeout(() => { if (B && INAPP && !S.bioAsked) { S.bioAsked = true; bioBtn.click(); } else if (pin) pin.focus(); }, 80);
+  return h('main', { class: 'stack' }, screenTitle('Admin', B && !P ? 'Unlock with your fingerprint' : B ? 'Your fingerprint or PIN' : 'Type your PIN'),
+    bioBtn,
+    P ? h('div', { class: 'field' }, h('label', { for: 'uPin' }, 'Your PIN'), pin) : null, go1,
     h('button', { type: 'button', class: 'btn d', onclick: async () => {
-      if (!(await uiConfirm('Sign in with your password instead?', 'This phone is signed out, then you sign in again with your email and password.', 'Sign out', { icon: 'warn' }))) return;
-      command({ op: 'signout' }).catch(() => {}); await sleep(300); localStorage.removeItem(PIN_KEY); S.locked = false; await signedOutHere(); } }, 'Forgot the PIN?'));
+      if (!(await uiConfirm('Sign in with your password instead?', 'This device is signed out, then you sign in again with your email and password.', 'Sign out', { icon: 'warn' }))) return;
+      command({ op: 'signout' }).catch(() => {}); await sleep(300); localStorage.removeItem(PIN_KEY); localStorage.removeItem(BIO_KEY); S.locked = false; await signedOutHere(); } },
+      P ? 'Forgot the PIN?' : 'Use my password instead'));
 }
 
 // ============================================================================================
@@ -1688,7 +1763,7 @@ function accountScreen() {
   const signOut = async () => {
     if (!(await uiConfirm('Sign out on this device?', 'You\'ll need your email and password (and the emailed link) to sign in here again.', 'Sign out', { icon: 'warn' }))) return;
     command({ op: 'signout' }).catch(() => {});
-    await sleep(400); localStorage.removeItem(PIN_KEY);
+    await sleep(400); localStorage.removeItem(PIN_KEY); localStorage.removeItem(BIO_KEY);
     await signedOutHere(); say('Signed out on this device.');
   };
   return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Settings'),
@@ -1703,7 +1778,8 @@ function accountScreen() {
     pwField('acOld', 'Current password', 'current-password'), pwField('acNew', 'New password', 'new-password'), pwField('acNew2', 'The same new password again', 'new-password'),
     h('p', { class: 'hint', style: 'margin:0' }, 'At least 8 characters, with a letter and a number.'), changePw,
     h('h2', { class: 'sec' }, 'This device'),
-    h('button', { type: 'button', class: 'btn s wide', id: 'openPin', onclick: () => open({ name: 'pin' }) }, getPin() ? 'Change the PIN' : 'Lock with a PIN'),
+    h('button', { type: 'button', class: 'btn s wide', id: 'openPin', onclick: () => open({ name: 'pin' }) },
+      getPin() || getBio() ? `The lock: ${[getBio() ? 'fingerprint' : '', getPin() ? 'PIN' : ''].filter(Boolean).join(' and ')}` : 'Lock with a PIN or fingerprint'),
     h('button', { type: 'button', class: 'btn dline wide', id: 'signOut', onclick: signOut }, 'Sign out on this device'));
 }
 
@@ -2904,7 +2980,7 @@ function accountSection(section) {
   const row = (ic, label, sub, onclick, id) => h('button', { type: 'button', class: 'row', onclick, id }, h('span', { class: 'ic' }, icon(ic, 20)),
     h('span', { class: 'grow' }, h('span', { class: 't' }, label), sub ? h('span', { class: 's' }, sub) : null), h('span', { class: 'chev' }, icon('chev', 18)));
   return section('Admin page', h('div', { class: 'group' },
-    row('shield', 'Your account', ME ? `${ME.email}${getPin() ? ` · PIN on this ${INAPP ? 'phone' : 'device'}` : ''}` : '', () => open({ name: 'account' }), 'openAccount'),
+    row('shield', 'Your account', ME ? `${ME.email}${getPin() || getBio() ? ` · locked on this ${INAPP ? 'phone' : 'device'}` : ''}` : '', () => open({ name: 'account' }), 'openAccount'),
     isOwner() ? row('phone', 'Admins', 'Add admins for some phones, and choose what they can do', () => { S.admins = null; open({ name: 'admins' }); }, 'openAdmins') : null,
     INAPP ? null : h('a', { class: 'row', href: status, target: '_blank', rel: 'noopener' }, h('span', { class: 'ic' }, icon('ext', 20)),
       h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Open the status page')))));
@@ -2973,7 +3049,7 @@ function settingsScreen() {
   // (From before sign-in: a GitHub token kept here. Not used any more, so not kept.)
   try { localStorage.removeItem('wl-admin-locked'); localStorage.removeItem('wl-admin'); } catch {}
   if (!LINK && getSession()) {
-    if (getPin()) S.locked = true;                         // the PIN first
+    if (getPin() || getBio()) S.locked = true;             // the PIN or fingerprint first
     else {
       S.starting = true; render();
       try { await openData(); }

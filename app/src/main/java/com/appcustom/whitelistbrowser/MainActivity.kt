@@ -441,6 +441,21 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * A link from an admin email ("Yes, it's me", an invitation, a new password: the admin page with #confirm=…,
+     * #invite=… or #reset=…), opened here (say, this is the phone's browser): the app's own admin screen does it, since
+     * the admin page isn't a site on the list. True if it was one.
+     */
+    private fun openAdminLink(url: String): Boolean {
+        if (!url.startsWith(Config.PAGES_BASE, ignoreCase = true)) return false
+        val u = Uri.parse(url)
+        if (u.path?.endsWith("/admin.html") != true) return false
+        val part = u.fragment?.takeIf { Regex("(confirm|invite|reset)=[A-Za-z0-9_.-]+").matches(it) } ?: return false
+        AppLog.i("Admin", "Opening an admin email's link (${part.substringBefore('=')})")
+        runCatching { startActivity(Intent(this, AdminActivity::class.java).putExtra(AdminActivity.EXTRA_LINK, part)) }
+        return true
+    }
+
     /** A notification tapped: the admin screen (which still needs its PIN). */
     private fun openAdmin(from: Intent? = null) {
         val i = Intent(this, AdminActivity::class.java)
@@ -587,6 +602,7 @@ class MainActivity : Activity() {
             // Links, form posts, JS navigation and server redirects.
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
+                if (openAdminLink(url)) return true                   // an admin email's link: the admin screen
                 // Buttons on our own pages ("Ask for this site") use wlb: links. Websites can't use them.
                 // The home page's tiles were dragged into a new order: keep it (only from the home page).
                 if (url.startsWith("wlb://tile-order")) {
@@ -873,6 +889,7 @@ class MainActivity : Activity() {
     // ---------- navigation ----------
 
     private fun navigate(input: String) {
+        if (openAdminLink(input)) return                          // an admin email's link: the admin screen
         if (leavesPlayingSite(input) && input.startsWith("http")) moveToPlayer()   // the sound keeps playing
         var text = input.trim()
         if (text.isEmpty()) return
@@ -2823,6 +2840,8 @@ class MainActivity : Activity() {
 
     /** A link or picture long-pressed: Open, Copy link, Copy link text, Share link. False: not a link (text selection). */
     private fun linkMenu(view: WebView): Boolean {
+        // The home page has its own long-press menu for its tiles (and dragging): nothing from here on top of it.
+        if (HomePage.isHome(view.url)) return true
         val hit = view.hitTestResult
         val type = hit.type
         if (type != WebView.HitTestResult.SRC_ANCHOR_TYPE && type != WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE &&

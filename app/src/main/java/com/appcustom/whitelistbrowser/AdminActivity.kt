@@ -62,6 +62,36 @@ class AdminActivity : Activity() {
         true
     }.getOrElse { AppLog.e("Download", "Saving $name from the admin page failed", it); false }
 
+    /** Fingerprint or face unlock (Android 10 and newer, set up on the phone). */
+    private fun canUseBiometric(): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < 29) return false
+        val bm = getSystemService(android.hardware.biometrics.BiometricManager::class.java) ?: return false
+        @Suppress("DEPRECATION")
+        return bm.canAuthenticate() == android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS
+    }
+
+    private fun askBiometric(done: (Boolean) -> Unit) {
+        if (!canUseBiometric() || android.os.Build.VERSION.SDK_INT < 29) { done(false); return }
+        val executor = mainExecutor
+        var answered = false
+        val once = { ok: Boolean -> if (!answered) { answered = true; done(ok) } }
+        val prompt = android.hardware.biometrics.BiometricPrompt.Builder(this)
+            .setTitle("Open the admin")
+            .setSubtitle("Use your fingerprint (or face)")
+            .setNegativeButton("Cancel", executor) { _, _ -> once(false) }
+            .build()
+        runCatching {
+            prompt.authenticate(android.os.CancellationSignal(), executor, object : android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: android.hardware.biometrics.BiometricPrompt.AuthenticationResult?) { once(true) }
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) { once(false) }
+            })
+        }.onFailure { once(false) }
+    }
+
+    /** A link from an admin email (#confirm=…, #invite=…, #reset=…), opened in the app: the page handles it. */
+    private fun linkPart(): String = intent?.getStringExtra(EXTRA_LINK)
+        ?.takeIf { Regex("(confirm|invite|reset)=[A-Za-z0-9_.-]+").matches(it) }?.let { "#$it" } ?: ""
+
     /** Opened from a notification: what it was about (the page opens it after the PIN). */
     private fun focusParams(): String {
         val phone = intent?.getStringExtra(AdminAlerts.EXTRA_PHONE)?.takeIf { Regex("[A-Z0-9]{4}-[A-Z0-9]{4}").matches(it) }
@@ -93,6 +123,14 @@ class AdminActivity : Activity() {
         web.addJavascriptInterface(object {
             @android.webkit.JavascriptInterface
             fun save(name: String, mime: String, base64: String): Boolean = saveToDownloads(name, mime, base64)
+
+            /** Fingerprint (or face) unlock: can this phone do it? */
+            @android.webkit.JavascriptInterface
+            fun canBiometric(): Boolean = canUseBiometric()
+
+            /** Asks for the fingerprint; the page hears back through window.wlBioDone(true or false). */
+            @android.webkit.JavascriptInterface
+            fun biometric() { runOnUiThread { askBiometric { ok -> web.evaluateJavascript("window.wlBioDone && window.wlBioDone($ok)", null) } } }
         }, "WLBAdmin")
         web.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
@@ -131,7 +169,7 @@ class AdminActivity : Activity() {
         }
         web.loadUrl("https://${HomePage.HOST}${PATH}admin.html?inapp=1" +
             "&owner=${Uri.encode(Config.GITHUB_USERNAME)}&repo=${Uri.encode(PrivateRepo.NAME)}" +
-            "&theme=${if (Ui.dark) "dark" else "light"}" + focusParams())
+            "&theme=${if (Ui.dark) "dark" else "light"}" + focusParams() + linkPart())
     }
 
     private fun serve(path: String): WebResourceResponse {
@@ -168,6 +206,8 @@ class AdminActivity : Activity() {
     }
 
     companion object {
+        /** The part after # of an admin email's link. */
+        const val EXTRA_LINK = "adminLink"
         private const val PATH = "/admin/"
         private const val PICK_FILE = 7
     }

@@ -3,53 +3,36 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Allowed sites</title>
+<title>Whitelist Browser</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700&family=Figtree:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-  body { margin: 0; background: #eef4f2; color: #1f3a3d; font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { max-width: 36rem; margin: 0 auto; padding: 2.5rem 1.25rem; }
-  h1 { font-size: 2rem; line-height: 1.15; margin: 0 0 .5rem; }
-  ul { list-style: none; padding: 0; margin: 1.5rem 0; }
-  li { padding: .6rem 0; border-bottom: 1px solid #cfdeda; }
-  a { color: #1f6f63; }
-  .muted { color: #5e7a76; }
+  :root { --bg: #F5F3EE; --card: #FFFFFF; --ink: #1C2B2D; --muted: #5B6B69; --line: #E7E3DB; --accent: #1F5F55; --accent-dark: #16463F; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1B2627; --card: #243233; --ink: #ECF2F0; --muted: #A9B9B6; --line: #34484A; --accent: #7FD1A8; --accent-dark: #A6E3C4; } }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 Figtree, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 34rem; margin: 0 auto; padding: 3rem 16px; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font: 700 32px/1.15 "Bricolage Grotesque", Figtree, system-ui, sans-serif; margin: 0; }
+  p { margin: 0; color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 4px 0; }
+  a.row { display: flex; align-items: center; justify-content: space-between; min-height: 56px; padding: 0 18px; color: var(--ink);
+    text-decoration: none; font-weight: 600; }
+  a.row + a.row { border-top: 1px solid var(--line); }
+  a.row span { color: var(--accent); font-size: 20px; }
+  a.row:hover { color: var(--accent-dark); }
 </style>
 </head>
 <body>
 <main>
-  <h1>Allowed sites</h1>
-  <p class="muted" id="meta">Loading the current list.</p>
-  <ul id="list"></ul>
-  <p><a href="admin.html">Edit the list</a></p>
-  <p><a id="apk" href="#">Download the Android app</a></p>
+  <h1>Whitelist Browser</h1>
+  <p>A browser that only opens approved sites. Each phone's lists are published here sealed, so only that phone can
+    read them: to see or change them, sign in to the admin page.</p>
+  <div class="card">
+    <a class="row" href="admin.html">Open the admin page <span aria-hidden="true">›</span></a>
+    <a class="row" id="apk" href="#">Download the Android app <span aria-hidden="true">›</span></a>
+  </div>
 </main>
 <script>
-  fetch('whitelist.json?t=' + Date.now()).then(r => r.json()).then(d => {
-    const sites = d.sites || [];
-    document.getElementById('meta').textContent =
-      `${sites.length} sites. Phones check for changes every ${d.refreshMinutes || 5} minutes.`;
-    const ul = document.getElementById('list');
-    sites.forEach(s => {
-      const li = document.createElement('li');
-      li.textContent = (s.name ? `${s.name} (${s.domain})` : s.domain) + (s.home === false ? ', not on home page' : '')
-        + (s.subdomains === false ? ', exact site only' : '')
-        + (s.pages && s.pages.length ? `, only: ${s.pages.join(', ')}` : '')
-        + (s.passThrough ? ' (a link passes through here)' : '');
-      ul.append(li);
-    });
-    (d.block || []).forEach(b => { const li = document.createElement('li'); li.textContent = `${b}, always blocked${b.includes('/') ? ' (page)' : ''}`; ul.append(li); });
-    (d.noMedia || []).forEach(b => { const li = document.createElement('li'); li.textContent = `${b}, no photos or videos`; ul.append(li); });
-    // Temporary access: open for a while only.
-    (d.temporary || []).forEach(t => {
-      const from = Date.parse(t.from) || 0, end = from + (t.mode === 'use' ? 7 * 1440 : t.minutes) * 60000;
-      if (end <= Date.now()) return;
-      const until = new Date(end).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-      const what = t.what === 'media' ? 'photos and videos on' : 'open';
-      const li = document.createElement('li');
-      li.textContent = `⏱ ${t.entry}: ${what} for a while only, ` +
-        (t.mode === 'use' ? `${t.minutes} min of use, until ${until}` : `until ${until}`);
-      ul.append(li);
-    });
-  }).catch(() => { document.getElementById('meta').textContent = 'whitelist.json could not be read.'; });
   if (location.hostname.endsWith('.github.io')) {
     const owner = location.hostname.split('.')[0], repo = location.pathname.split('/')[1];
     document.getElementById('apk').href = `https://github.com/${owner}/${repo}/releases/latest/download/whitelist-browser.apk`;
