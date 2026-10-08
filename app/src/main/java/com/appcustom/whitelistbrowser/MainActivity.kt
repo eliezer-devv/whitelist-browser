@@ -2047,6 +2047,18 @@ class MainActivity : Activity() {
         // Don't know the address? Words find matching sites (Discovery); tapping one fills it in.
         val findStatus = Ui.text(this, "", 13.5f, Ui.MUTED).apply { visibility = View.GONE }
         val findResults = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        // The sites scroll in their own box (up to about 45% of the screen), so the rest of the sheet stays put.
+        val findBox = CappedScroll(this, (resources.displayMetrics.heightPixels * 0.45f).toInt()).apply {
+            visibility = View.GONE
+            addView(findResults, android.widget.FrameLayout.LayoutParams(-1, -2))
+        }
+        val findMore = Button(this).apply {
+            text = "Show more results"; isAllCaps = false; typeface = Ui.boldFace; stateListAnimator = null
+            setTextColor(Ui.ACCENT_TEXT)
+            background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 14).toFloat(), Ui.OUTLINE, Ui.dp(this@MainActivity, 1))
+            minHeight = Ui.dp(this@MainActivity, 44); minimumHeight = Ui.dp(this@MainActivity, 44)
+            visibility = View.GONE
+        }
         val findButton = Button(this).apply {
             text = "Find sites"; isAllCaps = false; typeface = Ui.boldFace; stateListAnimator = null
             setTextColor(Ui.ACCENT_TEXT)
@@ -2058,10 +2070,11 @@ class MainActivity : Activity() {
             val q = siteField.text.toString().trim()
             if (q.isEmpty()) return
             (getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)?.hideSoftInputFromWindow(siteField.windowToken, 0)
-            findSites(q, findResults, findStatus) { s, allowed ->
+            findSites(q, findResults, findMore, findStatus) { s, allowed ->
                 if (allowed) { d.dismiss(); navigate("https://${s.domain}/"); return@findSites }   // already allowed: it opens
+                findGen++
                 siteField.setText(s.domain); siteField.setSelection(s.domain.length)
-                findResults.removeAllViews()
+                findResults.removeAllViews(); findBox.visibility = View.GONE; findMore.visibility = View.GONE
                 findStatus.text = "${s.name} (${s.domain}). Tap Send to ask for it."
             }
         }
@@ -2069,7 +2082,7 @@ class MainActivity : Activity() {
         siteField.setOnEditorActionListener { _, _, _ -> if (looksLikeWords(siteField.text.toString())) { findNow(); true } else false }
         if (siteDomain == null) {
             d.add(Ui.label(this, "Website, or what you're looking for")); d.add(siteField, 6)
-            d.add(findButton, 6); d.add(findStatus, 6); d.add(findResults, 4)
+            d.add(findButton, 6); d.add(findStatus, 6); d.add(findBox, 6); d.add(findMore, 4)
         }
         lateinit var sendButton: Button
         // After a site couldn't be found: the address that "Send anyway" would send. Editing it resets this.
@@ -2626,61 +2639,108 @@ class MainActivity : Activity() {
         return t.isNotEmpty() && (t.contains(' ') || !t.contains('.')) && !t.contains("://")
     }
 
+    /** Site icons are fetched a few at a time, on their own (not behind the whitelist's fetches), and kept. */
+    private val iconQueue = java.util.concurrent.ThreadPoolExecutor(4, 4, 30L, java.util.concurrent.TimeUnit.SECONDS,
+        java.util.concurrent.LinkedBlockingQueue()).apply { allowCoreThreadTimeOut(true) }
+    private val icons = android.util.LruCache<String, android.graphics.Bitmap>(80)
+    /** Which search is current: answers to an older one are dropped. */
+    private var findGen = 0
+
     /**
-     * Finds sites matching [query] (Discovery) and lists them in [results]: icon, name, address, what it is. Sites the
-     * content filters or "Always blocked" block never show. [onPick]: a site tapped (and whether it's already allowed).
+     * Finds sites matching [query] (Discovery) and lists them in [results]: icon, name, address, what it is; 8 at a
+     * time, [more] showing the next 8 (fetching another page of results when needed). Sites the content filters or
+     * "Always blocked" block never show. [onPick]: a site tapped (and whether it's already allowed).
      */
-    private fun findSites(query: String, results: LinearLayout, status: TextView, onPick: (Discovery.Site, Boolean) -> Unit) {
+    private fun findSites(query: String, results: LinearLayout, more: Button, status: TextView, onPick: (Discovery.Site, Boolean) -> Unit) {
+        val gen = ++findGen
+        val seen = HashSet<String>()
+        val waiting = ArrayList<Discovery.Site>()
+        var page = 0
+        var done = false
+        var shownCount = 0
+        status.text = "Looking for sites…"; status.visibility = View.VISIBLE
+        results.removeAllViews(); (results.parent as? View)?.visibility = View.GONE
+        more.visibility = View.GONE
+
+        fun showSome() {
+            val next = waiting.take(8)
+            waiting.subList(0, next.size).clear()
+            if (next.isNotEmpty()) (results.parent as? View)?.visibility = View.VISIBLE
+            next.forEach { s -> results.addView(siteRow(s, onPick), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = Ui.dp(this, 8) }) }
+            shownCount += next.size
+            more.visibility = if (waiting.isNotEmpty() || !done) View.VISIBLE else View.GONE
+        }
+
+        fun fetch() {
+            more.isEnabled = false; more.text = "Loading…"
+            val p = page
+            io.execute {
+                val found = runCatching {
+                    // (The content filters must be ready, so nothing they block is ever suggested.)
+                    val st = Whitelist.state
+                    if (st.adult) Filters.adult.ensureLoaded(applicationContext)
+                    if (st.gambling) Filters.gambling.ensureLoaded(applicationContext)
+                    if (st.malware) Filters.malware.ensureLoaded(applicationContext)
+                    val list = Discovery.searchPage(query, p)
+                    list.size to list.filter { s ->
+                        Whitelist.filteredAs(s.domain).isEmpty() && Whitelist.state.block.none { b -> s.domain == b || s.domain.endsWith(".$b") }
+                    }
+                }
+                AppLog.i("Find", "Searched (${query.length} letters, page ${p + 1}): " +
+                    (found.getOrNull()?.let { (all, ok) -> "$all sites, ${ok.size} allowed to show" } ?: "failed: ${found.exceptionOrNull()?.message}"))
+                main.post {
+                    if (gen != findGen || results.parent == null) return@post
+                    more.isEnabled = true; more.text = "Show more results"
+                    val (all, list) = found.getOrNull() ?: run {
+                        status.text = if (shownCount == 0) "Couldn't look for sites. Check the phone is online, then try again."
+                            else "Couldn't get more sites. Check the phone is online, then try again."
+                        more.visibility = if (shownCount == 0) View.GONE else View.VISIBLE
+                        return@post
+                    }
+                    page = p + 1
+                    if (all == 0 || page >= 6) done = true          // no more pages (or enough of them)
+                    waiting += list.filter { seen.add(it.domain) }
+                    if (waiting.isEmpty() && !done) { fetch(); return@post }   // a page of only repeats: the next one
+                    status.text = if (shownCount == 0 && waiting.isEmpty()) "No sites found. Try other words, or type the site's address."
+                        else "Tap a site to ask for it."
+                    showSome()
+                }
+            }
+        }
+
+        more.setOnClickListener { if (waiting.isNotEmpty()) showSome() else if (!done) fetch() }
+        fetch()
+    }
+
+    /** One found site: its icon (fetched in the background; its first letter until then), name, address and what it is. */
+    private fun siteRow(s: Discovery.Site, onPick: (Discovery.Site, Boolean) -> Unit): View {
         val ctx = this
-        status.text = "Looking for sites…"; status.visibility = View.VISIBLE; results.removeAllViews()
-        io.execute {
-            val found = runCatching {
-                // (The content filters must be ready, so nothing they block is ever suggested.)
-                val st = Whitelist.state
-                if (st.adult) Filters.adult.ensureLoaded(applicationContext)
-                if (st.gambling) Filters.gambling.ensureLoaded(applicationContext)
-                if (st.malware) Filters.malware.ensureLoaded(applicationContext)
-                Discovery.search(query).filter { s ->
-                    Whitelist.filteredAs(s.domain).isEmpty() && Whitelist.state.block.none { b -> s.domain == b || s.domain.endsWith(".$b") }
-                }
-            }
-            AppLog.i("Find", "Searched (${query.length} letters): " + (found.getOrNull()?.size?.let { "$it sites" } ?: "failed: ${found.exceptionOrNull()?.message}"))
-            main.post {
-                if (results.parent == null) return@post
-                val list = found.getOrNull()
-                status.text = when {
-                    list == null -> "Couldn't look for sites. Check the phone is online, then try again."
-                    list.isEmpty() -> "No sites found. Try other words, or type the site's address."
-                    else -> "Tap a site to ask for it."
-                }
-                list?.forEach { s ->
-                    val allowed = Whitelist.isAllowed("https://${s.domain}/")
-                    results.addView(LinearLayout(ctx).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = android.view.Gravity.CENTER_VERTICAL
-                        background = Ui.rounded(Ui.CARD, Ui.dp(ctx, 16).toFloat(), Ui.LINE, Ui.dp(ctx, 1))
-                        setPadding(Ui.dp(ctx, 12), Ui.dp(ctx, 10), Ui.dp(ctx, 12), Ui.dp(ctx, 10))
-                        minimumHeight = Ui.dp(ctx, 56)
-                        isClickable = true; isFocusable = true
-                        contentDescription = "${s.name}, ${s.domain}" + if (allowed) ", already allowed" else ""
-                        setOnClickListener { onPick(s, allowed) }
-                        // The site's icon (fetched in the background); its first letter until then.
-                        val iconBox = android.widget.FrameLayout(ctx).apply { background = Ui.rounded(Ui.SOFT, Ui.dp(ctx, 10).toFloat()) }
-                        val letter = Ui.text(ctx, s.name.take(1).uppercase(), 16f, Ui.ACCENT_TEXT, "bold").apply { gravity = android.view.Gravity.CENTER }
-                        val img = android.widget.ImageView(ctx).apply { visibility = View.GONE }
-                        iconBox.addView(letter, android.widget.FrameLayout.LayoutParams(-1, -1))
-                        iconBox.addView(img, android.widget.FrameLayout.LayoutParams(Ui.dp(ctx, 24), Ui.dp(ctx, 24), android.view.Gravity.CENTER))
-                        addView(iconBox, LinearLayout.LayoutParams(Ui.dp(ctx, 40), Ui.dp(ctx, 40)).apply { marginEnd = Ui.dp(ctx, 12) })
-                        io.execute { Discovery.icon(s.domain)?.let { b -> main.post { img.setImageBitmap(b); img.visibility = View.VISIBLE; letter.visibility = View.GONE } } }
-                        addView(LinearLayout(ctx).apply {
-                            orientation = LinearLayout.VERTICAL
-                            addView(Ui.text(ctx, s.name, 15f, Ui.INK, "bold").apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-                            addView(Ui.text(ctx, s.domain + if (allowed) " · already allowed" else "", 13f, Ui.ACCENT_TEXT))
-                            if (s.description.isNotBlank()) addView(Ui.text(ctx, s.description, 12.5f, Ui.MUTED).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
-                        }, LinearLayout.LayoutParams(0, -2, 1f))
-                    }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = Ui.dp(ctx, 8) })
-                }
-            }
+        val allowed = Whitelist.isAllowed("https://${s.domain}/")
+        return LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            background = Ui.rounded(Ui.CARD, Ui.dp(ctx, 16).toFloat(), Ui.LINE, Ui.dp(ctx, 1))
+            setPadding(Ui.dp(ctx, 12), Ui.dp(ctx, 10), Ui.dp(ctx, 12), Ui.dp(ctx, 10))
+            minimumHeight = Ui.dp(ctx, 56)
+            isClickable = true; isFocusable = true
+            contentDescription = "${s.name}, ${s.domain}" + if (allowed) ", already allowed" else ""
+            setOnClickListener { onPick(s, allowed) }
+            val iconBox = android.widget.FrameLayout(ctx).apply { background = Ui.rounded(Ui.SOFT, Ui.dp(ctx, 10).toFloat()) }
+            val letter = Ui.text(ctx, s.name.take(1).uppercase(), 16f, Ui.ACCENT_TEXT, "bold").apply { gravity = android.view.Gravity.CENTER }
+            val img = android.widget.ImageView(ctx).apply { visibility = View.GONE; scaleType = android.widget.ImageView.ScaleType.FIT_CENTER }
+            iconBox.addView(letter, android.widget.FrameLayout.LayoutParams(-1, -1))
+            iconBox.addView(img, android.widget.FrameLayout.LayoutParams(Ui.dp(ctx, 24), Ui.dp(ctx, 24), android.view.Gravity.CENTER))
+            addView(iconBox, LinearLayout.LayoutParams(Ui.dp(ctx, 40), Ui.dp(ctx, 40)).apply { marginEnd = Ui.dp(ctx, 12) })
+            fun show(b: android.graphics.Bitmap) { img.setImageBitmap(b); img.visibility = View.VISIBLE; letter.visibility = View.GONE }
+            val cached = icons.get(s.domain)
+            if (cached != null) show(cached)
+            else iconQueue.execute { Discovery.icon(s.domain)?.let { b -> icons.put(s.domain, b); main.post { show(b) } } }
+            addView(LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(Ui.text(ctx, s.name, 15f, Ui.INK, "bold").apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                addView(Ui.text(ctx, s.domain + if (allowed) " · already allowed" else "", 13f, Ui.ACCENT_TEXT))
+                if (s.description.isNotBlank()) addView(Ui.text(ctx, s.description, 12.5f, Ui.MUTED).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+            }, LinearLayout.LayoutParams(0, -2, 1f))
         }
     }
 
@@ -3748,5 +3808,31 @@ class MainActivity : Activity() {
             button("Copy ID", Ui.Kind.SECONDARY) { copy() }
             button("Close", Ui.Kind.PRIMARY) { it.dismiss() }
         }.show()
+    }
+}
+
+/**
+ * A scrolling box that grows with what's in it up to [maxPx], then scrolls by itself: inside a sheet that also
+ * scrolls, a drag on it moves its own list (while it can), not the whole sheet.
+ */
+private class CappedScroll(ctx: Context, private val maxPx: Int) : android.widget.ScrollView(ctx) {
+    init { isNestedScrollingEnabled = true; isVerticalScrollBarEnabled = true; overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS }
+    override fun onMeasure(widthSpec: Int, heightSpec: Int) =
+        super.onMeasure(widthSpec, MeasureSpec.makeMeasureSpec(maxPx, MeasureSpec.AT_MOST))
+    private var lastY = 0f
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> {
+                lastY = ev.y
+                parent?.requestDisallowInterceptTouchEvent(canScrollVertically(1) || canScrollVertically(-1))
+            }
+            android.view.MotionEvent.ACTION_MOVE -> {
+                // At the top and pulling down, or at the end and pushing up: let the sheet have it.
+                val down = ev.y > lastY
+                parent?.requestDisallowInterceptTouchEvent(if (down) canScrollVertically(-1) else canScrollVertically(1))
+                lastY = ev.y
+            }
+        }
+        return super.dispatchTouchEvent(ev)
     }
 }
