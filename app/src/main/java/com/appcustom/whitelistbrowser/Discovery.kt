@@ -1,15 +1,13 @@
 package com.appcustom.whitelistbrowser
 
-import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
 /**
  * Finding a website by what it's about ("maths homework help", "nasa"), for people who don't know its address. No key
- * or account: DuckDuckGo's plain results page (with Safe Search on strict), each result reduced to its site; if that
- * gives nothing (DuckDuckGo changed its page, or is limiting the phone), Wikipedia: its search, and each article's
- * official website from Wikidata. Results are sites, never pages: address, name and a short description.
+ * or account: DuckDuckGo's plain results page (with Safe Search on strict), each result reduced to its site.
+ * Results are sites, never pages: address, name and a short description.
  */
 object Discovery {
     data class Site(val domain: String, val name: String, val description: String)
@@ -17,16 +15,28 @@ object Discovery {
     private const val AGENT = "WhitelistBrowser/${BuildConfig.VERSION_NAME} (a family/school browser; site discovery)"
 
     /**
-     * One page of sites for [query], best first: [page] 0, 1, 2… DuckDuckGo first (about 30 results a page, fewer
-     * sites); if it gives nothing on the first page, Wikipedia's (one page only). Blocking; throws when offline.
+     * One page of sites for [query], best first: [page] 0, 1, 2… (about 30 results a page, fewer sites). Blocking;
+     * throws when DuckDuckGo can't be reached (offline, or it's turning the phone away for now).
      */
     fun searchPage(query: String, page: Int): List<Site> {
         val q = query.trim().take(100)
         if (q.isEmpty()) return emptyList()
-        val ddg = runCatching { duckDuckGo(q, page) }
-            .onFailure { AppLog.w("Find", "DuckDuckGo didn't answer (${it.message}); trying Wikipedia") }.getOrNull().orEmpty()
-        if (ddg.isNotEmpty() || page > 0) return ddg
-        return search(q)
+        // The same words again (searching again, or back and forth): the answer from the last 15 minutes.
+        val key = "${q.lowercase()}|$page"
+        synchronized(cache) { cache[key]?.takeIf { System.currentTimeMillis() - it.first < 15 * 60_000L }?.let { return it.second } }
+        return pageFresh(q, page).also { list -> if (list.isNotEmpty()) synchronized(cache) { cache[key] = System.currentTimeMillis() to list } }
+    }
+
+    private val cache = object : LinkedHashMap<String, Pair<Long, List<Site>>>(16, 0.75f, true) {
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<String, Pair<Long, List<Site>>>?) = size > 30
+    }
+
+    private fun pageFresh(q: String, page: Int): List<Site> {
+        // Given time, and a second try.
+        return runCatching { duckDuckGo(q, page) }
+            .recoverCatching { AppLog.w("Find", "DuckDuckGo didn't answer (${it.message}); trying again"); Thread.sleep(800); duckDuckGo(q, page) }
+            .onFailure { AppLog.w("Find", "DuckDuckGo didn't answer again (${it.message})") }
+            .getOrThrow()
     }
 
     /** DuckDuckGo's plain (HTML) results page [page], as sites. Ads are left out. */
@@ -69,68 +79,6 @@ object Discovery {
         .replace("&lt;", "<").replace("&gt;", ">")
     private fun plain(html: String) = unescape(html.replace(Regex("<[^>]+>"), "")).replace(Regex("\\s+"), " ").trim()
 
-    /** Wikipedia's matches (organisations, brands, well-known sites). Blocking; throws when offline. */
-    fun search(query: String, language: String = java.util.Locale.getDefault().language, max: Int = 15): List<Site> {
-        val q = query.trim().take(100)
-        if (q.isEmpty()) return emptyList()
-        val langs = listOf("en", language).filter { it.matches(Regex("[a-z]{2,3}")) }.distinct()
-        // 1. By name (Wikidata: "khan academy" → Khan Academy), then 2. by topic (Wikipedia's full-text search).
-        val ids = LinkedHashSet<String>()
-        runCatching { ids += byName(q, langs.first()) }
-        for (l in langs) runCatching { ids += byTopic(q, l) }
-        if (ids.isEmpty()) return emptyList()
-        // 3. Each one's official website (one call for up to 50).
-        val sites = LinkedHashMap<String, Site>()
-        for (chunk in ids.toList().take(50).chunked(50)) {
-            val ents = parseEntities(get("https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims%7Clabels%7Cdescriptions" +
-                "&languages=${langs.joinToString("%7C")}&ids=${chunk.joinToString("%7C")}"), langs)
-            for (id in chunk) ents[id]?.let { s -> if (s.domain !in sites) sites[s.domain] = s }
-        }
-        return sites.values.take(max)
-    }
-
-    private fun byName(q: String, lang: String): List<String> =
-        parseNameSearch(get("https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&type=item&limit=7" +
-            "&language=$lang&uselang=$lang&search=${enc(q)}"))
-
-    private fun byTopic(q: String, lang: String): List<String> =
-        parseTopicSearch(get("https://$lang.wikipedia.org/w/api.php?action=query&format=json&generator=search&gsrlimit=20" +
-            "&prop=pageprops&ppprop=wikibase_item&redirects=1&gsrsearch=${enc(q)}"))
-
-    // ---- reading the answers (kept separate, so they can be tested without the internet) ----
-
-    /** wbsearchentities: the item IDs, in order. */
-    fun parseNameSearch(json: String): List<String> {
-        val arr = JSONObject(json).optJSONArray("search") ?: return emptyList()
-        return (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optString("id")?.takeIf { id -> id.startsWith("Q") } }
-    }
-
-    /** Wikipedia's search, as pages: each one's Wikidata item, in the search's order (its "index"). */
-    fun parseTopicSearch(json: String): List<String> {
-        val pages = JSONObject(json).optJSONObject("query")?.optJSONObject("pages") ?: return emptyList()
-        return pages.keys().asSequence().mapNotNull { k -> pages.optJSONObject(k) }
-            .sortedBy { it.optInt("index", 999) }
-            .mapNotNull { it.optJSONObject("pageprops")?.optString("wikibase_item")?.takeIf { id -> id.startsWith("Q") } }
-            .toList()
-    }
-
-    /** wbgetentities: item ID → its site (official website, P856; preferred, else the first), name and description. */
-    fun parseEntities(json: String, langs: List<String>): Map<String, Site> {
-        val ents = JSONObject(json).optJSONObject("entities") ?: return emptyMap()
-        val out = HashMap<String, Site>()
-        for (id in ents.keys()) {
-            val e = ents.optJSONObject(id) ?: continue
-            val claims = e.optJSONObject("claims")?.optJSONArray("P856") ?: continue
-            val list = (0 until claims.length()).mapNotNull { claims.optJSONObject(it) }.filter { it.optString("rank") != "deprecated" }
-            val best = list.firstOrNull { it.optString("rank") == "preferred" } ?: list.firstOrNull() ?: continue
-            val url = best.optJSONObject("mainsnak")?.optJSONObject("datavalue")?.optString("value") ?: continue
-            val domain = domainOf(url) ?: continue
-            fun text(field: String) = e.optJSONObject(field)?.let { o -> langs.reversed().firstNotNullOfOrNull { l -> o.optJSONObject(l)?.optString("value") } }.orEmpty()
-            out[id] = Site(domain, text("labels").ifBlank { domain }, text("descriptions"))
-        }
-        return out
-    }
-
     /** "https://www.khanacademy.org/math" → "khanacademy.org" (the site, never a page). */
     fun domainOf(url: String): String? {
         val host = runCatching { java.net.URI(url.trim()).host }.getOrNull()?.lowercase() ?: return null
@@ -143,11 +91,11 @@ object Discovery {
     /** DuckDuckGo turns away apps that name themselves; its results page expects a browser. */
     private const val BROWSER_AGENT = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
 
-    private fun get(url: String, accept: String = "application/json", agent: String = AGENT): String {
+    private fun get(url: String, accept: String = "application/json", agent: String = AGENT, connectMs: Int = 10_000, readMs: Int = 15_000): String {
         val c = URL(url).openConnection() as HttpURLConnection
         try {
-            c.connectTimeout = 10_000; c.readTimeout = 10_000
-            c.setRequestProperty("User-Agent", agent)          // (Wikimedia asks every app to name itself)
+            c.connectTimeout = connectMs; c.readTimeout = readMs
+            c.setRequestProperty("User-Agent", agent)
             c.setRequestProperty("Accept", accept)
             if (c.responseCode != 200) throw java.io.IOException("Search answered ${c.responseCode}")
             return c.inputStream.bufferedReader().use { it.readText() }

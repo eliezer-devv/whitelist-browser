@@ -2090,6 +2090,7 @@ class MainActivity : Activity() {
         findButton.setOnClickListener { findNow() }
         siteField.setOnEditorActionListener { _, _, _ -> if (looksLikeWords(siteField.text.toString())) { findNow(); true } else false }
         if (siteDomain == null) {
+            findQueue.execute { runCatching { loadFindFilters() } }     // ready before the first search
             d.add(Ui.label(this, "Website, or what you're looking for")); d.add(siteField, 6)
             d.add(findButton, 6); d.add(findStatus, 6); d.add(findBox, 6); d.add(findMore, 4)
         }
@@ -2704,11 +2705,22 @@ class MainActivity : Activity() {
     private val icons = android.util.LruCache<String, android.graphics.Bitmap>(80)
     /** Which search is current: answers to an older one are dropped. */
     private var findGen = 0
+    /** Searching runs on its own threads (never queued behind the whitelist's fetches). */
+    private val findQueue = java.util.concurrent.Executors.newCachedThreadPool()
+
+    /** The content filters a search is checked against (loaded once; started as the sheet opens, so it's ready). */
+    private fun loadFindFilters() {
+        val st = Whitelist.state
+        if (st.adult) Filters.adult.ensureLoaded(applicationContext)
+        if (st.gambling) Filters.gambling.ensureLoaded(applicationContext)
+        if (st.malware) Filters.malware.ensureLoaded(applicationContext)
+    }
 
     /**
      * Finds sites matching [query] (Discovery) and lists them in [results]: icon, name, address, what it is; 8 at a
-     * time, [more] showing the next 8 (fetching another page of results when needed). Sites the content filters or
-     * "Always blocked" block never show, and nor do sites already allowed (this is for asking for new ones). [onPick]: a site tapped.
+     * time, [more] showing the next 8 (the next page of results is fetched ahead, so it's there when needed). Sites
+     * the content filters or "Always blocked" block never show, and nor do sites already allowed (this is for asking
+     * for new ones). [onPick]: a site tapped.
      */
     private fun findSites(query: String, results: LinearLayout, more: Button, status: TextView, onPick: (Discovery.Site) -> Unit) {
         val gen = ++findGen
@@ -2721,6 +2733,18 @@ class MainActivity : Activity() {
         results.removeAllViews(); (results.parent as? View)?.visibility = View.GONE
         more.visibility = View.GONE
 
+        // The search and the filters at the same time; then only what may show (all results, those that may show).
+        val filtersReady = findQueue.submit(java.util.concurrent.Callable { loadFindFilters() })
+        fun pageTask(p: Int): java.util.concurrent.Future<Pair<Int, List<Discovery.Site>>> = findQueue.submit(java.util.concurrent.Callable<Pair<Int, List<Discovery.Site>>> {
+            val list = Discovery.searchPage(query, p)
+            filtersReady.get()
+            list.size to list.filter { s ->
+                !Whitelist.isAllowed("https://${s.domain}/") &&
+                    Whitelist.filteredAs(s.domain).isEmpty() && Whitelist.state.block.none { b -> s.domain == b || s.domain.endsWith(".$b") }
+            }
+        })
+        var nextTask: java.util.concurrent.Future<Pair<Int, List<Discovery.Site>>>? = pageTask(0)
+
         fun showSome() {
             val next = waiting.take(8)
             waiting.subList(0, next.size).clear()
@@ -2728,32 +2752,26 @@ class MainActivity : Activity() {
             next.forEach { s -> results.addView(siteRow(s, onPick), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = Ui.dp(this@MainActivity, 8) }) }
             shownCount += next.size
             more.visibility = if (waiting.isNotEmpty() || !done) View.VISIBLE else View.GONE
+            // Running low: the next page now, so "Show more results" doesn't wait.
+            if (!done && waiting.size < 8 && nextTask == null) nextTask = pageTask(page)
         }
 
         fun fetch() {
             more.isEnabled = false; more.text = "Loading…"
             val p = page
-            io.execute {
-                val found = runCatching {
-                    // (The content filters must be ready, so nothing they block is ever suggested.)
-                    val st = Whitelist.state
-                    if (st.adult) Filters.adult.ensureLoaded(applicationContext)
-                    if (st.gambling) Filters.gambling.ensureLoaded(applicationContext)
-                    if (st.malware) Filters.malware.ensureLoaded(applicationContext)
-                    val list = Discovery.searchPage(query, p)
-                    list.size to list.filter { s ->
-                        !Whitelist.isAllowed("https://${s.domain}/") &&
-                            Whitelist.filteredAs(s.domain).isEmpty() && Whitelist.state.block.none { b -> s.domain == b || s.domain.endsWith(".$b") }
-                    }
-                }
+            val task = nextTask ?: pageTask(p)
+            nextTask = null
+            findQueue.execute {
+                val found = runCatching { task.get() }
                 AppLog.i("Find", "Searched (${query.length} letters, page ${p + 1}): " +
-                    (found.getOrNull()?.let { (all, ok) -> "$all sites, ${ok.size} new and allowed to show" } ?: "failed: ${found.exceptionOrNull()?.message}"))
+                    (found.getOrNull()?.let { (all, ok) -> "$all sites, ${ok.size} new and allowed to show" }
+                        ?: "failed: ${found.exceptionOrNull()?.let { (it.cause ?: it).message }}"))
                 main.post {
                     if (gen != findGen || results.parent == null) return@post
                     more.isEnabled = true; more.text = "Show more results"
                     val (all, list) = found.getOrNull() ?: run {
-                        status.text = if (shownCount == 0) "Couldn't look for sites. Check the phone is online, then try again."
-                            else "Couldn't get more sites. Check the phone is online, then try again."
+                        status.text = if (shownCount == 0) "Couldn't search right now. Check the phone is online, or try again in a moment."
+                            else "Couldn't get more sites right now. Try again in a moment."
                         more.visibility = if (shownCount == 0) View.GONE else View.VISIBLE
                         return@post
                     }
