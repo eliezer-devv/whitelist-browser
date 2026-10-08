@@ -45,7 +45,7 @@ object Outbox {
 
     @Synchronized fun count(ctx: Context): Int {                // (requests and registrations, not logs)
         val items = read(ctx)
-        return (0 until items.length()).count { items.getJSONObject(it).optString("kind") != "log" }
+        return (0 until items.length()).count { items.getJSONObject(it).optString("kind").let { k -> k != "log" && k != "message" } }
     }
 
     /** Requests not sent yet: (summary, time asked), oldest first. */
@@ -102,8 +102,10 @@ object Outbox {
             val id = item.optString("id")
             try {
                 val payload = item.getJSONObject("payload")
-                if (item.optString("kind") == "register") Requests.deliverRegistration(ctx, payload)
-                else if (item.optString("kind") == "log") { Requests.deliverIssue(payload); AppLog.i("Log", "Sent to the admin") }  // not one of My requests
+                if (item.optString("kind") == "register") { Requests.deliverRegistration(ctx, payload); AppLog.i("Setup", "Registration sent") }
+                else if (item.optString("kind") == "log" || item.optString("kind") == "message") {      // not one of My requests
+                    Requests.deliverIssue(payload); AppLog.i("Log", if (item.optString("kind") == "message") "Message sent to the admin" else "Sent to the admin")
+                }
                 else MyRequests.sent(ctx, Requests.deliverIssue(payload), item.optString("summary"), item.optLong("created"),
                     item.optJSONObject("request"))
                 remove(ctx, id)

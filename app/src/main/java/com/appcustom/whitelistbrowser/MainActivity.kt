@@ -239,6 +239,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         isResumedNow = true
+        UserAlerts.appVisible = true
         AppLog.i("App", "Opened")
         InstallReceiver.showConfirm = { confirm -> runCatching { startActivity(confirm) }.onFailure { AppLog.e("Update", "Couldn't show the installer", it) } }
         installWaitingUpdate()
@@ -258,6 +259,8 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         isResumedNow = false
+        UserAlerts.appVisible = false
+        io.execute { runCatching { UserAlerts.schedule(applicationContext) } }   // answers while away: notifications
         InstallReceiver.showConfirm = null
         AppLog.i("App", "Left")
         main.removeCallbacks(refreshTask)
@@ -561,6 +564,9 @@ class MainActivity : Activity() {
         }
         if (phoneAgent.isEmpty() || web.settings.userAgentString.contains("Android")) phoneAgent = web.settings.userAgentString
         registerDesktopScripts()
+        // Long-pressing a link or a picture: a menu (Android's browser engine shows none). Elsewhere, Android's own text
+        // selection, with Copy, Share and Translate.
+        web.setOnLongClickListener { v -> linkMenu(v as WebView) }
         // Sound keeps playing in the background: on every page, before its own scripts (see PlaybackService).
         if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
             runCatching { androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, PlaybackService.PAGE_SCRIPT, setOf("*")) }
@@ -2450,6 +2456,77 @@ class MainActivity : Activity() {
         if (!quiet) toast("Sending the log to whoever manages this browser")
     }
 
+    /** A link or picture long-pressed: Open, Copy link, Copy link text, Share link. False: not a link (text selection). */
+    private fun linkMenu(view: WebView): Boolean {
+        val hit = view.hitTestResult
+        val type = hit.type
+        if (type != WebView.HitTestResult.SRC_ANCHOR_TYPE && type != WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE &&
+            type != WebView.HitTestResult.IMAGE_TYPE) return false
+        val handler = android.os.Handler(mainLooper) { msg ->
+            val url = msg.data.getString("url") ?: hit.extra
+            val text = msg.data.getString("title").orEmpty()
+            if (url.isNullOrBlank() || url.startsWith("data:")) return@Handler true
+            val isImage = type == WebView.HitTestResult.IMAGE_TYPE
+            val dlg = Ui.AppDialog(this, sheet = true)
+            dlg.title(if (isImage) "Picture" else "Link", icon = R.drawable.ic_d_globe)
+            dlg.add(Ui.text(this, url, 13f, Ui.MUTED).apply { maxLines = 3; ellipsize = android.text.TextUtils.TruncateAt.END })
+            fun copy(label: String, value: String) {
+                getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText(label, value))
+                toast("Copied")
+            }
+            fun item(label: String, run: () -> Unit) = dlg.add(Button(this).apply {
+                this.text = label; isAllCaps = false; typeface = Ui.boldFace; setTextColor(Ui.INK); background = null
+                gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
+                minHeight = Ui.dp(this@MainActivity, 48); minimumHeight = Ui.dp(this@MainActivity, 48)
+                setOnClickListener { dlg.dismiss(); run() }
+            }, 0)
+            if (!isImage) item("Open") { navigate(url) }
+            item(if (isImage) "Copy picture address" else "Copy link") { copy("Link", url) }
+            if (text.isNotBlank() && !isImage) item("Copy link text") { copy("Link text", text) }
+            item("Share link") {
+                runCatching { startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url), "Share link")) }
+            }
+            dlg.button("Close", Ui.Kind.SECONDARY) { it.dismiss() }
+            dlg.show()
+            true
+        }
+        view.requestFocusNodeHref(handler.obtainMessage())
+        return true
+    }
+
+    /**
+     * About this phone → Message admin: a subject, a message, and (if they choose) the app's log. Sent sealed, like a
+     * request; admin phones get a notification, and it's kept on the admin page (Phones → the phone).
+     */
+    private fun showMessageAdmin() {
+        val subject = Ui.field(this, "Subject")
+        val body = Ui.field(this, "Your message", type = android.text.InputType.TYPE_CLASS_TEXT or
+            android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES).apply {
+            minLines = 4; maxLines = 10; gravity = android.view.Gravity.TOP or android.view.Gravity.START
+        }
+        val (attachRow, attach) = Ui.switchRow(this, "Attach the app's log",
+            "Helps when something isn't working. It lists the sites opened (names only).", false)
+        Ui.AppDialog(this, sheet = true).apply {
+            title("Message admin", icon = R.drawable.ic_d_send)
+            add(Ui.label(this@MainActivity, "Subject")); add(subject, 4)
+            add(Ui.label(this@MainActivity, "Message")); add(body, 4)
+            add(attachRow)
+            button("Cancel", Ui.Kind.SECONDARY) { it.dismiss() }
+            button("Send", Ui.Kind.PRIMARY) {
+                val s = subject.text.toString().trim(); val m = body.text.toString().trim()
+                if (s.isEmpty()) { subject.error = "Type a subject"; return@button }
+                if (m.isEmpty()) { body.error = "Type your message"; return@button }
+                val log = if (attach.isChecked) logReport() else null
+                io.execute {
+                    Requests.queueMessage(applicationContext, s.take(120), m.take(4000), log)
+                    Outbox.flush(applicationContext)
+                }
+                it.dismiss()
+                toast("Message sent to whoever manages this browser")
+            }
+        }.show()
+    }
+
     /** About this phone → Share log (admin phones): Android's share menu (WhatsApp, email, Drive, save to a file…). */
     private fun shareLog() {
         val text = logReport()
@@ -2567,6 +2644,8 @@ class MainActivity : Activity() {
                     when {
                         approving -> Unit
                         !Whitelist.state.pinApproval -> toast("No approval PIN is set for this phone")
+                        // Locked after 5 wrong PINs: approval mode doesn't open, just a short message.
+                        MyRequests.pinLockedUntil(this) > 0L -> toast(pinLockedText())
                         else -> { d.dismiss(); showMyRequests(approving = true) }
                     }
                 }
@@ -2730,7 +2809,19 @@ class MainActivity : Activity() {
      * Approval mode: asks for the approval PIN once, then sends it for each of [items] (as a hidden note, which
      * GitHub deletes at once). GitHub checks it, then answers each as asked ([approve]), or denies it.
      */
+    /** "PIN approval is locked until 16:42 tomorrow" (after 5 wrong PINs). */
+    private fun pinLockedText(): String {
+        val locked = MyRequests.pinLockedUntil(this)
+        val until = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(locked))
+        val cal = java.util.Calendar.getInstance()
+        val today = cal.get(java.util.Calendar.DAY_OF_YEAR)
+        cal.timeInMillis = locked
+        return "PIN approval is locked until $until" + (if (cal.get(java.util.Calendar.DAY_OF_YEAR) != today) " tomorrow" else "")
+    }
+
     private fun answerWithPin(items: List<MyRequests.Item>, approve: Boolean, after: () -> Unit) {
+        // Locked after 5 wrong PINs: no PIN screen at all, just when it unlocks.
+        if (MyRequests.pinLockedUntil(this) > 0L) { toast(pinLockedText()); return }   // (locked while approval mode was open)
         val n = items.size
         val field = Ui.field(this, "Approval PIN",
             type = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD)
@@ -3352,6 +3443,20 @@ class MainActivity : Activity() {
             addView(Ui.text(this@MainActivity, value, 14.5f, Ui.INK, "bold").apply { gravity = android.view.Gravity.END },
                 LinearLayout.LayoutParams(0, -2, 1.4f))
         }
+        // A filter: its name (as on the admin page) and what it does, beside On / Off.
+        fun filterRow(name: String, what: String, value: String): LinearLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            val p = Ui.dp(this@MainActivity, 14)
+            setPadding(p, Ui.dp(this@MainActivity, 11), p, Ui.dp(this@MainActivity, 11))
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(Ui.text(this@MainActivity, name, 14.5f, Ui.INK, "bold"))
+                addView(Ui.text(this@MainActivity, what, 12.5f, Ui.MUTED))
+            }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = Ui.dp(this@MainActivity, 10) })
+            addView(Ui.text(this@MainActivity, value, 14.5f, Ui.INK, "bold").apply { gravity = android.view.Gravity.END },
+                LinearLayout.LayoutParams(-2, -2))
+        }
         fun table(rows: List<LinearLayout>) = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 16).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
@@ -3381,15 +3486,16 @@ class MainActivity : Activity() {
             add(table(phone))
             add(Ui.label(this@MainActivity, "Filters"))
             add(table(listOf(
-                row("Ads and trackers", if (st.adblock || st.trackers) "On · ${AdBlock.blockedCount.get()} blocked" else "Off"),
-                row("Annoyances", if (st.annoyances) "On" else "Off"),
-                row("Adult content", f(st.adult, Filters.adult)),
-                row("Gambling", f(st.gambling, Filters.gambling)),
-                row("Malware and scams", f(st.malware, Filters.malware)))), 6)
-            // The log: its own section (the bottom bar keeps Copy ID and Close, which fit across a phone).
-            add(Ui.label(this@MainActivity, "Log"))
-            add(Ui.text(this@MainActivity, "The log lists the sites opened (names only). It's sent to whoever manages this browser only " +
-                "when you tap Send to admin, when they ask for it, or after the app crashes.", 12.5f, Ui.MUTED), 4)
+                filterRow("Block ads", "Ads on pages, including YouTube's", if (st.adblock) "On · ${AdBlock.blockedCount.get()} blocked" else "Off"),
+                filterRow("Block trackers", "Trackers and analytics, and tracking codes in addresses", if (st.trackers) "On" else "Off"),
+                filterRow("Hide annoyances", "Cookie notices, pop-ups, \"get our app\" banners, widgets and social buttons", if (st.annoyances) "On" else "Off"),
+                filterRow("Block adult content", "Adult sites, and anything from them", f(st.adult, Filters.adult)),
+                filterRow("Block gambling", "Betting and gambling sites", f(st.gambling, Filters.gambling)),
+                filterRow("Block malware and scams", "Sites known for viruses, phishing and scams", f(st.malware, Filters.malware)))), 6)
+            // Messages to whoever manages this browser: its own section (the bottom bar keeps Copy ID and Close).
+            add(Ui.label(this@MainActivity, "Message admin"))
+            add(Ui.text(this@MainActivity, "Questions, comments, or something not working: send a message to whoever manages this browser.",
+                12.5f, Ui.MUTED), 4)
             val ctx = this@MainActivity
             // (Equal shares of the width, as tall as their words need: large text sizes wrap instead of being cut off.)
             fun logButton(label: String, onClick: () -> Unit) = Button(ctx).apply {
@@ -3403,7 +3509,7 @@ class MainActivity : Activity() {
             }
             add(LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
-                addView(logButton("Send to admin") { sendLog("sent from the phone") },
+                addView(logButton("Message admin") { showMessageAdmin() },
                     LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 if (AdminAlerts.isAdminPhone()) addView(logButton("Share log") { shareLog() },
                     LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = Ui.dp(ctx, 10) })

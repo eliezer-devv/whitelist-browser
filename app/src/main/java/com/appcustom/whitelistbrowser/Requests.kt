@@ -34,17 +34,26 @@ object Requests {
      * compressed, and sealed like a request (only GitHub's automation can read it). Queued, so it goes once online;
      * only the newest waits. Trimmed to its most recent part if it's too big for one message.
      */
-    fun queueLog(ctx: Context, why: String, text: String) {
+    /** A message to whoever manages this browser: [subject], [message], and the app's log if [log] isn't null. */
+    fun queueMessage(ctx: Context, subject: String, message: String, log: String?) {
+        if (!isSetUp()) return
+        val text = "Subject: $subject\n\n$message" + (log?.let { "\n\n───── The app's log ─────\n\n$it" } ?: "")
+        queueLog(ctx, "message", text, extra = JSONObject().put("subject", subject))
+    }
+
+    fun queueLog(ctx: Context, why: String, text: String, extra: JSONObject? = null) {
         if (!isSetUp()) return
         var keep = text.length
         while (true) {
             val part = if (keep >= text.length) text else "(earlier entries left out)\n" + text.takeLast(keep)
             val gz = java.io.ByteArrayOutputStream().also { o -> java.util.zip.GZIPOutputStream(o).use { it.write(part.toByteArray(Charsets.UTF_8)) } }.toByteArray()
-            val marker = JSONObject().put("type", "log").put("device", Device.id(ctx)).put("why", why)
+            val marker = (extra?.let { JSONObject(it.toString()) } ?: JSONObject()).put("type", "log").put("device", Device.id(ctx)).put("why", why)
                 .put("version", BuildConfig.VERSION_NAME).put("gz", android.util.Base64.encodeToString(gz, android.util.Base64.NO_WRAP))
             val body = "🔒 A log from a phone.\n\n${Seal.hiddenPart(marker)}"
             if (body.length < 60_000 || keep < 5_000) {                  // GitHub's limit for one message is 65,536
-                Outbox.add(ctx, "log", JSONObject().put("title", "Log from a phone").put("body", body), summary = "Log ($why)")
+                // (A message is its own kind: only logs replace each other while waiting.)
+                Outbox.add(ctx, if (why == "message") "message" else "log",
+                    JSONObject().put("title", if (why == "message") "Message from a phone" else "Log from a phone").put("body", body), summary = "Log ($why)")
                 AppLog.i("Log", "Queued for the admin ($why, ${gz.size / 1024} KB compressed)")
                 return
             }
@@ -265,6 +274,7 @@ object Requests {
         if (now < waitUntil && !Whitelist.keyMismatch && !keyNotSent) return
         // Not set up yet means it can't open anything, so try again after half an hour (not a day).
         p.edit().putLong("registerNext", now + 30 * 60_000L).apply()
+        AppLog.i("Setup", "Registering this phone (${Device.name(ctx)}): sent as soon as it's online")
         Outbox.add(ctx, "register", JSONObject())
     }
 

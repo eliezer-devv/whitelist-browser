@@ -156,6 +156,12 @@ object MyRequests {
      * Asks GitHub about requests still waiting for an answer. Blocking; run off the main thread.
      * At most every 5 minutes. Stops at the first connection problem.
      */
+    /** PIN approvals locked on this phone (5 wrong PINs) until this time, or 0. */
+    fun pinLockedUntil(ctx: Context): Long {
+        val here = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("pinLockedUntil", 0L)
+        return maxOf(here, Whitelist.state.pinLockedUntil).takeIf { it > System.currentTimeMillis() } ?: 0L
+    }
+
     fun check(ctx: Context, minGapMs: Long = 5 * 60_000L) {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (System.currentTimeMillis() - p.getLong("lastCheck", 0L) < minGapMs) return
@@ -177,6 +183,10 @@ object MyRequests {
                         if (o.optInt("number") != number) continue
                         // A notice from before the PIN was sent (an earlier wrong PIN, say) isn't the answer to it.
                         if (o.optBoolean("pinChecking") && answer.third in 1 until o.optLong("pinSentAt") - 60_000L) continue
+                        if (answer.second.contains("PIN approvals are now locked")) {
+                            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                                .putLong("pinLockedUntil", System.currentTimeMillis() + 24 * 3_600_000L).apply()
+                        }
                         if (o.optString("message") != answer.second || o.optBoolean("pinChecking")) {
                             // e.g. "Wrong PIN": it can be ticked again in approval mode.
                             o.put("message", answer.second).put("answered", System.currentTimeMillis()).put("seen", false).put("pinChecking", false)

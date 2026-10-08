@@ -74,6 +74,7 @@ object Whitelist {
         val sitesFiltersOff: Map<String, Set<String>> = emptyMap(), // site -> groups switched off on its pages
         val logRequested: Long = 0L,                       // the admin page asked for this phone's log (when)
         val adminPhone: Boolean = false,                   // an admin phone (phone notifications; set on the admin page)
+        val pinLockedUntil: Long = 0L,                     // PIN approvals locked until (5 wrong PINs)
         // Embedded content allowed on a site: site -> sites whose content may show inside its pages
         // (a list's "embeds", approved from a request after the phone blocked it).
         val embeds: Map<String, List<String>> = emptyMap(),
@@ -299,6 +300,9 @@ object Whitelist {
             trackers = b.optBoolean("trackers", true),
             logRequested = device?.optLong("logRequested", 0L) ?: 0L,
             adminPhone = device?.optBoolean("admin", false) ?: false,
+            pinLockedUntil = device?.optString("pinLockedUntil")?.takeIf { it.isNotBlank() }?.let { t ->
+                runCatching { java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+                    .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.parse(t.take(19))!!.time }.getOrNull() } ?: 0L,
             annoyances = b.optBoolean("annoyances", true),
             adblockExceptions = b.optJSONArray("adblockExceptions")?.let { a ->
                 (0 until a.length()).mapNotNull { normalize(a.optString(it)) } } ?: emptyList(),

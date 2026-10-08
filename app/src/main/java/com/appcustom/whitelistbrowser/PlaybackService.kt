@@ -229,6 +229,24 @@ class PlaybackService : Service() {
          */
         const val PAGE_SCRIPT = """
 (function () {
+  // Text can be selected (to copy, share or translate), even where a site switches that off. Buttons and form
+  // controls are left as they are.
+  try {
+    if (!window.__wlbSelect) {
+      window.__wlbSelect = true;
+      var addSel = function () {
+        var st = document.createElement('style');
+        st.textContent = 'html,body,p,span,div,li,td,th,dd,dt,blockquote,pre,code,article,section,main,h1,h2,h3,h4,h5,h6,a,em,strong,b,i,label' +
+          '{-webkit-user-select:text!important;user-select:text!important;-webkit-touch-callout:default!important}';
+        (document.head || document.documentElement).appendChild(st);
+      };
+      if (document.documentElement) addSel(); else document.addEventListener('DOMContentLoaded', addSel);
+      // Sites that cancel selecting or copying in their own code: those cancellations are ignored.
+      ['selectstart', 'copy', 'contextmenu'].forEach(function (t) {
+        document.addEventListener(t, function (e) { e.stopImmediatePropagation(); }, true);
+      });
+    }
+  } catch (e) {}
   // Files the page builds itself ("blob:" addresses): kept for a minute after the page lets go of them, so a download
   // that starts as the page lets go (GitHub's do) can still be saved.
   if (!window.__wlbFiles) {

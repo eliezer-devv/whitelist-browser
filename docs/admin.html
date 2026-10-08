@@ -365,6 +365,7 @@ function h(tag, props, ...kids) {
   return el;
 }
 const ICONS = {
+  send: '<path d="M4 12l16-8-6 16-3-7z"/>',
   bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
   inbox: '<path d="M4 13l2.5-7h11L20 13"/><path d="M4 13v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5h-5l-1.5 2h-3L9 13z"/>',
   globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.5 2.6 3.5 5.4 3.5 8.5s-1 5.9-3.5 8.5c-2.5-2.6-3.5-5.4-3.5-8.5s1-5.9 3.5-8.5z"/>',
@@ -596,12 +597,13 @@ async function logText(id, name) {
   if (!res.ok) throw new Error(explain(res.status, 'The log'));
   return res.text();
 }
-// "2026-10-04_06-57_asked-for.txt" -> "4 Oct, 07:57 · asked for" (in this computer's time)
+// "2026-10-04_06-57_asked-for.txt" -> "4 Oct, 07:57 · asked for" (in this computer's time); a message: "… · Message"
 function logLabel(name) {
   const m = name.match(/^(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})_?(.*)\.txt$/);
   if (!m) return name;
   const when = new Date(`${m[1]}T${m[2]}:${m[3]}:00Z`);
-  return when.toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + (m[4] ? ' · ' + m[4].replace(/-/g, ' ') : '');
+  return when.toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) +
+    (m[4] === 'message' ? ' · Message' : m[4] ? ' · ' + m[4].replace(/-/g, ' ') : '');
 }
 function logScreen() {
   const { id, file } = S.sub;
@@ -612,7 +614,8 @@ function logScreen() {
   const text = S.logView.text;
   const download = () => saveFile(new Blob([text || ''], { type: 'text/plain' }), `whitelist-browser-log-${id}-${file}`);
   const name = (S.D.devices[id] && S.D.devices[id].name) || id;
-  return h('main', { class: 'stack' }, backLink(name, () => open({ name: 'phone', id })), screenTitle('Log', `${name} · ${logLabel(file)}`),
+  return h('main', { class: 'stack' }, backLink(name, () => open({ name: 'phone', id })),
+    screenTitle(/_message\.txt$/.test(file) ? (String(text || '').match(/^Subject: (.*)/) || [, 'Message'])[1] : 'Log', `${name} · ${logLabel(file)}`),
     h('button', { type: 'button', class: 'btn s', id: 'logDownload', disabled: text == null, onclick: download }, 'Download'),
     h('pre', { class: 'logtext' }, text == null ? 'Loading…' : text));
 }
@@ -2112,13 +2115,32 @@ function logsSection(id, d) {
     say('Asked. The phone sends its log at its next check, within a few minutes (once it\'s online and the app is open).');
     render();
   };
-  return h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Logs'),
-    h('p', { class: 'hint', style: 'margin:0' }, 'The app\'s log, from this phone: when you ask, when its user sends it, or after a crash. Kept 30 days.'),
+  return h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Messages and logs'),
+    h('p', { class: 'hint', style: 'margin:0' }, 'Messages from this phone\'s user, and the app\'s log: when you ask, when they send it, or after a crash. Kept 30 days.'),
     h('button', { type: 'button', class: 'btn s', id: 'pGetLog', onclick: ask }, 'Get log'),
     waiting ? h('p', { class: 'hint', style: 'margin:0' }, `Asked ${new Date(d.logRequested).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: waiting for the phone.`) : null,
     list == null ? h('p', { class: 'hint', style: 'margin:0' }, 'Looking for logs…')
-      : list.length ? h('div', { class: 'group' }, list.map(f => h('button', { type: 'button', class: 'row', onclick: () => open({ name: 'log', id, file: f.name }) },
-          h('span', { class: 'grow' }, h('span', { class: 't' }, logLabel(f.name))), h('span', { class: 'chev' }, icon('chev', 18)))))
+      : list.length ? h('div', { class: 'group' }, list.map(f => {
+          // A message shows its subject (read once, then kept); a log, "Log" and why it was sent.
+          const isMsg = /_message\.txt$/.test(f.name), crash = /_after-a-crash\.txt$/.test(f.name);
+          let info = null;
+          if (isMsg) {
+            S.msgInfo = S.msgInfo || {};
+            const key = id + '/' + f.name;
+            info = S.msgInfo[key];
+            if (info === undefined) {
+              S.msgInfo[key] = null;
+              logText(id, f.name).then(t => { S.msgInfo[key] = { subject: (t.match(/^Subject: (.*)/) || [, 'Message'])[1], withLog: t.includes('───── The app\'s log ─────') }; render(); })
+                .catch(() => { S.msgInfo[key] = { subject: 'Message', withLog: false }; render(); });
+            }
+          }
+          const when = logLabel(f.name).split(' · ')[0];
+          return h('button', { type: 'button', class: 'row', onclick: () => open({ name: 'log', id, file: f.name }) },
+            h('span', { class: 'ic', style: crash ? 'color:var(--red-ink,#8A2E1F)' : '' }, icon(isMsg ? 'send' : crash ? 'warn' : 'list', 20)),
+            h('span', { class: 'grow' }, h('span', { class: 't' }, isMsg ? (info ? info.subject : 'Message') : 'Log'),
+              h('span', { class: 's' }, isMsg ? `${when} · Message${info && info.withLog ? ', with the log' : ''}` : logLabel(f.name))),
+            h('span', { class: 'chev' }, icon('chev', 18)));
+        }))
       : h('p', { class: 'hint', style: 'margin:0' }, S.logFiles.err ? 'Couldn\'t look for logs: ' + S.logFiles.err : 'No logs yet.'));
 }
 

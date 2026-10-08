@@ -92,6 +92,12 @@
             </intent-filter>
         </receiver>
 
+        <!-- Answers to this phone's requests while the app isn't open: notifications. -->
+        <service
+            android:name=".AnswerCheckJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <!-- Admin phones: the background check for new requests, logs and crashes (phone notifications). -->
         <service
             android:name=".AdminCheckJob"
