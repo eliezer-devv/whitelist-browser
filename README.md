@@ -124,10 +124,10 @@ allows. When one expires, see section 6.
 |---|---|---|---|
 | **Publishing token** | only `whitelist-browser` (public) | **Contents: Read and write** | Private repo → secret `PUBLIC_REPO_TOKEN` |
 | **Requests token** | only `whitelist-browser-private` | **Issues: Read and write** | Public repo → secret `REQUESTS_TOKEN` |
-| **Admin token** | only `whitelist-browser-private` | **Contents** and **Issues: Read and write** | Pasted into the admin page |
 
 The publishing token lets the private repository copy the lists to the public one. The requests token is built
-into the app, and can only create and read requests. The admin token is for you.
+into the app (and the admin page), and can only create and read issues, which are all sealed. You never need a token
+yourself: the admin page signs you in with your email and a password (Step 9).
 
 ### Step 6: Set up the lists
 In the private repo: **Actions** → **Publish lists** → **Run workflow**. The first time, it makes the **request key
@@ -157,6 +157,26 @@ You'll also want to **watch** the private repo (**Watch** → **All activity**) 
    app for scanning, accept. See [Play Protect warnings](#play-protect-warnings) for why this happens.
 
 Setup is done.
+
+---
+
+### Step 9: Sign-in for the admin page (email and password)
+The admin page never needs a GitHub token: you sign in with your email and a password. GitHub's automation checks
+everything, and sends the emails (invitations, "is this you signing in?", forgotten passwords) from a Gmail account.
+1. **Gmail's app password** (in the Gmail account that will send the emails):
+   1. [myaccount.google.com](https://myaccount.google.com) → **Security** → turn on **2-Step Verification** (if it isn't).
+   2. [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) → name it `Whitelist Browser` →
+      **Create**. Copy the 16-letter password it shows (Google shows it once).
+2. **The private repo's secrets** (**Settings** → **Secrets and variables** → **Actions** → **New repository secret**):
+   `MAIL_USER` = that Gmail address, and `MAIL_APP_PASSWORD` = the 16-letter password, without the spaces.
+3. **Your account:** in the private repo, **Actions** → **Set up admin sign-in** → **Run workflow**. Type the email
+   you'll sign in with (any email, not necessarily the Gmail above) and your name. You get an email: tap
+   **Confirm and choose a password**, and choose one (at least 8 characters, with a letter and a number).
+   (If the email can't be sent, the run's summary shows the link instead.)
+
+That's you signed in on that device. Anywhere else, sign in with your email and password, and tap **Yes, it's me** in
+the email that comes (once per device). **Run Set up admin sign-in again** any time to change your email, or if you
+can't sign in at all: it emails you a link to choose a new password.
 
 ---
 
@@ -486,7 +506,8 @@ asked, by whom, and the note are locked so only GitHub's automation can read the
 [Who can see what](#10-who-can-see-what)). A moment later a reply appears on it, *"🟢 A new request: answer it on the
 admin page, or reply approve or deny"*, and **that reply is what notifies you**, by email and by push notification in
 the GitHub app. **The details are on the admin page** (and under **All the details**, with every reply in full).
-Replying `approve` or `deny` on the issue, or by email, still works. All open requests are in the repo's **Issues** tab.
+Before admin sign-in is set up (Step 9), replying `approve` or `deny` on the issue, or by email, also works. **Once it's set up,
+replies on GitHub no longer count** (the requests token, built into the app, could post them): answer on the admin page.
 
 ### How you answer
 **The easiest way is the admin page, with a tap.** At the top of the admin page, **Requests** lists every open request:
@@ -500,8 +521,6 @@ who asked, what for, when, and their note. Each one has three buttons:
 After a tap, the request shows *"✓ Approved. The phone will be told in a few minutes."*
 The link in GitHub's notification (**Answer it on the admin page**) opens the page with that request highlighted.
 **New phones** waiting for a name are listed there too, with a box to type it in.
-
-This needs your admin token to have the **Issues** permission as well (section 6).
 
 **Or reply on GitHub** (in the GitHub app, on github.com, or **by replying to the notification email**). The buttons above post these same replies for you.
 How replies are read, so nothing happens by accident:
@@ -926,9 +945,29 @@ To check the file, open the `whitelist.json` link from setup step 2. If it shows
 `https://YOUR_USERNAME.github.io/whitelist-browser/admin.html` is a web page for answering requests and editing the
 lists. It's made for phones (it also works on a computer) and has four tabs at the bottom.
 
-**First use:** paste your **admin token** (section 6) and tap **Connect**. Your username and the repository fill in by
-themselves. Tick **Remember on this device** only on a device nobody else uses. Anyone can open the page, but it does
-nothing without your token.
+**Signing in:** your **email and password** (set up in section 1, Step 9). On a device you haven't used before, you
+also get an email, *"Is this you signing in?"*: tap **Yes, it's me** (on any device, your phone is fine), and the page
+signs in by itself a moment later. After that, that device stays signed in. **Forgot password?** on the sign-in screen
+emails you a link to choose a new one (it also signs you out everywhere else). **5 wrong passwords** lock sign-in for
+15 minutes (then longer). You get an email whenever anyone signs in to the admin page on a new device.
+
+**Changes take about a minute.** The page sends each change to GitHub's automation, which checks it and saves it: the
+top right says **Saving… (about a minute)**, then **Saved** (or **Not saved: tap for details**, with **Try again**).
+You can carry on meanwhile; changes made while one is saving go in the next one.
+
+**Your account** (**Settings** → **Your account**): the devices you're signed in on (sign any of them out), and
+**Change password**.
+
+**Admins** (**Settings** → **Admins**, for you only): add people who help, like a teacher for some phones.
+- **Add an admin:** their email, a name, **the phones they look after** (or **All phones**), and **what they can do**:
+  **Answer requests**, **Change their phones** (those phones' own lists, names and settings), **Messages and logs**,
+  and, with All phones, **Settings for every phone**. They get an email to confirm their address and choose a
+  password; until they do, they can't sign in (the link works for 48 hours: **Send the invitation again** if needed).
+- **What they see:** only those phones, the lists those phones use, and their requests. The public lists they can
+  look at but not change, and their approvals go to the phone's own list. **GitHub's automation checks every change
+  they make**, whatever the page shows.
+- **Change** what they can do, **Pause** them (signed out everywhere until you let them back), sign out one of their
+  devices, or **Remove** them.
 
 **Requests.** Open requests from phones, newest first, with a red count on the tab.
 - **Each request** is a card showing who asked, when, what for, their note, and any warnings (like a link that passes
@@ -1008,16 +1047,15 @@ without the Save bar.
 ### Inside the app (hidden)
 The same admin page is built into the app, so you can manage everything from the phone itself.
 - **To open it,** tap the name at the top of the browser (e.g. **Home**) **7 times quickly**.
-- **The first time,** paste your admin token. Tick **Remember with a PIN** and choose a PIN of 4 to 8 digits, and
-  next time you'll only type the PIN. The token is stored on the phone encrypted with the PIN, never as it is, and
-  **5 wrong PINs wipe it** (then just paste the token again). Untick it to paste the token every time.
+- **The first time,** sign in with your email and password (and tap **Yes, it's me** in the email), then choose a
+  **PIN** of 4 to 8 digits: next time you'll only type the PIN. **5 wrong PINs sign the phone out** (then sign in
+  again with your password).
 - **It works like the web page:** the same tabs, buttons and saving. Downloads and outside links aren't available
   inside the app, so use a computer for those.
-- **To change the PIN** (or set one, if you chose to paste the token each time): **Settings** → **GitHub** →
-  **Change the PIN**. Type the new one twice. The old PIN stops working straight away.
+- **To change the PIN:** **Settings** → **Your account** → **Change the PIN**. The old PIN stops working straight away.
 - **To leave,** tap **Close** at the top or the phone's back button. The browser checks for your changes straight away.
 - **Screenshots are blocked** on the admin screen, and it doesn't appear in the recent-apps preview.
-- **"Clear cookies and site data → All sites"** in the browser also removes the saved PIN and token. Just paste the token again.
+- **"Clear cookies and site data → All sites"** in the browser also signs the admin out on this phone. Just sign in again.
 - **It's the version of the page from when the app was built.** Changing `docs/admin.html` updates the web page
   straight away, and starts a **Build APK** so the in-app one follows with the next app update.
 
@@ -1031,13 +1069,12 @@ A **token** is like a spare key to your GitHub account that only opens specific 
 repository it works on, what it may do there and when it expires. You can delete it at any time without
 changing your password.
 
-This setup uses up to two:
+This setup uses two (you never need one yourself: the admin page signs you in with your email):
 
 | Token | Where it goes | Permission | Needed for |
 |---|---|---|---|
 | **Publishing token** | Private repo secret `PUBLIC_REPO_TOKEN` | **Contents: Read and write**, public repo only | Copying the lists to the public repo |
-| **Requests token** | Public repo secret `REQUESTS_TOKEN`, built into the app | **Issues: Read and write**, private repo only | Sending requests from the app |
-| **Admin token** (optional) | Pasted into the admin page | **Contents** and **Issues: Read and write**, private repo only | Editing the lists, and answering requests, on the admin page |
+| **Requests token** | Public repo secret `REQUESTS_TOKEN`, built into the app and the admin page | **Issues: Read and write**, private repo only | Sending requests from the app, and the admin page's sealed commands |
 
 ### How to make a token
 1. On github.com, tap your profile picture → **Settings** → at the bottom of the menu, **Developer settings**.
@@ -1049,16 +1086,15 @@ This setup uses up to two:
 6. Tap **Generate token** and **copy it right away**. GitHub only shows it once.
 
 ### Keeping them safe and current
-- **The requests token is built into the app.** Someone who digs it out could only create issues in your repo,
-  meaning fake requests. They can't change the list, since only your own replies approve anything.
-  If fake requests appear, delete the token, make a new one, update the secret and rebuild the app.
-- **The admin token can change anything in the repository,** including the app. Treat it like a password.
+- **The requests token is built into the app, and the published admin page.** Someone who finds it could only create
+  and read issues in your repo, and everything in them is sealed. They can't change anything: once admin sign-in is set
+  up, only signed-in admins' commands (checked by GitHub's automation) change the lists, and replies typed on GitHub
+  don't count. If fake requests appear, delete the token, make a new one, update the secret, and run **Build APK**
+  and **Publish list**.
 - **Renewing the requests token:** make a new one, then in **Settings** → **Secrets and variables** → **Actions**,
-  edit `REQUESTS_TOKEN` and paste it in. Then run **Actions** → **Build APK** → **Run workflow**.
-  Phones get the fixed app through the normal update banner.
-- **Renewing the admin token:** make a new one and paste it into the admin page.
-- **Adding the Issues permission to an existing admin token:** Developer settings → Fine-grained tokens → open the token → **Edit** →
-  **Repository permissions** → **Issues** → **Read and write** → **Update**. The token itself stays the same.
+  edit `REQUESTS_TOKEN` and paste it in. Then run **Actions** → **Build APK** → **Run workflow**, and **Publish list**
+  (for the admin page). Phones get the fixed app through the normal update banner.
+- **An admin token from before** (pasted into the admin page) isn't used any more: delete it (below).
 - **If a token is lost or leaked:** Developer settings → Fine-grained tokens → open it → **Delete**. It stops working immediately.
 
 ---
@@ -1134,6 +1170,8 @@ updated by a version with the same seal. This stops anyone else from pushing a f
 | `KEYSTORE_PASSWORD` | Unlocks the signing key. Set once, never change. |
 | `REQUESTS_TOKEN` (public repo) | Lets the app send requests to the private repo. After changing it, rebuild the app. |
 | `PUBLIC_REPO_TOKEN` (private repo) | Lets the private repo publish the lists to the public repo. |
+| `MAIL_USER` (private repo) | The Gmail address the admin page's emails come from (section 1, Step 9). |
+| `MAIL_APP_PASSWORD` (private repo) | That Gmail's app password (not its normal password). |
 
 ---
 
@@ -1146,7 +1184,9 @@ updated by a version with the same seal. This stops anyone else from pushing a f
 | **Requests, notes and names** | Private repo issues, **sealed**; details in the private `requests` folder | **Only you** (and the automation) |
 | **Bot replies on requests** | Private repo issues | You; they say only what kind of update it is. The full text is in the private record |
 | **The request key** | Private half: private repo `keys/`. Public half: `request-key.pem` in the public repo, and in the app | The public half can only lock, not unlock, so it's fine to be seen |
-| The status page and the admin page | Public repo | Anyone can open them, but the admin page does nothing without your token |
+| The status page and the admin page | Public repo | Anyone can open them, but the admin page does nothing without signing in |
+| **Admin accounts** | Private repo `admin/accounts.json` | **Only you**. Passwords only as scrypt hashes; emailed codes only as hashes |
+| **What the admin page shows** | Public repo `a/`, **encrypted** with each admin's own key | Only that admin's signed-in devices (each gets the key sealed with its own device key). Mini admins only get their phones' part |
 | App code and releases | Public repo | Anyone |
 | Signing key file | Public repo | Anyone, but it's locked by your password |
 | Secrets and tokens | Repo settings | Nobody, not even you |
@@ -1390,8 +1430,10 @@ The app, its dialogs, the home page, the blocked page and the admin page all wor
 | A phone, email or app link does nothing | No app on the phone can open it. Install the app it's meant for. |
 | *"Couldn't check for updates: Set GITHUB_USERNAME"* | Set your username in `Config.kt`. |
 | *"Update refused: it's signed with a different key"* | The installed app was signed with a different key, which only happens if the signing key was recreated (section 8). Uninstall it and install from the download link. |
-| Admin page: *"To answer requests here, your admin token needs one more permission"* | Add **Issues: Read and write** to the admin token (section 6). Or reply on GitHub instead. |
-| Admin page: *"GitHub rejected the token"* | The admin token expired or was deleted. Make a new one (section 6). |
+| Admin page: *"No answer from GitHub yet"* | GitHub's automation didn't run: private repo → **Actions** → **Admin page** (is it switched on? did the run fail?). Then try again. |
+| Admin page: *"Couldn't send the email"* | The `MAIL_USER` / `MAIL_APP_PASSWORD` secrets are missing or wrong (section 1, Step 9). The app password must be Gmail's **app password**, not the normal one. |
+| Admin page: *"GitHub turned the requests token down"* | `REQUESTS_TOKEN` expired: renew it (section 6), then run **Build APK** and **Publish list**. |
+| Can't sign in at all (lost the password and the email) | Private repo → **Actions** → **Set up admin sign-in** → **Run workflow** with your email: it emails a link to choose a new password. |
 | Admin page: *"The list changed on GitHub since you loaded it"* | Someone edited it meanwhile, or a request was approved. Tap **Discard changes** and redo your edit. |
 
 ---

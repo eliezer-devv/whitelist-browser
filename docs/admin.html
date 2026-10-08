@@ -141,6 +141,8 @@
   .row .grow { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .row .name { font-weight: 600; font-size: 15.5px; }
   .row .dom { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .grow > .t { display: block; font-weight: 500; }
+  .row .grow > .s { display: block; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
   .row .count { color: var(--muted); font-size: 14px; }
   .row .chev { color: var(--faint); flex: none; display: flex; }
   .row .ic { color: var(--muted); display: flex; flex: none; }
@@ -321,6 +323,20 @@
   :root[data-theme="dark"] .quote { background: #273536; }
   :root[data-theme="dark"] #savebar, :root[data-theme="dark"] #toast { background: #162021; }
   :root[data-theme="dark"] .inp::placeholder { color: #8EA19D; }
+  /* Saving… / Saved / Not saved */
+  #syncPill { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); right: 12px; z-index: 40; border: 0; border-radius: 999px; padding: 7px 14px;
+    font: 600 13px var(--body, system-ui); background: var(--accent-soft); color: var(--accent); box-shadow: 0 2px 10px rgba(0,0,0,.12); cursor: default; }
+  #syncPill.busy::before { content: ''; display: inline-block; width: 10px; height: 10px; margin-right: 7px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; vertical-align: -1px; }
+  #syncPill.bad { background: var(--red-soft); color: var(--red); cursor: pointer; }
+  .spin { width: 18px; height: 18px; flex: none; border-radius: 50%; border: 2.5px solid var(--accent); border-right-color: transparent; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin, #syncPill.busy::before { animation-duration: 2.4s; } }
+  .pwbox { position: relative; display: flex; }
+  .pwbox .inp { flex: 1; padding-right: 72px; }
+  .pwshow { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); min-height: 36px; padding: 0 10px; border: 0; background: none; color: var(--accent); font: 600 14px var(--body, system-ui); cursor: pointer; }
+  .rules { list-style: none; margin: -4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted, #5B6B69); }
+  .rules li { display: flex; align-items: center; gap: 6px; }
+  .rules li.ok { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -337,6 +353,7 @@
 <div id="savebar" hidden><span id="saveText">Changes not saved yet</span><div style="display:flex;gap:6px"><button type="button" class="undo" id="undoBtn">Undo</button><button type="button" class="save" id="saveBtn">Save</button></div></div>
 <nav id="tabs" aria-label="Sections" hidden></nav>
 <div id="toast" role="status" aria-live="polite" hidden></div>
+<button type="button" id="syncPill" hidden></button>
 <script>
 (() => {
 'use strict';
@@ -482,120 +499,326 @@ function pageOnSite(key, domain, subdomains) {
 const hasPath = l => /[/?]./.test(String(l).replace(/^[a-z][a-z0-9+.-]*:\/\//i, ''));
 const blockEntry = l => hasPath(l) ? pageKey(l) : normalize(l);   // a site, or a single page
 
-// ---------- GitHub connection ----------
-// C.repo is the PRIVATE repository: lists (docs/), devices.json and the requests. Saving there
-// publishes the public parts to the public repository by itself (its "Publish lists" workflow).
+// ---------- Where everything is ----------
+// C.repo is the PRIVATE repository (lists, phones, requests, accounts); its automation does every change. The page
+// never holds a GitHub token of its own: it sends sealed commands as issues there (with the requests token, the same
+// one the app uses, which can only make issues), and reads what it shows from the PUBLIC repository, encrypted so
+// only this signed-in device can open it.
 const publicRepoName = () => C.repo.replace(/-private$/, '');
-const C = { owner: '', repo: '', branch: 'main', token: '', remember: false };
+const C = { owner: '', repo: '', branch: 'main' };
 // Inside the phone app (opened from the hidden button) the app passes ?inapp=1&owner=…&repo=….
-// There the token is never stored as it is: only encrypted with a PIN (see below).
 const Q = new URLSearchParams(location.search);
 const INAPP = Q.get('inapp') === '1';
 (() => {
-  const saved = JSON.parse(localStorage.getItem('wl-admin') || '{}');
-  // On GitHub Pages (OWNER.github.io/REPO/admin.html): everything is kept in the private repository,
-  // REPO-private. The public one only has what phones read, copied there automatically.
+  // On GitHub Pages (OWNER.github.io/REPO/admin.html): REPO-private holds everything.
   if (location.hostname.endsWith('.github.io')) {
     C.owner = location.hostname.split('.')[0];
     C.repo = (location.pathname.split('/')[1] || 'whitelist-browser') + '-private';
   }
-  for (const f of ['owner', 'repo', 'branch']) if (saved[f]) C[f] = saved[f];
   if (Q.get('owner')) C.owner = Q.get('owner');
   if (Q.get('repo')) C.repo = Q.get('repo');
-  if (saved.token && !INAPP) { C.token = saved.token; C.remember = true; }
 })();
-function persist() {
-  const s = { owner: C.owner, repo: C.repo, branch: C.branch };
-  if (C.remember && !INAPP) s.token = C.token;
-  localStorage.setItem('wl-admin', JSON.stringify(s));
-}
+// The requests token (filled in when the page is published, and when it's packed into the app). Stored reversed.
+const TOKEN_REV = '__REQUESTS_TOKEN_REV__';
+const ghToken = () => /^__/.test(TOKEN_REV) ? '' : TOKEN_REV.split('').reverse().join('');
 
-// ---------- PIN-protected token (in the app) ----------
-// The token is encrypted with a key made from the PIN (PBKDF2, 200,000 rounds, AES-GCM).
-// 5 wrong PINs and it's wiped.
-const LOCK_KEY = 'wl-admin-locked';
-const u8b64 = u => btoa(String.fromCharCode(...u));
+const u8b64 = u => { let s = ''; new Uint8Array(u).forEach(b => s += String.fromCharCode(b)); return btoa(s); };
 const b64u8 = t => Uint8Array.from(atob(t), c => c.charCodeAt(0));
-const getLock = () => { try { return JSON.parse(localStorage.getItem(LOCK_KEY) || 'null'); } catch { return null; } };
-async function pinKey(pin, salt) {
-  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 200000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-}
-async function lockToken(pin, token) {
-  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
-  const data = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await pinKey(pin, salt), new TextEncoder().encode(token)));
-  localStorage.setItem(LOCK_KEY, JSON.stringify({ salt: u8b64(salt), iv: u8b64(iv), data: u8b64(data), tries: 0 }));
-}
-async function unlockToken(pin) {       // the token, or null (wrong PIN; wiped after 5)
-  const L = getLock();
-  if (!L) return null;
-  try {
-    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64u8(L.iv) }, await pinKey(pin, b64u8(L.salt)), b64u8(L.data));
-    L.tries = 0; localStorage.setItem(LOCK_KEY, JSON.stringify(L));
-    return new TextDecoder().decode(plain);
-  } catch {
-    L.tries = (L.tries || 0) + 1;
-    if (L.tries >= 5) localStorage.removeItem(LOCK_KEY); else localStorage.setItem(LOCK_KEY, JSON.stringify(L));
-    return null;
-  }
-}
+const enc8 = s => new TextEncoder().encode(s);
+const dec8 = b => new TextDecoder().decode(b);
 // The phone's back button (the app asks this first): go back a screen if there is one.
 window.wlBack = () => { if (S.connected && S.sub) { back(); return true; } return false; };
 const closeAdmin = () => { location.href = 'wladmin://close'; };
 const branch = () => C.branch || 'main';
-const repoBase = () => `https://api.github.com/repos/${encodeURIComponent(C.owner)}/${encodeURIComponent(C.repo)}`;
-const contentsUrl = path => `${repoBase()}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
-const headers = () => ({ Authorization: `Bearer ${C.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' });
-function explain(status, what) {
-  if (status === 401) return 'GitHub rejected the token. Check it hasn\'t expired.';
-  if (status === 403) return 'The token can\'t write to this repo. It needs Contents: read and write.';
-  if (status === 409 || status === 422) return `${what} changed on GitHub since you loaded it (maybe an approved request or a new phone). Tap Undo to reload it, then redo your edit.`;
-  return `GitHub returned ${status}.`;
+
+// ---------- This device's keys (made here, kept here: the private halves can't be read out, even by this page) ----------
+// enc: RSA-OAEP, for answers and this admin's data key. mac: HMAC, to sign commands (its secret is sent once, at sign-in).
+const idb = (() => {
+  let dbp = null;
+  const db = () => dbp || (dbp = new Promise((ok, no) => {
+    const r = indexedDB.open('wl-admin', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+  }));
+  const tx = async (mode, fn) => { const d = await db(); return new Promise((ok, no) => { const t = d.transaction('kv', mode); const q = fn(t.objectStore('kv')); t.oncomplete = () => ok(q && q.result); t.onerror = () => no(t.error); }); };
+  return { get: k => tx('readonly', s => s.get(k)), set: (k, v) => tx('readwrite', s => s.put(v, k)), del: k => tx('readwrite', s => s.delete(k)) };
+})();
+const SESSION = 'wl-admin-session';
+const getSession = () => { try { return JSON.parse(localStorage.getItem(SESSION) || 'null'); } catch { return null; } };
+const setSession = s => s ? localStorage.setItem(SESSION, JSON.stringify(s)) : localStorage.removeItem(SESSION);
+let DEV = null;          // { did, enc (public, base64), encKey (private CryptoKey), macKey? }
+async function deviceKeys(fresh = false) {
+  if (DEV && !fresh) return DEV;
+  let d = fresh ? null : await idb.get('device').catch(() => null);
+  if (!d) {
+    const pair = await crypto.subtle.generateKey({ name: 'RSA-OAEP', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-1' }, false, ['encrypt', 'decrypt']);
+    const did = [...crypto.getRandomValues(new Uint8Array(8))].map(b => b.toString(16).padStart(2, '0')).join('');
+    d = { did, enc: u8b64(await crypto.subtle.exportKey('spki', pair.publicKey)), encKey: pair.privateKey };
+    await idb.set('device', d);
+  }
+  DEV = d;
+  return d;
 }
-const b64decode = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\n/g, '')), c => c.charCodeAt(0)));
-const b64encode = s => { let bin = ''; new TextEncoder().encode(s).forEach(b => bin += String.fromCharCode(b)); return btoa(bin); };
-async function getRaw(path) {   // null if the file or folder doesn't exist
-  const res = await fetch(`${contentsUrl(path)}?ref=${encodeURIComponent(branch())}`, { headers: headers(), cache: 'no-store' });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(explain(res.status, 'It'));
-  return res.json();
+// A new signing secret, for a sign-in: sent once (sealed), then kept here only as a key that can't be read out.
+async function newMacSecret() {
+  const raw = crypto.getRandomValues(new Uint8Array(32));
+  const key = await crypto.subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return { b64: u8b64(raw), key };
 }
-async function getJson(path) {
-  const f = await getRaw(path);
-  return f ? { sha: f.sha, data: JSON.parse(b64decode(f.content)) } : null;
+async function forgetDevice() {
+  DEV = null; setSession(null);
+  await idb.del('device').catch(() => {}); await idb.del('mac').catch(() => {});
 }
-async function putJson(path, data, fileSha, message) {
-  const body = { message, content: b64encode(JSON.stringify(data, null, 2) + '\n'), branch: branch() };
-  if (fileSha) body.sha = fileSha;
-  const res = await fetch(contentsUrl(path), { method: 'PUT', headers: headers(), body: JSON.stringify(body) });
-  if (!res.ok) throw new Error(explain(res.status, path.includes('devices') ? 'The phones list' : 'The list'));
-  return (await res.json()).content.sha;
+const deviceName = () => {
+  const ua = navigator.userAgent;
+  const os = /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? (/iPad/.test(ua) ? 'iPad' : 'iPhone') : /Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /CrOS/.test(ua) ? 'Chromebook' : /Linux/.test(ua) ? 'Linux' : 'a computer';
+  const br = INAPP ? 'Whitelist app' : /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'A browser';
+  return `${br} on ${os}`;
+};
+
+// ---------- Sealing (the same as phones: AES-256-GCM, its key locked with RSA-OAEP SHA-1) ----------
+let requestKey = null;
+async function getRequestKey() {
+  if (requestKey) return requestKey;
+  const res = await fetch(`https://raw.githubusercontent.com/${C.owner}/${publicRepoName()}/${branch()}/request-key.pem`, { cache: 'no-store' });
+  if (!res.ok) throw new Error('Couldn\'t get the request key. Check this device is online (and that Publish lists has run once in the private repository).');
+  const pem = (await res.text()).replace(/-----[^-]+-----|\s/g, '');
+  requestKey = await crypto.subtle.importKey('spki', b64u8(pem), { name: 'RSA-OAEP', hash: 'SHA-1' }, false, ['encrypt']);
+  return requestKey;
 }
-async function deleteFile(path, fileSha, message) {
-  const res = await fetch(contentsUrl(path), { method: 'DELETE', headers: headers(), body: JSON.stringify({ message, sha: fileSha, branch: branch() }) });
-  if (!res.ok && res.status !== 404) throw new Error(explain(res.status, 'The list'));
+async function seal(obj) {
+  const aes = crypto.getRandomValues(new Uint8Array(32)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const k = await crypto.subtle.importKey('raw', aes, 'AES-GCM', false, ['encrypt']);
+  const d = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, k, enc8(JSON.stringify(obj)));
+  const kk = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, await getRequestKey(), aes);
+  return { v: 1, k: u8b64(kk), iv: u8b64(iv), d: u8b64(d) };
 }
-async function moveFile(from, to, message) {   // keeps the content exactly
-  const f = await getRaw(from);
-  if (!f) return false;
-  const res = await fetch(contentsUrl(to), { method: 'PUT', headers: headers(), body: JSON.stringify({ message, content: f.content.replace(/\n/g, ''), branch: branch() }) });
-  if (!res.ok) throw new Error(explain(res.status, 'A list'));
-  await deleteFile(from, f.sha, message);
+async function unseal(s) {
+  const aes = await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, (await deviceKeys()).encKey, b64u8(s.k));
+  const k = await crypto.subtle.importKey('raw', aes, 'AES-GCM', false, ['decrypt']);
+  return JSON.parse(dec8(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64u8(s.iv) }, k, b64u8(s.d))));
+}
+
+// ---------- Commands: a sealed issue in the private repository, answered by its automation ----------
+const API = 'https://api.github.com';
+const ghHeaders = () => ({ Authorization: `Bearer ${ghToken()}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function postCommand(sealed) {
+  if (!ghToken()) throw new Error('This copy of the admin page can\'t send anything: the REQUESTS_TOKEN secret was missing when it was published. Add it in the public repository, then run Publish list.');
+  const body = `🔒 Admin\n<!-- whitelist-admin-cmd\n${JSON.stringify(await seal(sealed))}\n-->`;
+  const res = await fetch(`${API}/repos/${C.owner}/${C.repo}/issues`, { method: 'POST', headers: ghHeaders(), body: JSON.stringify({ title: '🔒 Admin', body }) });
+  if (res.status === 401) throw new Error('GitHub turned the requests token down: it may have expired. Renew REQUESTS_TOKEN (README, section 6).');
+  if (!res.ok) throw new Error(`GitHub returned ${res.status}. Check this device is online, then try again.`);
+  return (await res.json()).number;
+}
+// Waits for the automation's answers on that issue (sealed for this device). onEach(result) returns true to stop.
+async function awaitAnswers(number, onEach, { minutes = 4, seen = new Set() } = {}) {
+  const until = Date.now() + minutes * 60000;
+  for (let wait = window.__wlPoll || 6000; Date.now() < until; wait = window.__wlPoll || Math.min(wait + 1000, 8000)) {
+    await sleep(wait);
+    let list;
+    try {
+      const res = await fetch(`${API}/repos/${C.owner}/${C.repo}/issues/${number}/comments?per_page=50`, { headers: ghHeaders(), cache: 'no-store' });
+      if (!res.ok) continue;
+      list = await res.json();
+    } catch { continue; }
+    for (const c of list) {
+      if (seen.has(c.id) || !c.user || c.user.type !== 'Bot') continue;          // only GitHub's automation answers
+      const m = String(c.body || '').match(/<!-- whitelist-admin-result\s*([\s\S]*?)-->/);
+      if (!m) continue;
+      seen.add(c.id);
+      let r; try { r = await unseal(JSON.parse(m[1])); } catch { continue; }
+      if (onEach(r)) return r;
+    }
+  }
+  return null;
+}
+// One command, and its answer. Unsigned: signing in and emailed links. Signed: everything once signed in, one at a
+// time (each carries the next number, and GitHub refuses one that arrives after a later one).
+let signedChain = Promise.resolve();
+function command(cmd, opts = {}) {
+  if (opts.signed === false) return commandNow(cmd, opts);
+  const run = signedChain.then(() => commandNow(cmd, opts));
+  signedChain = run.catch(() => {});
+  return run;
+}
+async function commandNow(cmd, { signed = true, minutes = 4 } = {}) {
+  const dev = await deviceKeys();
+  const payload = { ...cmd, rk: dev.enc, at: Date.now() };
+  let sealed;
+  if (signed) {
+    const s = getSession(), mac = await idb.get('mac');
+    if (!s || !mac) throw new Error('SIGNED_OUT');
+    s.n = (s.n || 0) + 1; setSession(s);
+    payload.n = s.n;
+    const p = JSON.stringify(payload);
+    sealed = { p, aid: s.aid, did: dev.did, mac: u8b64(await crypto.subtle.sign('HMAC', mac, enc8(p))) };
+  } else sealed = { p: JSON.stringify(payload) };
+  const number = await postCommand(sealed);
+  const r = await awaitAnswers(number, () => true, { minutes });
+  if (!r) throw new Error('No answer from GitHub yet. Its automation may be busy or switched off (private repository → Actions). Try again in a minute.');
+  r.number = number;
+  if (r.code === 'SIGNED_OUT' || r.code === 'PAUSED') { await signedOutHere(r.error); throw new Error(r.error); }
+  return r;
+}
+
+// ---------- What this admin sees: encrypted in the public repository, at a given version ----------
+const RAW = 'https://raw.githubusercontent.com';
+const DATA = { sha: null, key: null, index: null, cache: new Map() };
+async function latestSha() {
+  try {
+    const res = await fetch(`${API}/repos/${C.owner}/${publicRepoName()}/commits/${branch()}`, { headers: { Accept: 'application/vnd.github.sha' }, cache: 'no-store' });
+    if (res.ok) return (await res.text()).trim();
+  } catch {}
+  return branch();
+}
+async function aesOpen(key, text) {
+  const { iv, d } = JSON.parse(text);
+  return dec8(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64u8(iv) }, key, b64u8(d)));
+}
+// Loads the index (and this device's key) at version [sha]. False: this device has no key there (signed out).
+async function loadData(sha) {
+  const s = getSession();
+  if (!s) throw new Error('SIGNED_OUT');
+  sha = sha || await latestSha();
+  const at = p => `${RAW}/${C.owner}/${publicRepoName()}/${sha}/a/${s.ah}/${p}`;
+  const kres = await fetch(at(`k/${s.dh}.json`), { cache: 'no-store' });
+  if (kres.status === 404) return false;
+  if (!kres.ok) throw new Error(`Couldn't load your data (${kres.status}). Check this device is online.`);
+  const k = await unseal(await kres.json());
+  const key = await crypto.subtle.importKey('raw', b64u8(k.k), 'AES-GCM', false, ['decrypt']);
+  const ires = await fetch(at('i.json'), { cache: 'no-store' });
+  if (!ires.ok) throw new Error(`Couldn't load your data (${ires.status}).`);
+  const index = JSON.parse(await aesOpen(key, await ires.text()));
+  Object.assign(DATA, { sha, key, index, at });
+  ME = index.me;
   return true;
 }
-// Issues (requests): needs the token's Issues permission.
+async function fileText(path) {
+  const f = DATA.index && DATA.index.files[path];
+  if (!f) return null;
+  const ck = f.n + f.h;
+  if (!DATA.cache.has(ck)) DATA.cache.set(ck, (async () => {
+    const res = await fetch(DATA.at(`f/${f.n}.json`), { cache: 'force-cache' });
+    if (!res.ok) throw new Error(`Couldn't load ${path} (${res.status}).`);
+    return aesOpen(DATA.key, await res.text());
+  })());
+  try { return await DATA.cache.get(ck); } catch (e) { DATA.cache.delete(ck); throw e; }
+}
+let ME = null;                     // who's signed in: { aid, email, name, role, phones, can, devices }
+const isOwner = () => !!ME && ME.role === 'owner';
+const canDo = what => isOwner() || !!(ME && ME.can && ME.can[what]);
+const allPhonesAdmin = () => isOwner() || (ME && ME.phones === 'all');
+const fullAdmin = () => isOwner() || (allPhonesAdmin() && canDo('settings'));
+
+// ---------- Reading and changing files (the rest of the page uses these, as before) ----------
+// Changes show here at once ("overlay") and go to GitHub as one command; the next arrives once it's answered.
+const OVER = new Map();            // path -> { text } or { gone: true }
+const gitSha = async text => { const b = enc8(text); const head = enc8(`blob ${b.length}\0`); const all = new Uint8Array(head.length + b.length); all.set(head); all.set(b, head.length);
+  return [...new Uint8Array(await crypto.subtle.digest('SHA-1', all))].map(x => x.toString(16).padStart(2, '0')).join(''); };
+async function textOf(path) {
+  if (OVER.has(path)) return OVER.get(path).gone ? null : OVER.get(path).text;
+  return fileText(path);
+}
+async function getRaw(path) {   // a file: { sha }; a folder: its files [{ type, name }]. null if neither.
+  const t = await textOf(path);
+  if (t != null) return { sha: await gitSha(t) };
+  const names = new Set([...Object.keys(DATA.index ? DATA.index.files : {}), ...OVER.keys()].filter(p => p.startsWith(path + '/') && !p.slice(path.length + 1).includes('/')));
+  const files = [];
+  for (const p of names) if (await textOf(p) != null) files.push({ type: 'file', name: p.slice(path.length + 1) });
+  return files.length ? files : null;
+}
+async function getJson(path) {
+  const t = await textOf(path);
+  return t == null ? null : { sha: await gitSha(t), data: JSON.parse(t) };
+}
+const QUEUE = { ops: [], message: '', timer: null, busy: false, failed: null };
+function queueOp(op, message) {
+  QUEUE.ops.push(op);
+  if (!QUEUE.message && message) QUEUE.message = message;
+  clearTimeout(QUEUE.timer);
+  QUEUE.timer = setTimeout(flushQueue, 60);
+  renderSync();
+}
+async function putJson(path, data, fileSha, message) {
+  const text = JSON.stringify(data, null, 2) + '\n';
+  queueOp({ op: 'put', path, content: text, base: fileSha || null }, message);
+  OVER.set(path, { text });
+  return gitSha(text);
+}
+async function deleteFile(path, fileSha, message) {
+  queueOp({ op: 'delete', path, base: fileSha || null }, message);
+  OVER.set(path, { gone: true });
+}
+async function moveFile(from, to, message) {   // keeps the content exactly
+  const t = await textOf(from);
+  if (t == null) return false;
+  queueOp({ op: 'move', from, to }, message);
+  OVER.set(to, { text: t }); OVER.set(from, { gone: true });
+  return true;
+}
+async function reply(number, text) { queueOp({ op: 'reply', number, text }, `Answer request #${number}`); }
+async function flushQueue() {
+  if (QUEUE.busy || !QUEUE.ops.length || QUEUE.failed) return;
+  const ops = QUEUE.ops.splice(0), message = QUEUE.message;
+  QUEUE.message = ''; QUEUE.busy = true; renderSync();
+  try {
+    const r = await command({ op: 'write', ops, message });
+    if (!r.ok) throw new Error(r.error || 'It wasn\'t saved.');
+    QUEUE.busy = false; QUEUE.savedAt = Date.now();
+    if (r.warning) say(r.warning, true);
+    if (!QUEUE.ops.length) {
+      // Saved: read GitHub's version (the same as what's shown, plus anything that came in meanwhile).
+      await refreshData(r.sha).catch(() => {});
+    }
+  } catch (e) {
+    QUEUE.busy = false;
+    if (e.message !== 'SIGNED_OUT') { QUEUE.failed = e.message; QUEUE.ops.unshift(...ops); }
+  }
+  renderSync();
+  if (QUEUE.ops.length && !QUEUE.failed) flushQueue();
+}
+// After a save (or "Check for new requests"): the newest data, without losing what's being edited.
+async function refreshData(sha) {
+  if (!(await loadData(sha))) { await signedOutHere('This device was signed out.'); return; }
+  OVER.clear();
+  if (!S.devDirty) await loadDevices();
+  const folder = await getRaw('docs/lists');
+  S.lists = ['public', ...(Array.isArray(folder) ? folder.filter(f => f.type === 'file' && f.name.endsWith('.json')).map(f => f.name.slice(0, -5)).sort() : [])];
+  if (!S.listDirty) await openList(S.lists.includes(S.current) ? S.current : 'public');
+  S.logFiles = null; S.otherLists = null;
+  await loadInbox();
+}
+// "Saving…" / "Saved" / "Not saved", at the top of every screen.
+function renderSync() {
+  const el = $('syncPill');
+  if (!el) return;
+  const busy = QUEUE.busy || QUEUE.ops.length;
+  el.hidden = !(busy || QUEUE.failed || (QUEUE.savedAt && Date.now() - QUEUE.savedAt < 5000));
+  el.className = QUEUE.failed ? 'bad' : busy ? 'busy' : 'ok';
+  el.replaceChildren(QUEUE.failed ? 'Not saved: tap for details' : busy ? 'Saving… (about a minute)' : 'Saved');
+  if (!busy && !QUEUE.failed && QUEUE.savedAt) setTimeout(renderSync, 5200);
+}
+async function showSaveProblem() {
+  if (!QUEUE.failed) return;
+  const retry = await uiDialog({ title: 'Not saved', icon: 'warn', red: true, text: QUEUE.failed,
+    ok: 'Try again', cancel: 'Start over' });
+  if (retry) { QUEUE.failed = null; flushQueue(); return; }
+  if (!(await uiConfirmDanger('Start over?', 'Your changes that weren\'t saved are thrown away, and everything is loaded again from GitHub.', 'Start over', 'warn'))) return;
+  QUEUE.failed = null; QUEUE.ops = []; OVER.clear(); S.listDirty = false; S.devDirty = false;
+  try { await refreshData(); } catch (e) { say(e.message, true); }
+  render();
+}
 // ---------- a phone's logs (logs/<ID>/ in the private repository, kept 30 days) ----------
 async function logFiles(id) {
-  const res = await fetch(`${repoBase()}/contents/logs/${id}`, { headers: headers(), cache: 'no-store' });
-  if (res.status === 404) return [];                            // none yet
-  if (!res.ok) throw new Error(explain(res.status, 'The logs'));
-  return (await res.json()).filter(f => f.type === 'file' && f.name.endsWith('.txt')).sort((a, b) => b.name.localeCompare(a.name));
+  const dir = `logs/${id}`;
+  return Object.keys(DATA.index ? DATA.index.files : {}).filter(p => p.startsWith(dir + '/') && p.endsWith('.txt'))
+    .map(p => ({ type: 'file', name: p.slice(dir.length + 1) })).sort((a, b) => b.name.localeCompare(a.name));
 }
 async function logText(id, name) {
-  const res = await fetch(`${repoBase()}/contents/logs/${id}/${encodeURIComponent(name)}`,
-    { headers: { ...headers(), Accept: 'application/vnd.github.raw' }, cache: 'no-store' });
-  if (!res.ok) throw new Error(explain(res.status, 'The log'));
-  return res.text();
+  const t = await fileText(`logs/${id}/${name}`);
+  if (t == null) throw new Error('It isn\'t there any more.');
+  return t;
 }
 // "2026-10-04_06-57_asked-for.txt" -> "4 Oct, 07:57 · asked for" (in this computer's time); a message: "… · Message"
 function logLabel(name) {
@@ -619,19 +842,15 @@ function logScreen() {
     h('button', { type: 'button', class: 'btn s', id: 'logDownload', disabled: text == null, onclick: download }, 'Download'),
     h('pre', { class: 'logtext' }, text == null ? 'Loading…' : text));
 }
-
-async function apiGet(path) {
-  const res = await fetch(`${repoBase()}/${path}`, { headers: headers(), cache: 'no-store' });
-  if (res.status === 403 || res.status === 404) throw new Error('NO_ISSUES');
-  if (!res.ok) throw new Error(explain(res.status, 'It'));
-  return res.json();
+// This device was signed out (removed, paused, or the password was reset elsewhere).
+async function signedOutHere(why) {
+  await forgetDevice();
+  S.connected = false; S.sub = null; ME = null;
+  QUEUE.ops = []; QUEUE.failed = null; OVER.clear();
+  render();
+  if (why) say(why, true);
 }
-async function reply(number, text) {
-  const res = await fetch(`${repoBase()}/issues/${number}/comments`, { method: 'POST', headers: headers(), body: JSON.stringify({ body: text }) });
-  if (res.status === 403 || res.status === 404) throw new Error('NO_ISSUES');
-  if (!res.ok) throw new Error(explain(res.status, 'The request'));
-}
-const NO_ISSUES_MSG = 'To answer requests here, your admin token needs one more permission: Issues: Read and write (GitHub → Settings → Developer settings → Fine-grained tokens → your token → Edit).';
+const NO_ISSUES_MSG = 'Couldn\'t answer it.';
 const listPathOf = name => name === 'public' ? 'docs/whitelist.json' : `docs/lists/${name}.json`;
 
 // ---------- state ----------
@@ -750,18 +969,26 @@ function tempLeft(t) {
 function phonesUsing(name) {
   return Object.entries(S.D.devices).filter(([, d]) => (d.lists || []).includes(name)).map(([id, d]) => d.name || id);
 }
-function markList() { S.listDirty = true; renderSaveBar(); }
+// A mini admin can look at the public lists, but only change their phones' own lists.
+const canEditList = n => fullAdmin() || (canDo('edit') && !isPublicList(n) && !(S.D.default || []).includes(n));
+function markList() {
+  if (!canEditList(S.current)) { say(`You can look at ${listLabel(S.current)}, but not change it.`, true); openList(S.current).then(render); return; }
+  S.listDirty = true; renderSaveBar();
+}
 function markDevices() { S.devDirty = true; renderSaveBar(); }
 
 // ---------- loading ----------
-async function loadAll() {
-  persist();
+// Everything this admin sees, at the newest version (or [sha]). False: this device is signed out.
+async function loadAll(sha) {
+  if (!(await loadData(sha))) return false;
   const folder = await getRaw('docs/lists');
   S.lists = ['public', ...(Array.isArray(folder) ? folder.filter(f => f.type === 'file' && f.name.endsWith('.json')).map(f => f.name.slice(0, -5)).sort() : [])];
   await loadDevices();
   await openList(S.lists.includes(S.current) ? S.current : 'public');
   S.connected = true;
+  if (!canDo('requests') && S.tab === 'requests') S.tab = canDo('edit') ? 'sites' : 'phones';
   loadInbox();   // in the background; the Requests tab fills in when it arrives
+  return true;
 }
 async function loadDevices() {
   const d = await getJson('devices.json');
@@ -824,7 +1051,7 @@ async function saveAll() {
       S.devicesSha = await putJson('devices.json', S.D, S.devicesSha, 'Update phones and settings');
       S.devDirty = false;
     }
-    say('Saved. It\'s published for the phones within a minute or two, and they pick it up within a few minutes.');
+    say('Saving. GitHub saves it within a minute, and phones pick it up a few minutes after.');
     render();
   } catch (e) { say(e.message, true); }
   finally { $('saveBtn').disabled = false; renderSaveBar(); }
@@ -847,7 +1074,7 @@ function renderSaveBar() {
 }
 $('saveBtn').onclick = saveAll;
 $('undoBtn').onclick = undoAll;
-window.addEventListener('beforeunload', e => { if (S.listDirty || S.devDirty) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', e => { if (S.listDirty || S.devDirty || QUEUE.busy || QUEUE.ops.length) { e.preventDefault(); e.returnValue = ''; } });
 
 // ---------- lists ----------
 // Unsaved changes to the open list: ask before leaving them.
@@ -1107,11 +1334,13 @@ function render() {
   const view = $('view');
   if (S.connected && S.pendingSub) { S.tab = 'phones'; S.sub = S.pendingSub; S.pendingSub = null; S.focusRequest = null; }
   let node;
-  if (!S.connected && INAPP && getLock() && !S.usePaste) node = unlockScreen();
-  else if (!S.connected || (S.sub && S.sub.name === 'connect')) node = connectScreen();
+  if (LINK && LINK.kind !== 'done') node = linkScreen();
+  else if (S.starting) node = h('main', null, screenTitle('Opening…', ''), waitNote('Loading your data…'));
+  else if (!S.connected && S.locked) node = unlockScreen();
+  else if (!S.connected) node = signInScreen();
   else if (S.sub) node = ({ site: siteScreen, temp: tempScreen, block: blockScreen, nomedia: noMediaScreen, import: importScreen,
     listsettings: listSettingsScreen, phone: phoneScreen, archived: archivedScreen, neverblock: neverBlockScreen, pin: pinScreen,
-    log: logScreen,
+    log: logScreen, account: accountScreen, admins: adminsScreen, admin: adminScreen,
     approvalpin: approvalPinScreen, embeds: embedsScreen, request: requestDetailsScreen })[S.sub.name]();
   else node = ({ requests: requestsScreen, sites: sitesScreen, phones: phonesScreen, settings: settingsScreen })[S.tab]();
   view.replaceChildren(node);
@@ -1122,68 +1351,204 @@ function render() {
   document.querySelector('.top').hidden = !!S.sub && S.connected;
   $('tabs').hidden = inSub;
   $('connBtn').hidden = !S.connected;
-  renderTabs(); renderSaveBar();
+  renderTabs(); renderSaveBar(); renderSync();
   view.querySelectorAll('[data-sync]').forEach(n => n._picker && n._picker.sync());
 }
 function renderTabs() {
   const waiting = S.requests ? S.requests.length + S.newPhones.length : 0;
-  const tabs = [['requests', 'Requests', 'inbox', waiting], ['sites', 'Sites', 'globe', 0], ['phones', 'Phones', 'phone', 0], ['settings', 'Settings', 'sliders', 0]];
+  // (A mini admin sees only what they can use.)
+  const tabs = [canDo('requests') ? ['requests', 'Requests', 'inbox', waiting] : null, canDo('edit') ? ['sites', 'Sites', 'globe', 0] : null,
+    ['phones', 'Phones', 'phone', 0], ['settings', 'Settings', 'sliders', 0]].filter(Boolean);
   $('tabs').replaceChildren(...tabs.map(([id, label, ic, badge]) => h('button', { type: 'button', 'aria-current': S.tab === id ? 'page' : null, onclick: () => go(id) },
     h('span', { class: 'pill' }, icon(ic, 22), badge ? h('span', { class: 'badge', 'aria-label': `${badge} waiting` }, badge) : null), label)));
 }
 $('markIcon').append(icon('check', 16, 2.4));
 $('connBtn').onclick = () => go('settings');
+$('syncPill').onclick = () => showSaveProblem();
 $('closeBtn').hidden = !INAPP;
 $('closeBtn').onclick = async () => {
   if ((S.listDirty || S.devDirty) && !(await uiConfirmDanger('Close without saving?', 'Your changes haven\'t been saved.', 'Close', 'warn'))) return;
+  if ((QUEUE.busy || QUEUE.ops.length) && !(await uiConfirmDanger('Still saving', 'Closing now may stop your last change from being saved. Wait a moment, or close anyway.', 'Close anyway', 'warn'))) return;
   closeAdmin();
 };
 
 // ============================================================================================
-// Connect
+// Signing in (email and password; a new device is confirmed by email), and the emailed links
 // ============================================================================================
-function connectScreen() {
-  const token = h('input', { class: 'inp', id: 'cToken', type: 'password', autocomplete: 'off', value: C.token, placeholder: 'github_pat_…' });
-  const owner = h('input', { class: 'inp', id: 'cOwner', value: C.owner, autocapitalize: 'off', spellcheck: 'false' });
-  const repo = h('input', { class: 'inp', id: 'cRepo', value: C.repo, autocapitalize: 'off', spellcheck: 'false' });
-  const br = h('input', { class: 'inp', id: 'cBranch', value: C.branch || 'main', autocapitalize: 'off', spellcheck: 'false' });
-  const remember = h('input', { type: 'checkbox', id: 'cRemember', checked: INAPP ? true : (C.remember || !C.token) });
-  const pin = h('input', { class: 'inp', id: 'cPin', type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '8', placeholder: '4 to 8 digits', style: 'max-width:12rem' });
-  const pinBox = h('div', { class: 'field', hidden: !INAPP }, h('label', { for: 'cPin' }, 'Choose a PIN'), pin,
-    h('p', { class: 'hint', style: 'margin:0' }, 'Next time, just type the PIN. After 5 wrong PINs the token is wiped from this phone.'));
-  remember.onchange = () => { pinBox.hidden = !(INAPP && remember.checked); };
-  const go1 = h('button', { type: 'button', class: 'btn p wide', id: 'cConnect' }, 'Connect');
-  go1.onclick = async () => {
-    C.token = token.value.trim(); C.owner = owner.value.trim(); C.repo = repo.value.trim(); C.branch = br.value.trim() || 'main'; C.remember = remember.checked;
-    if (!C.token) return say('Paste your admin token first.', true);
-    if (INAPP && C.remember && !/^\d{4,8}$/.test(pin.value)) return say('Choose a PIN of 4 to 8 digits, or untick Remember.', true);
-    if (!C.owner || !C.repo) return say('Fill in the owner and repository under Repository.', true);
-    go1.disabled = true; go1.textContent = 'Connecting…';
-    try {
-      await loadAll();
-      if (INAPP) { if (C.remember) await lockToken(pin.value, C.token); else localStorage.removeItem(LOCK_KEY); }
-      S.sub = null; render(); say(`Connected to ${C.owner}/${C.repo}.`);
-    }
-    catch (e) { S.connected = false; say(e.message, true); go1.disabled = false; go1.textContent = 'Connect'; }
-  };
-  return h('main', { class: 'stack' },
-    S.connected ? backLink('Settings', () => { S.sub = null; S.tab = 'settings'; render(); }) : null,
-    screenTitle('Connect to GitHub', 'Your admin page uses a token to read and change your lists.'),
-    h('div', { class: 'field' }, h('label', { for: 'cToken' }, 'Admin token'), token,
-      h('p', { class: 'hint', style: 'margin:0' }, `A fine-grained token for your private repository (${C.repo || 'whitelist-browser-private'}) with Contents and Issues set to Read and write.`)),
-    h('label', { class: 'check', for: 'cRemember' }, remember, INAPP ? 'Remember with a PIN' : 'Remember on this device'),
-    pinBox,
-    h('details', { class: 'more', open: !C.owner || !C.repo }, h('summary', null, `Repository: ${C.owner || '?'}/${C.repo || '?'}`),
-      h('div', { class: 'stack', style: 'margin-top:8px' },
-        h('div', { class: 'field' }, h('label', { for: 'cOwner' }, 'Owner (your GitHub username)'), owner),
-        h('div', { class: 'field' }, h('label', { for: 'cRepo' }, 'Private repository'), repo),
-        h('div', { class: 'field' }, h('label', { for: 'cBranch' }, 'Branch'), br))),
-    go1);
+const PW_RULES = [
+  [p => p.length >= 8, 'At least 8 characters'],
+  [p => /[a-z]/i.test(p) && /[0-9]/.test(p), 'A letter and a number'],
+];
+const pwProblem = p => p.length < 8 ? 'The password needs at least 8 characters.' : !/[a-z]/i.test(p) || !/[0-9]/.test(p) ? 'The password needs at least one letter and one number.' : null;
+const waitNote = text => h('div', { class: 'card', style: 'flex-direction:row;align-items:center;gap:12px' }, h('span', { class: 'spin', 'aria-hidden': 'true' }), h('span', null, text));
+const pwField = (id, label, autocomplete) => h('div', { class: 'field' }, h('label', { for: id }, label),
+  h('div', { class: 'pwbox' }, h('input', { class: 'inp', id, type: 'password', autocomplete, spellcheck: 'false', autocapitalize: 'off' }),
+    h('button', { type: 'button', class: 'pwshow', 'aria-label': 'Show the password', onclick: e => {
+      const i = $(id); i.type = i.type === 'password' ? 'text' : 'password';
+      e.currentTarget.textContent = i.type === 'password' ? 'Show' : 'Hide'; } }, 'Show')));
+
+// Signed in on this device: its session, and the signing key (kept here).
+async function finishSignIn(r, macKey) {
+  if (macKey) await idb.set('mac', macKey);
+  setSession({ aid: r.aid, did: r.did, ah: r.ah, dh: r.dh, n: 0 });
+  S.signin = null;
+  try {
+    let ok = false;
+    for (let i = 0; i < 5 && !ok; i++) { ok = await loadAll(r.sha); if (!ok) await sleep(4000); }   // (just published)
+    if (!ok) throw new Error('Signed in, but your data isn\'t there yet. Reload the page in a minute.');
+    if (INAPP && !getPin()) { S.sub = { name: 'pin', first: true }; }
+    render();
+    say(`Signed in as ${ME.email}.`);
+  } catch (e) { S.connected = false; render(); say(e.message, true); }
 }
 
-// Change the PIN (or set one) once signed in, in the app. The token is re-saved under the new PIN.
+function signInScreen() {
+  const st = S.signin || (S.signin = { step: 'form' });
+  if (st.step === 'wait') {
+    return h('main', { class: 'stack' }, screenTitle('Check your email', `We sent a link to ${st.email}`),
+      h('div', { class: 'card' }, h('p', { style: 'margin:0' }, 'This device is new, so we\'ve emailed you to make sure it\'s you. Open the email and tap ',
+        h('b', null, 'Yes, it\'s me'), ' (on any device: your phone is fine). This page signs in by itself a moment later.'),
+        h('p', { class: 'hint', style: 'margin:0' }, 'The link works for 30 minutes. No email? Check your spam folder.')),
+      waitNote('Waiting for you to tap the link…'),
+      h('button', { type: 'button', class: 'btn d', onclick: () => { S.signin = null; render(); } }, 'Start again'));
+  }
+  if (st.step === 'forgot') return forgotScreen();
+  const email = h('input', { class: 'inp', id: 'siEmail', type: 'email', autocomplete: 'username', autocapitalize: 'off', spellcheck: 'false', value: st.email || '' });
+  const go1 = h('button', { type: 'button', class: 'btn p wide', id: 'siGo' }, 'Sign in');
+  const run = async () => {
+    const em = email.value.trim(), pw = $('siPw').value;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return say('Type your email address.', true);
+    if (!pw) return say('Type your password.', true);
+    go1.disabled = true; go1.textContent = 'Signing in… (up to a minute)';
+    st.email = em;
+    try {
+      const dev = await deviceKeys();
+      const mac = await newMacSecret();
+      const number = await postCommand({ p: JSON.stringify({ op: 'signin', email: em, password: pw, did: dev.did, enc: dev.enc, mac: mac.b64, name: deviceName(), rk: dev.enc, at: Date.now() }) });
+      const seen = new Set();
+      const first = await awaitAnswers(number, () => true, { seen });
+      if (!first) throw new Error('No answer from GitHub yet. Its automation may be busy or switched off (private repository → Actions). Try again in a minute.');
+      if (!first.ok) throw new Error(first.error);
+      if (first.active) return finishSignIn(first, mac.key);
+      // A new device: waiting for the emailed link (the answer comes on the same issue).
+      S.signin = { step: 'wait', email: first.email || em };
+      $('toast').hidden = true;
+      render();
+      const done = await awaitAnswers(number, r => r.active || !r.ok, { minutes: 32, seen });
+      if (!done || !done.ok) { S.signin = { step: 'form', email: em }; render(); return say(done ? done.error : 'The link wasn\'t tapped in time. Sign in again to get a new one.', true); }
+      return finishSignIn(done, mac.key);
+    } catch (e) { go1.disabled = false; go1.textContent = 'Sign in'; say(e.message, true); }
+  };
+  go1.onclick = run;
+  const form = h('main', { class: 'stack' }, screenTitle('Admin', 'Sign in to manage Whitelist Browser'),
+    h('div', { class: 'field' }, h('label', { for: 'siEmail' }, 'Email'), email),
+    pwField('siPw', 'Password', 'current-password'),
+    go1,
+    h('button', { type: 'button', class: 'btn d', id: 'siForgot', onclick: () => { st.step = 'forgot'; st.email = email.value.trim(); render(); } }, 'Forgot password?'),
+    h('details', { class: 'more' }, h('summary', null, 'Setting up for the first time?'),
+      h('p', { class: 'hint', style: 'margin:8px 0 0' }, `On GitHub, open your private repository (${C.repo || 'whitelist-browser-private'}) → Actions → `,
+        h('b', null, 'Set up admin sign-in'), ' → Run workflow, and type your email. You\'ll get an email with a link to choose your password.')));
+  form.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') run(); });
+  setTimeout(() => (email.value ? $('siPw') : email).focus(), 50);
+  return form;
+}
+
+function forgotScreen() {
+  const st = S.signin;
+  if (st.sent) return h('main', { class: 'stack' }, screenTitle('Check your email', ''),
+    h('div', { class: 'card' }, h('p', { style: 'margin:0' }, `If ${st.email} is an admin's email, it has a link to choose a new password now. It works for 30 minutes.`),
+      h('p', { class: 'hint', style: 'margin:0' }, 'Choosing a new password also signs you out on your other devices.')),
+    h('button', { type: 'button', class: 'btn s', onclick: () => { S.signin = { step: 'form', email: st.email }; render(); } }, 'Back to sign in'));
+  const email = h('input', { class: 'inp', id: 'fgEmail', type: 'email', autocomplete: 'username', autocapitalize: 'off', spellcheck: 'false', value: st.email || '' });
+  const go1 = h('button', { type: 'button', class: 'btn p wide', id: 'fgGo' }, 'Email me a link');
+  go1.onclick = async () => {
+    const em = email.value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return say('Type your email address.', true);
+    go1.disabled = true; go1.textContent = 'Sending… (up to a minute)';
+    try {
+      const r = await command({ op: 'forgot', email: em }, { signed: false });
+      if (!r.ok) throw new Error(r.error);
+      Object.assign(st, { sent: true, email: em }); render();
+    } catch (e) { go1.disabled = false; go1.textContent = 'Email me a link'; say(e.message, true); }
+  };
+  setTimeout(() => email.focus(), 50);
+  return h('main', { class: 'stack' }, backLink('Sign in', () => { S.signin = { step: 'form', email: email.value.trim() }; render(); }),
+    screenTitle('Forgot password', 'We\'ll email you a link to choose a new one.'),
+    h('div', { class: 'field' }, h('label', { for: 'fgEmail' }, 'Email'), email), go1);
+}
+
+// The links in emails: #invite=…, #reset=… (choose a password), #confirm=… (yes, it's me).
+const LINK = (() => {
+  const m = location.hash.match(/^#(invite|reset|confirm)=([A-Za-z0-9_.-]+)$/);
+  if (!m) return null;
+  history.replaceState(null, '', location.pathname + location.search);       // (not left in the address bar)
+  const parts = m[2].split('.');
+  return m[1] === 'confirm' ? { kind: 'confirm', aid: parts[0], did: parts[1], code: parts.slice(2).join('.') }
+    : { kind: m[1], aid: parts[0], code: parts.slice(1).join('.') };
+})();
+function linkScreen() {
+  const L = LINK;
+  if (L.kind === 'confirm') {
+    if (!L.started) {
+      L.started = true;
+      command({ op: 'confirm', aid: L.aid, did: L.did, code: L.code }, { signed: false, minutes: 4 })
+        .then(r => { L.result = r; render(); }).catch(e => { L.result = { ok: false, error: e.message }; render(); });
+    }
+    const r = L.result;
+    return h('main', { class: 'stack' }, screenTitle(r ? (r.ok ? 'Confirmed' : 'Not confirmed') : 'Confirming…', ''),
+      r ? h('div', { class: 'card' }, h('p', { style: 'margin:0' }, r.ok ? r.msg : r.error)) : waitNote('Confirming it\'s you… (up to a minute)'),
+      r ? h('button', { type: 'button', class: 'btn s', onclick: () => { LINK.kind = 'done'; render(); } }, 'Sign in on this device too') : null);
+  }
+  const invite = L.kind === 'invite';
+  const rules = h('ul', { class: 'rules' });
+  const check = () => { const p = $('lkPw').value; rules.replaceChildren(...PW_RULES.map(([t, label]) => h('li', { class: t(p) ? 'ok' : '' }, icon(t(p) ? 'check' : 'x', 15, 2.4), label))); };
+  const go1 = h('button', { type: 'button', class: 'btn p wide', id: 'lkGo' }, invite ? 'Save and sign in' : 'Save the new password');
+  go1.onclick = async () => {
+    const a = $('lkPw').value, b = $('lkPw2').value;
+    const bad = pwProblem(a);
+    if (bad) return say(bad, true);
+    if (a !== b) { $('lkPw2').value = ''; return say('The two passwords don\'t match. Type it again.', true); }
+    go1.disabled = true; go1.textContent = 'Saving… (up to a minute)';
+    try {
+      const dev = await deviceKeys();
+      const mac = await newMacSecret();
+      const r = await command({ op: L.kind === 'invite' ? 'accept' : 'reset', aid: L.aid, code: L.code, password: a, did: dev.did, enc: dev.enc, mac: mac.b64, name: deviceName() }, { signed: false });
+      if (!r.ok) throw new Error(r.error);
+      LINK.kind = 'done';
+      await finishSignIn(r, mac.key);
+    } catch (e) { go1.disabled = false; go1.textContent = invite ? 'Save and sign in' : 'Save the new password'; say(e.message, true); }
+  };
+  const node = h('main', { class: 'stack' }, screenTitle(invite ? 'Welcome' : 'Choose a new password', invite ? 'Choose the password you\'ll sign in with.' : 'Your other devices will be signed out.'),
+    pwField('lkPw', 'New password', 'new-password'), rules, pwField('lkPw2', 'The same password again', 'new-password'), go1,
+    h('p', { class: 'hint' }, 'Don\'t use a password you use anywhere else.'));
+  setTimeout(() => { const i = $('lkPw'); if (i) { i.addEventListener('input', check); check(); i.focus(); } }, 30);
+  return node;
+}
+
+// ---------- In the app: a PIN for this phone (a quick lock: the admin is on a phone others may use) ----------
+const PIN_KEY = 'wl-admin-pin';
+const getPin = () => { try { return JSON.parse(localStorage.getItem(PIN_KEY) || 'null'); } catch { return null; } };
+async function pinHash(pin, salt) {
+  const base = await crypto.subtle.importKey('raw', enc8(pin), 'PBKDF2', false, ['deriveBits']);
+  return u8b64(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 200000, hash: 'SHA-256' }, base, 256));
+}
+async function setPin(pin) { const salt = crypto.getRandomValues(new Uint8Array(16)); localStorage.setItem(PIN_KEY, JSON.stringify({ salt: u8b64(salt), hash: await pinHash(pin, salt), tries: 0 })); }
+async function pinOk(pin) {
+  const P = getPin();
+  if (!P) return true;
+  if (await pinHash(pin, b64u8(P.salt)) === P.hash) { P.tries = 0; localStorage.setItem(PIN_KEY, JSON.stringify(P)); return true; }
+  P.tries = (P.tries || 0) + 1;
+  localStorage.setItem(PIN_KEY, JSON.stringify(P));
+  if (P.tries >= 5) {                       // 5 wrong: this phone is signed out (sign in again with the password)
+    localStorage.removeItem(PIN_KEY);
+    command({ op: 'signout' }).catch(() => {});
+    await sleep(300);
+    await forgetDevice();
+  }
+  return false;
+}
 function pinScreen() {
-  const had = !!getLock();
+  const first = S.sub && S.sub.first, had = !!getPin();
   const field = (id, label) => h('div', { class: 'field' }, h('label', { for: id }, label),
     h('input', { class: 'inp', id, type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '8', placeholder: '4 to 8 digits', style: 'max-width:12rem;font-size:20px;letter-spacing:.2em' }));
   const saveBtn = h('button', { type: 'button', class: 'btn p wide', id: 'pinSave' }, had ? 'Change the PIN' : 'Save the PIN');
@@ -1192,16 +1557,193 @@ function pinScreen() {
     if (!/^\d{4,8}$/.test(a)) return say('The PIN needs 4 to 8 digits.', true);
     if (a !== b) { $('pinAgain').value = ''; return say('The two PINs don\'t match. Type it again.', true); }
     saveBtn.disabled = true;
-    await lockToken(a, C.token);
-    C.remember = true;
-    back();
+    await setPin(a);
+    S.sub = null; render();
     say(had ? 'PIN changed. Use the new one next time.' : 'PIN saved. Next time, just type it to open the admin.');
   };
   setTimeout(() => $('pinNew') && $('pinNew').focus(), 50);
-  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Settings'),
-    screenTitle(had ? 'Change the PIN' : 'Remember with a PIN', had ? 'The old PIN stops working straight away.' : 'Keep the token on this phone, locked with a PIN.'),
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, first ? null : backLink('Settings'),
+    screenTitle(had ? 'Change the PIN' : 'Choose a PIN for this phone', first ? 'You\'ll type it each time you open the admin here, instead of your password.' : 'The old PIN stops working straight away.'),
     field('pinNew', 'New PIN'), field('pinAgain', 'The same PIN again'), saveBtn,
-    h('p', { class: 'hint' }, 'After 5 wrong PINs, the token is wiped from this phone and needs pasting again.'));
+    h('p', { class: 'hint' }, 'After 5 wrong PINs, this phone is signed out, and needs your email and password again.'));
+}
+function unlockScreen() {
+  const pin = h('input', { class: 'inp', id: 'uPin', type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '8', placeholder: 'PIN', style: 'max-width:12rem;font-size:22px;letter-spacing:.2em' });
+  const go1 = h('button', { type: 'button', class: 'btn p wide', id: 'uGo' }, 'Unlock');
+  const tryIt = async () => {
+    go1.disabled = true;
+    if (!(await pinOk(pin.value))) {
+      go1.disabled = false; pin.value = '';
+      const P = getPin();
+      if (!P) { say('Too many wrong PINs, so this phone was signed out. Sign in again with your email and password.', true); S.locked = false; render(); }
+      else { const n = 5 - P.tries; say(`Wrong PIN. ${n} ${n === 1 ? 'try' : 'tries'} left.`, true); }
+      return;
+    }
+    S.locked = false;
+    go1.textContent = 'Opening…';
+    try { if (!(await loadAll())) return signedOutHere('This phone was signed out. Sign in again.'); render(); }
+    catch (e) { go1.disabled = false; go1.textContent = 'Unlock'; say(e.message, true); }
+  };
+  go1.onclick = tryIt;
+  pin.addEventListener('keydown', e => { if (e.key === 'Enter') tryIt(); });
+  setTimeout(() => pin.focus(), 50);
+  return h('main', { class: 'stack' }, screenTitle('Admin', 'Type your PIN'),
+    h('div', { class: 'field' }, h('label', { for: 'uPin' }, 'Your PIN'), pin), go1,
+    h('button', { type: 'button', class: 'btn d', onclick: async () => {
+      if (!(await uiConfirm('Sign in with your password instead?', 'This phone is signed out, then you sign in again with your email and password.', 'Sign out', { icon: 'warn' }))) return;
+      command({ op: 'signout' }).catch(() => {}); await sleep(300); localStorage.removeItem(PIN_KEY); S.locked = false; await signedOutHere(); } }, 'Forgot the PIN?'));
+}
+
+// ============================================================================================
+// Your account (everyone), and Admins (the main admin): mini admins with their phones and what they can do
+// ============================================================================================
+const PERMS = [
+  ['requests', 'Answer requests', 'Approve or deny requests from their phones'],
+  ['edit', 'Change their phones', 'Their phones\' own lists, names and settings'],
+  ['logs', 'Messages and logs', 'Read messages and logs from their phones'],
+  ['settings', 'Settings for every phone', 'Filters, public lists, starting lists and the approval PIN (only with All phones)'],
+];
+// A signed command from a screen: the button shows it's working, then the answer.
+async function runCommand(btn, label, cmd, okText) {
+  const was = btn.textContent;
+  btn.disabled = true; btn.textContent = label;
+  try {
+    const r = await command(cmd);
+    if (!r.ok) throw new Error(r.error);
+    await refreshData(r.sha).catch(() => {});
+    S.admins = null;
+    if (r.warning) say(r.warning, true); else say(r.msg || okText);
+    return r;
+  } catch (e) { if (e.message !== 'SIGNED_OUT') say(e.message, true); btn.disabled = false; btn.textContent = was; return null; }
+}
+async function adminsList() {
+  if (S.admins) return S.admins;
+  try { S.admins = JSON.parse(await fileText('admins.json') || '{}'); } catch { S.admins = {}; }
+  return S.admins;
+}
+function whoText(a) {
+  if (a.role === 'owner') return 'Main admin: everything';
+  const phones = a.phones === 'all' ? 'All phones' : `${(a.phones || []).length} phone${(a.phones || []).length === 1 ? '' : 's'}`;
+  const what = PERMS.filter(([k]) => a.can && a.can[k]).map(([, t]) => t.toLowerCase());
+  return `${phones}: ${what.length ? what.join(', ') : 'look only'}`;
+}
+
+function accountScreen() {
+  const devs = Object.entries((ME && ME.devices) || {});
+  const dev = DEV && DEV.did;
+  const changePw = h('button', { type: 'button', class: 'btn p wide', id: 'acPwGo' }, 'Change password');
+  changePw.onclick = async () => {
+    const old = $('acOld').value, a = $('acNew').value, b = $('acNew2').value;
+    if (!old) return say('Type your current password.', true);
+    const bad = pwProblem(a); if (bad) return say(bad, true);
+    if (a !== b) { $('acNew2').value = ''; return say('The two new passwords don\'t match.', true); }
+    if (await runCommand(changePw, 'Changing… (up to a minute)', { op: 'password', old, password: a }, 'Password changed.')) { S.sub = null; render(); }
+  };
+  const signOut = async () => {
+    if (!(await uiConfirm('Sign out on this device?', 'You\'ll need your email and password (and the emailed link) to sign in here again.', 'Sign out', { icon: 'warn' }))) return;
+    command({ op: 'signout' }).catch(() => {});
+    await sleep(400); localStorage.removeItem(PIN_KEY);
+    await signedOutHere(); say('Signed out on this device.');
+  };
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Settings'),
+    screenTitle('Your account', ME ? `${ME.name ? ME.name + ' · ' : ''}${ME.email}` : ''),
+    h('h2', { class: 'sec' }, 'Signed in on'),
+    h('div', { class: 'group', id: 'myDevices' }, devs.map(([did, d]) => h('div', { class: 'row' }, h('span', { class: 'ic' }, icon(did === dev ? 'check' : 'phone', 20)),
+      h('span', { class: 'grow' }, h('span', { class: 't' }, d.name + (did === dev ? ' (this one)' : '')),
+        h('span', { class: 's' }, `Since ${new Date(d.added).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}` + (d.lastUsed ? ` · last used ${ago(d.lastUsed)}` : ''))),
+      did === dev ? null : h('button', { type: 'button', class: 'btn d sm', onclick: e => runCommand(e.currentTarget, 'Removing…', { op: 'device-remove', device: did }, `${d.name} is signed out.`).then(() => render()) }, 'Sign out')))),
+    h('p', { class: 'hint' }, 'Don\'t recognise one? Sign it out, and change your password.'),
+    h('h2', { class: 'sec' }, 'Change password'),
+    pwField('acOld', 'Current password', 'current-password'), pwField('acNew', 'New password', 'new-password'), pwField('acNew2', 'The same new password again', 'new-password'),
+    h('p', { class: 'hint', style: 'margin:0' }, 'At least 8 characters, with a letter and a number.'), changePw,
+    h('h2', { class: 'sec' }, 'This device'),
+    INAPP ? h('button', { type: 'button', class: 'btn s wide', id: 'openPin', onclick: () => open({ name: 'pin' }) }, getPin() ? 'Change the PIN' : 'Choose a PIN') : null,
+    h('button', { type: 'button', class: 'btn dline wide', id: 'signOut', onclick: signOut }, 'Sign out on this device'));
+}
+
+function adminsScreen() {
+  if (!S.admins) { adminsList().then(() => render()); return h('main', { class: 'stack' }, backLink('Settings'), screenTitle('Admins', ''), waitNote('Loading…')); }
+  const list = Object.entries(S.admins).sort(([, a], [, b]) => (a.role === 'owner' ? -1 : b.role === 'owner' ? 1 : (a.name || a.email).localeCompare(b.name || b.email)));
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Settings'),
+    screenTitle('Admins', 'Who can open this admin page, and what they can do'),
+    h('div', { class: 'group', id: 'adminRows' }, list.map(([aid, a]) => h('button', { type: 'button', class: 'row', 'data-aid': aid, onclick: () => open({ name: 'admin', aid }) },
+      h('span', { class: 'av' + (a.status === 'active' ? '' : ' grey') }, (a.name || a.email)[0].toUpperCase()),
+      h('span', { class: 'grow', style: 'min-width:0' }, h('span', { class: 't' }, a.name || a.email),
+        h('span', { class: 's' }, a.name ? `${a.email} · ${whoText(a)}` : whoText(a))),
+      a.status === 'invited' ? chip('Invited', 'amber') : a.status === 'paused' ? chip('Paused', 'red') : null,
+      h('span', { class: 'chev' }, icon('chev', 18))))),
+    h('button', { type: 'button', class: 'btn p wide', id: 'addAdmin', onclick: () => open({ name: 'admin', aid: null }) }, icon('plus', 18, 2.2), 'Add an admin'),
+    h('p', { class: 'hint' }, 'A new admin gets an email to confirm their address and choose a password; until then they can\'t sign in. ' +
+      'You get an email whenever any admin signs in on a new device.'));
+}
+
+// Add an admin (aid null), or change one.
+function adminScreen() {
+  const aid = S.sub.aid;
+  const a = aid ? (S.admins || {})[aid] : null;
+  if (aid && !a) { S.sub = { name: 'admins' }; return adminsScreen(); }
+  const f = S.sub.form || (S.sub.form = a ? { name: a.name, phones: a.phones === 'all' ? 'all' : [...(a.phones || [])], can: { ...(a.can || {}) } }
+    : { name: '', email: '', phones: [], can: { requests: true, edit: true, logs: true, settings: false } });
+  if (a && a.role === 'owner') {
+    return h('main', { class: 'stack' }, backLink('Admins', () => open({ name: 'admins' })), screenTitle(a.name || a.email, a.email),
+      h('div', { class: 'card' }, h('p', { style: 'margin:0' }, 'The main admin can do everything, including adding and removing admins.'),
+        h('p', { class: 'hint', style: 'margin:0' }, 'To make someone else the main admin, run "Set up admin sign-in" on GitHub with their email.')),
+      aid === ME.aid ? h('button', { type: 'button', class: 'btn s wide', onclick: () => open({ name: 'account' }) }, 'Your account and devices') : null);
+  }
+  const phones = Object.entries(S.D.devices).sort(([, x], [, y]) => (x.name || '').localeCompare(y.name || ''));
+  const allBox = h('input', { type: 'checkbox', class: 'sw', id: 'adAll', checked: f.phones === 'all', onchange: e => { f.phones = e.target.checked ? 'all' : []; render(); } });
+  const phoneBoxes = f.phones === 'all' ? null : h('div', { class: 'group', id: 'adPhones' }, phones.length ? phones.map(([id, d]) => h('label', { class: 'check row', for: `adp-${id}` },
+    h('input', { type: 'checkbox', id: `adp-${id}`, checked: f.phones.includes(id), onchange: e => { f.phones = e.target.checked ? [...f.phones, id] : f.phones.filter(x => x !== id); } }),
+    h('span', { class: 'grow' }, h('span', { class: 't' }, d.name || 'No name yet'), h('span', { class: 's mono' }, id)))) : h('p', { class: 'hint', style: 'padding:12px' }, 'No phones yet.'));
+  const perms = h('div', { class: 'group' }, PERMS.filter(([k]) => k !== 'settings' || f.phones === 'all').map(([k, t, s]) => h('label', { class: 'tg', for: `adc-${k}` },
+    h('span', { class: 'grow' }, h('span', { class: 't' }, t), h('span', { class: 's' }, s)),
+    h('input', { type: 'checkbox', class: 'sw', id: `adc-${k}`, checked: !!f.can[k], onchange: e => { f.can[k] = e.target.checked; } }))));
+  const email = a ? null : h('input', { class: 'inp', id: 'adEmail', type: 'email', autocapitalize: 'off', spellcheck: 'false', value: f.email || '', oninput: e => { f.email = e.target.value; } });
+  const name = h('input', { class: 'inp', id: 'adName', value: f.name || '', placeholder: 'e.g. Ms Green', oninput: e => { f.name = e.target.value; } });
+  const save = h('button', { type: 'button', class: 'btn p wide', id: 'adSave' }, a ? 'Save changes' : 'Send the invitation');
+  save.onclick = async () => {
+    const phonesOut = f.phones === 'all' ? 'all' : f.phones;
+    if (phonesOut !== 'all' && !phonesOut.length) return say('Tick at least one phone (or All phones).', true);
+    const canOut = { ...f.can }; if (phonesOut !== 'all') canOut.settings = false;
+    if (a) {
+      if (await runCommand(save, 'Saving… (up to a minute)', { op: 'update', target: aid, name: f.name, phones: phonesOut, can: canOut }, 'Saved.')) open({ name: 'admins' });
+    } else {
+      const em = (f.email || '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return say('Type their email address.', true);
+      if (await runCommand(save, 'Sending… (up to a minute)', { op: 'invite', email: em, name: f.name, phones: phonesOut, can: canOut }, `Invitation sent to ${em}.`)) open({ name: 'admins' });
+    }
+  };
+  const extra = [];
+  if (a) {
+    if (a.status === 'invited') extra.push(h('p', { class: 'warn' }, `Invited: waiting for them to confirm their email${a.invitedUntil ? ` (the link works until ${new Date(a.invitedUntil).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''}.`),
+      h('button', { type: 'button', class: 'btn s wide', id: 'adResend', onclick: e => runCommand(e.currentTarget, 'Sending…', { op: 'resend', target: aid }, 'Invitation sent again.') }, 'Send the invitation again'));
+    const devs = Object.entries(a.devices || {});
+    if (devs.length) extra.push(h('h2', { class: 'sec' }, 'Signed in on'), h('div', { class: 'group' }, devs.map(([did, d]) => h('div', { class: 'row' }, h('span', { class: 'ic' }, icon('phone', 20)),
+      h('span', { class: 'grow' }, h('span', { class: 't' }, d.name), h('span', { class: 's' }, d.lastUsed ? `Last used ${ago(d.lastUsed)}` : '')),
+      h('button', { type: 'button', class: 'btn d sm', onclick: e => runCommand(e.currentTarget, 'Removing…', { op: 'device-remove', target: aid, device: did }, `${d.name} is signed out.`).then(() => render()) }, 'Sign out')))));
+    extra.push(h('div', { class: 'stack', style: 'gap:8px;margin-top:8px' },
+      a.status === 'paused'
+        ? h('button', { type: 'button', class: 'btn s wide', id: 'adUnpause', onclick: e => runCommand(e.currentTarget, 'Saving…', { op: 'update', target: aid, status: 'active' }, 'They can sign in again.').then(r => r && open({ name: 'admins' })) }, 'Let them sign in again')
+        : a.status === 'active' ? h('button', { type: 'button', class: 'btn dline wide', id: 'adPause', onclick: async e => {
+          const btn = e.currentTarget;
+          if (!(await uiConfirm(`Pause ${a.name || a.email}?`, 'They\'re signed out everywhere and can\'t sign in until you let them again. Nothing else changes.', 'Pause', { icon: 'ban', red: true }))) return;
+          const r = await runCommand(btn, 'Pausing…', { op: 'update', target: aid, status: 'paused' }, 'Paused.'); if (r) open({ name: 'admins' }); } }, 'Pause') : null,
+      h('button', { type: 'button', class: 'btn d wide', id: 'adRemove', onclick: async e => {
+        const btn = e.currentTarget;
+        if (!(await uiConfirmDanger(`Remove ${a.name || a.email}?`, 'They can\'t sign in any more. You can invite them again later.', 'Remove'))) return;
+        const r = await runCommand(btn, 'Removing…', { op: 'remove', target: aid }, 'Removed.'); if (r) open({ name: 'admins' }); } }, 'Remove')));
+  }
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Admins', () => open({ name: 'admins' })),
+    screenTitle(a ? (a.name || a.email) : 'Add an admin', a ? a.email : 'They get an email to confirm their address and choose a password.'),
+    a ? null : h('div', { class: 'field' }, h('label', { for: 'adEmail' }, 'Their email'), email),
+    h('div', { class: 'field' }, h('label', { for: 'adName' }, 'Name (optional)'), name),
+    h('h2', { class: 'sec' }, 'Phones they look after'),
+    h('div', { class: 'group' }, h('label', { class: 'tg', for: 'adAll' }, h('span', { class: 'grow' }, h('span', { class: 't' }, 'All phones'),
+      h('span', { class: 's' }, 'Including new ones')), allBox)),
+    phoneBoxes,
+    h('h2', { class: 'sec' }, 'What they can do'), perms,
+    h('p', { class: 'hint' }, 'They only ever see the phones ticked here, and what those phones use. GitHub\'s automation checks every change they make.'),
+    save, ...extra);
 }
 
 // ---------- approval PIN (typed on a phone to approve a request on the spot) ----------
@@ -1244,32 +1786,6 @@ function approvalPinScreen() {
     h('p', { class: 'hint' }, 'After 5 wrong PINs on a phone, PIN approvals lock on it for 24 hours (unlock it under Phones). Only a scrambled version of the PIN is stored.'));
 }
 
-function unlockScreen() {
-  const pin = h('input', { class: 'inp', id: 'uPin', type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '8', placeholder: 'PIN', style: 'max-width:12rem;font-size:22px;letter-spacing:.2em' });
-  const go1 = h('button', { type: 'button', class: 'btn p wide', id: 'uGo' }, 'Unlock');
-  const tryIt = async () => {
-    go1.disabled = true;
-    const token = await unlockToken(pin.value);
-    if (!token) {
-      go1.disabled = false; pin.value = '';
-      const L = getLock();
-      if (!L) { say('Too many wrong PINs, so the token was wiped from this phone. Paste it again.', true); render(); }
-      else { const n = 5 - L.tries; say(`Wrong PIN. ${n} ${n === 1 ? 'try' : 'tries'} left.`, true); }
-      return;
-    }
-    C.token = token; C.remember = true;
-    go1.textContent = 'Connecting…';
-    try { await loadAll(); render(); }
-    catch (e) { S.connected = false; go1.disabled = false; go1.textContent = 'Unlock'; say(e.message, true); }
-  };
-  go1.onclick = tryIt;
-  pin.addEventListener('keydown', e => { if (e.key === 'Enter') tryIt(); });
-  setTimeout(() => pin.focus(), 50);
-  return h('main', { class: 'stack' }, screenTitle('Admin', `${C.owner}/${C.repo}`),
-    h('div', { class: 'field' }, h('label', { for: 'uPin' }, 'Your PIN'), pin), go1,
-    h('button', { type: 'button', class: 'btn d', onclick: () => { S.usePaste = true; render(); } }, 'Paste the token instead'));
-}
-
 // ============================================================================================
 // Requests
 // ============================================================================================
@@ -1280,25 +1796,23 @@ function marker(body) {
 const field = (body, name) => ((body || '').match(new RegExp('\\*\\*' + name + ':\\*\\*\\s*(.+)')) || [])[1] || '';
 async function loadInbox() {
   try {
-    const reqs = await apiGet('issues?labels=' + encodeURIComponent('site request') + '&state=open&per_page=50');
-    const phones = await apiGet('issues?labels=' + encodeURIComponent('new phone') + '&state=open&per_page=50');
-    // Sealed requests (nothing readable on GitHub): their details are in this repository's private record,
-    // written when GitHub's automation unlocks them. Not written yet: it shows up a moment later.
-    await Promise.all([...reqs, ...phones].map(async i => {
-      if (!/whitelist-sealed/.test(i.body || '')) return;
-      const f = await getJson(`requests/${i.number}.json`).catch(() => null);
-      const r = f && f.data && f.data.request;
+    // Requests waiting (and new phones), as GitHub's automation published them: each one's details from its
+    // private record, in the same form as before.
+    const items = JSON.parse(await textOf('inbox.json') || '[]');
+    for (const i of items) {
+      const r = i.record && i.record.request;
       const who = r && (r.name || (S.D.devices[String(r.device || r.id || '').toUpperCase()] || {}).name);
       i.body = r ? (who ? `**Phone:** ${who} (\`${r.device || r.id || ''}\`)\n` : '') +
         (r.note ? `**Note:** ${String(r.note).replace(/\n/g, ' ')}\n` : '') + `<!-- whitelist-request\n${JSON.stringify(r)}\n-->` : '';
-      i._log = (f && f.data && f.data.log) || [];
-    }));
-    S.requests = reqs.filter(i => !i.pull_request && marker(i.body));
-    S.newPhones = phones.filter(i => !i.pull_request && (marker(i.body) || {}).type === 'register');
+      i._log = (i.record && i.record.log) || [];
+    }
+    const answered = new Set(S.answeredNumbers || []);
+    S.requests = items.filter(i => i.kind === 'request' && marker(i.body) && !answered.has(i.number));
+    S.newPhones = items.filter(i => i.kind === 'phone' && (marker(i.body) || {}).type === 'register' && !answered.has(i.number));
     S.inboxError = null;
   } catch (e) {
     S.requests = []; S.newPhones = [];
-    S.inboxError = e.message === 'NO_ISSUES' ? NO_ISSUES_MSG : e.message;
+    S.inboxError = e.message;
   }
   if (S.focusRequest && !S.sub) S.tab = 'requests';
   render();
@@ -1308,6 +1822,10 @@ async function loadInbox() {
     else say('That request has already been answered.');
     S.focusRequest = null;
   }
+}
+// "Check for new requests": the newest published data.
+async function checkInbox() {
+  try { await refreshData(); } catch (e) { say(e.message, true); }
 }
 // "photos", "photos and sound", "photos, videos and sound" (a request's mediaKind, e.g. "photos,sound"; not given: all).
 function mediaWords(k) {
@@ -1344,7 +1862,7 @@ function requestsScreen() {
     kids.push(...S.newPhones.map(newPhoneCard));
   }
   kids.push(h('div', { class: 'acts', style: 'justify-content:center' },
-    h('button', { type: 'button', class: 'btn s sm', id: 'refreshInbox', onclick: async e => { e.target.disabled = true; await loadInbox(); } }, 'Check for new requests')));
+    h('button', { type: 'button', class: 'btn s sm', id: 'refreshInbox', onclick: async e => { e.target.disabled = true; await checkInbox(); } }, 'Check for new requests')));
   if (S.answered.length) {
     kids.push(h('h2', { class: 'sec' }, 'Answered just now'));
     kids.push(h('div', { class: 'group' }, S.answered.map(a => h('div', { class: 'row' }, h('span', { class: 'ic', style: 'color:var(--accent)' }, icon('check', 20, 2.2)),
@@ -1376,7 +1894,9 @@ function requestCard(issue) {
   const targets = [];
   if (dev) targets.push({ word: 'own', name: devId.toLowerCase(), label: `${dev.name || devId} (own list)`, on: usual === 'own' || !S.lists.includes(usual) });
   if (dev && usual !== 'own' && S.lists.includes(usual) && !isPublicList(usual)) targets.push({ word: usual, name: usual, label: listLabel(usual), on: true });
-  publicListNames().forEach(n => targets.push({ word: n, name: n, label: listLabel(n), pub: true, on: n === usual }));
+  // (Public lists only for those who manage every phone's settings: a mini admin's approvals go to their phone's own list.)
+  if (fullAdmin()) publicListNames().forEach(n => targets.push({ word: n, name: n, label: listLabel(n), pub: true, on: n === usual }));
+  if (!fullAdmin() && targets.length && !targets.some(t => t.on)) targets[0].on = true;
   targets.forEach((t, i) => { t.box = h('input', { type: 'checkbox', class: 'target', id: `tg${issue.number}-${i}`, checked: t.on }); });
   const listWords = () => {
     const ticked = targets.filter(t => t.box.checked);
@@ -1405,11 +1925,12 @@ function requestCard(issue) {
       const lw = approving ? listWords() : '';
       const kw = approving && allow && req.media !== 'on' && !frames.length ? kindWords() : '';
       await reply(issue.number, text + lw + kw);
+      S.answeredNumbers = [...(S.answeredNumbers || []), issue.number];
       S.requests = S.requests.filter(i => i.number !== issue.number);
       const where = approving ? targets.filter(t => t.box.checked).map(t => t.label) : [];
       S.answered.unshift({ title, label: `${label}${where.length ? ', in ' + where.join(', ') : ''}` });
       render();
-      say(`${label}. ${phone} will be told in a few minutes.`);
+      say(`${label}. GitHub does it within a minute, and ${phone} is told a few minutes after.`);
     } catch (e) {
       actions.querySelectorAll('button').forEach(b => b.disabled = false);
       say(e.message === 'NO_ISSUES' ? NO_ISSUES_MSG : e.message, true);
@@ -1512,7 +2033,6 @@ function requestDetailsScreen() {
       kv('On a filter list', Array.isArray(req.filtered) && req.filtered.length ? req.filtered.join(', ') : null),
       kv('Unverified', req.unverified ? 'The phone couldn\'t find this site when asking: check for a typo' : null),
       kv('History', (issue._log || []).length ? issue._log.map(e => `${new Date(e.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: ${String(e.text).replace(/\*\*/g, '').replace(/\n+/g, ' ').slice(0, 300)}`).join('\n') : null)),
-    h('a', { class: 'btn s wide', href: issue.html_url, target: '_blank', rel: 'noopener' }, 'Open it on GitHub', icon('ext', 16)),
     h('div', { class: 'flabel', style: 'margin-top:8px' }, 'Answer it'),
     requestCard(issue));
 }
@@ -1527,6 +2047,7 @@ function newPhoneCard(issue) {
     save.disabled = true;
     try {
       await reply(issue.number, `name ${n}`);
+      S.answeredNumbers = [...(S.answeredNumbers || []), issue.number];
       S.newPhones = S.newPhones.filter(i => i.number !== issue.number);
       S.answered.unshift({ title: `${r.model || 'Phone'} (${r.id})`, label: `Named ${n}` });
       render(); say(`Named ${n}. It shows under Phones in a minute or two.`);
@@ -2096,7 +2617,7 @@ function phonesScreen() {
     h('div', { class: 'group' },
       h('button', { type: 'button', class: 'row', id: 'openArchived', onclick: () => open({ name: 'archived' }) }, h('span', { class: 'ic' }, icon('archive', 20)),
         h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Archived phones')), h('span', { class: 'count' }, archived), h('span', { class: 'chev' }, icon('chev', 18))),
-      h('button', { type: 'button', class: 'row', id: 'addPhone', onclick: addPhone }, h('span', { class: 'ic' }, icon('plus', 20)),
+      !fullAdmin() ? null : h('button', { type: 'button', class: 'row', id: 'addPhone', onclick: addPhone }, h('span', { class: 'ic' }, icon('plus', 20)),
         h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Add a phone by its ID')), h('span', { class: 'chev' }, icon('chev', 18))),
       h('button', { type: 'button', class: 'row', id: 'exportPhones', onclick: exportAll }, h('span', { class: 'ic' }, icon('download', 20)),
         h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Download everything as a spreadsheet'),
@@ -2217,11 +2738,11 @@ function phoneScreen() {
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Ads'), ads),
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Filters'), ...filterRows,
       h('p', { class: 'hint', style: 'margin:0' }, 'Usual follows Settings → Filters.')),
-    h('label', { class: 'tg', for: 'pAdmin' }, h('span', { class: 'grow' }, h('span', { class: 't' }, 'Admin phone'),
+    !fullAdmin() ? null : h('label', { class: 'tg', for: 'pAdmin' }, h('span', { class: 'grow' }, h('span', { class: 't' }, 'Admin phone'),
         h('span', { class: 's' }, 'Gets phone notifications about new requests, logs and crashes (it can switch them off in its Settings)')),
       h('input', { type: 'checkbox', class: 'sw', id: 'pAdmin', checked: d.admin === true, onchange: e => {
         if (e.target.checked) d.admin = true; else delete d.admin; markDevices(); } })),
-    logsSection(id, d),
+    canDo('logs') ? logsSection(id, d) : null,
     h('div', { class: 'stack', style: 'gap:8px;margin-top:8px' },
       d.blocked ? h('button', { type: 'button', class: 'btn s wide', id: 'pUnblock', onclick: unblock }, 'Unblock this phone')
         : h('button', { type: 'button', class: 'btn dline wide', id: 'pBlock', onclick: block }, 'Block this phone'),
@@ -2331,9 +2852,26 @@ const FILTERS = [
 // ============================================================================================
 // Settings
 // ============================================================================================
+// "Your account" (and, for the main admin, "Admins"), at the bottom of Settings.
+function accountSection(section) {
+  const status = `https://${C.owner.toLowerCase()}.github.io/${publicRepoName()}/`;
+  const row = (ic, label, sub, onclick, id) => h('button', { type: 'button', class: 'row', onclick, id }, h('span', { class: 'ic' }, icon(ic, 20)),
+    h('span', { class: 'grow' }, h('span', { class: 't' }, label), sub ? h('span', { class: 's' }, sub) : null), h('span', { class: 'chev' }, icon('chev', 18)));
+  return section('Admin page', h('div', { class: 'group' },
+    row('shield', 'Your account', ME ? `${ME.email}${INAPP && getPin() ? ' · PIN on this phone' : ''}` : '', () => open({ name: 'account' }), 'openAccount'),
+    isOwner() ? row('phone', 'Admins', 'Add admins for some phones, and choose what they can do', () => { S.admins = null; open({ name: 'admins' }); }, 'openAdmins') : null,
+    INAPP ? null : h('a', { class: 'row', href: status, target: '_blank', rel: 'noopener' }, h('span', { class: 'ic' }, icon('ext', 20)),
+      h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Open the status page')))));
+}
 function settingsScreen() {
   const D = S.D;
   const section = (title, ...kids) => h('section', { class: 'stack', style: 'gap:8px' }, h('h2', { class: 'sec', style: 'margin-top:4px' }, title), ...kids);
+  // A mini admin: just their account (the settings for every phone aren't theirs to change).
+  if (!fullAdmin()) return h('main', { class: 'stack' }, screenTitle('Settings', ME ? `Signed in as ${ME.name || ME.email}` : ''),
+    h('div', { class: 'card' }, h('p', { style: 'margin:0' }, allPhonesAdmin() ? 'You look after every phone.' : `You look after ${plural(Object.keys(S.D.devices).length, 'phone')}: ${Object.values(S.D.devices).map(d => d.name || 'no name').join(', ') || 'none yet'}.`),
+      h('p', { class: 'hint', style: 'margin:0' }, 'The settings for every phone are changed by the main admin.')),
+    accountSection(section),
+    INAPP ? h('button', { type: 'button', class: 'btn s wide', onclick: () => $('closeBtn').click() }, 'Close admin and go back to the browser') : null);
   const row = (ic, label, count, onclick, id) => h('button', { type: 'button', class: 'row', onclick, id }, h('span', { class: 'ic' }, icon(ic, 20)),
     h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, label)), count != null ? h('span', { class: 'count' }, count) : null, h('span', { class: 'chev' }, icon('chev', 18)));
   const days = h('span', null, `${D.inactiveDays || 14} days`);
@@ -2377,18 +2915,8 @@ function settingsScreen() {
           h('span', { class: 's' }, 'Opens GitHub\'s notification settings: under "Participating", untick Email. ' +
             'Turn on phone notifications first (Phones → your phone → Admin phone), so you\'re never without either.')),
         h('span', { class: 'chev' }, icon('chev', 18))))),
-    section('GitHub', h('div', { class: 'group' },
-      h('div', { class: 'row' }, h('span', { class: 'ic', style: 'color:#2E8B57' }, icon('check', 20, 2.2)),
-        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, `Connected to ${C.owner}/${C.repo}`),
-          h('span', { class: 'dom' }, INAPP ? (getLock() ? 'Token protected by a PIN on this phone' : 'Token not remembered') : C.remember ? 'Token remembered on this device' : 'Token not remembered')),
-        h('button', { type: 'button', class: 'btn s sm', onclick: () => open({ name: 'connect' }) }, 'Change')),
-      INAPP ? h('button', { type: 'button', class: 'row', id: 'openPin', onclick: () => open({ name: 'pin' }) }, h('span', { class: 'ic' }, icon('shield', 20)),
-        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, getLock() ? 'Change the PIN' : 'Remember with a PIN')), h('span', { class: 'chev' }, icon('chev', 18))) : null,
-      (INAPP ? getLock() : C.remember) ? h('button', { type: 'button', class: 'row', onclick: () => { C.remember = false; localStorage.removeItem(LOCK_KEY); persist(); render(); say('This device won\'t remember the token any more.'); } },
-        h('span', { class: 'ic' }, icon('x', 20)), h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Forget the token on this device'))) : null,
-      INAPP ? null : h('a', { class: 'row', href: status, target: '_blank', rel: 'noopener' }, h('span', { class: 'ic' }, icon('ext', 20)),
-        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Open the status page')))),
-    INAPP ? h('button', { type: 'button', class: 'btn s wide', onclick: () => $('closeBtn').click() }, 'Close admin and go back to the browser') : null));
+    accountSection(section),
+    INAPP ? h('button', { type: 'button', class: 'btn s wide', onclick: () => $('closeBtn').click() }, 'Close admin and go back to the browser') : null);
 }
 
 // ============================================================================================
@@ -2396,10 +2924,16 @@ function settingsScreen() {
 // ============================================================================================
 (async () => {
   if (INAPP) document.title = 'Admin';
-  if (C.token && C.owner && C.repo) {
-    $('view').replaceChildren(h('main', null, screenTitle('Connecting…', `${C.owner}/${C.repo}`)));
-    try { await loadAll(); }
-    catch (e) { S.connected = false; say(e.message, true); }
+  // (From before sign-in: a GitHub token kept here. Not used any more, so not kept.)
+  try { localStorage.removeItem('wl-admin-locked'); localStorage.removeItem('wl-admin'); } catch {}
+  if (!LINK && getSession()) {
+    if (INAPP && getPin()) S.locked = true;                // the PIN first
+    else {
+      S.starting = true; render();
+      try { if (!(await loadAll())) { S.starting = false; return signedOutHere('This device was signed out. Sign in again.'); } }
+      catch (e) { S.connected = false; say(e.message, true); }
+      S.starting = false;
+    }
   }
   render();
 })();

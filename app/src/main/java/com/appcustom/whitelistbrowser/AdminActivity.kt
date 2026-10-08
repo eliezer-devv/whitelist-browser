@@ -19,8 +19,8 @@ import java.io.ByteArrayInputStream
  * The admin page, inside the app. Opened by tapping the name at the top of the browser 7 times.
  *
  * It's the same page as docs/admin.html (packed into the app at build time), in its own WebView
- * that isn't limited by the whitelist. It still needs the admin token: pasted each time, or kept
- * on the phone encrypted with a PIN (the page wipes it after 5 wrong PINs).
+ * that isn't limited by the whitelist. Signing in is with the admin's email and password (a new phone is confirmed
+ * by email), then a PIN for this phone (5 wrong PINs sign it out). No GitHub token is ever typed or kept.
  */
 class AdminActivity : Activity() {
     private lateinit var web: WebView
@@ -78,13 +78,13 @@ class AdminActivity : Activity() {
         Ui.applyTheme(this)                         // the same light or dark as the rest of the app
         setTheme(if (Ui.dark) R.style.AppThemeDark else R.style.AppTheme)
         super.onCreate(savedInstanceState)
-        // No screenshots or app-switcher previews of the admin screen (the token is typed here).
+        // No screenshots or app-switcher previews of the admin screen (a password is typed here).
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         web = WebView(this)
         web.setBackgroundColor(Ui.PAGE)
         setContentView(web)
         web.settings.javaScriptEnabled = true
-        web.settings.domStorageEnabled = true   // for the PIN-protected token
+        web.settings.domStorageEnabled = true   // this phone's sign-in and its keys (kept by the page)
         web.settings.allowFileAccess = false
         web.settings.allowContentAccess = false
 
