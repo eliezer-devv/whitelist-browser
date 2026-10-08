@@ -2080,8 +2080,7 @@ class MainActivity : Activity() {
             val q = siteField.text.toString().trim()
             if (q.isEmpty()) return
             (getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)?.hideSoftInputFromWindow(siteField.windowToken, 0)
-            findSites(q, findResults, findMore, findStatus) { s, allowed ->
-                if (allowed) { d.dismiss(); navigate("https://${s.domain}/"); return@findSites }   // already allowed: it opens
+            findSites(q, findResults, findMore, findStatus) { s ->
                 findGen++
                 siteField.setText(s.domain); siteField.setSelection(s.domain.length)
                 findResults.removeAllViews(); findBox.visibility = View.GONE; findMore.visibility = View.GONE
@@ -2709,9 +2708,9 @@ class MainActivity : Activity() {
     /**
      * Finds sites matching [query] (Discovery) and lists them in [results]: icon, name, address, what it is; 8 at a
      * time, [more] showing the next 8 (fetching another page of results when needed). Sites the content filters or
-     * "Always blocked" block never show. [onPick]: a site tapped (and whether it's already allowed).
+     * "Always blocked" block never show, and nor do sites already allowed (this is for asking for new ones). [onPick]: a site tapped.
      */
-    private fun findSites(query: String, results: LinearLayout, more: Button, status: TextView, onPick: (Discovery.Site, Boolean) -> Unit) {
+    private fun findSites(query: String, results: LinearLayout, more: Button, status: TextView, onPick: (Discovery.Site) -> Unit) {
         val gen = ++findGen
         val seen = HashSet<String>()
         val waiting = ArrayList<Discovery.Site>()
@@ -2743,11 +2742,12 @@ class MainActivity : Activity() {
                     if (st.malware) Filters.malware.ensureLoaded(applicationContext)
                     val list = Discovery.searchPage(query, p)
                     list.size to list.filter { s ->
-                        Whitelist.filteredAs(s.domain).isEmpty() && Whitelist.state.block.none { b -> s.domain == b || s.domain.endsWith(".$b") }
+                        !Whitelist.isAllowed("https://${s.domain}/") &&
+                            Whitelist.filteredAs(s.domain).isEmpty() && Whitelist.state.block.none { b -> s.domain == b || s.domain.endsWith(".$b") }
                     }
                 }
                 AppLog.i("Find", "Searched (${query.length} letters, page ${p + 1}): " +
-                    (found.getOrNull()?.let { (all, ok) -> "$all sites, ${ok.size} allowed to show" } ?: "failed: ${found.exceptionOrNull()?.message}"))
+                    (found.getOrNull()?.let { (all, ok) -> "$all sites, ${ok.size} new and allowed to show" } ?: "failed: ${found.exceptionOrNull()?.message}"))
                 main.post {
                     if (gen != findGen || results.parent == null) return@post
                     more.isEnabled = true; more.text = "Show more results"
@@ -2773,9 +2773,8 @@ class MainActivity : Activity() {
     }
 
     /** One found site: its icon (fetched in the background; its first letter until then), name, address and what it is. */
-    private fun siteRow(s: Discovery.Site, onPick: (Discovery.Site, Boolean) -> Unit): View {
+    private fun siteRow(s: Discovery.Site, onPick: (Discovery.Site) -> Unit): View {
         val ctx = this
-        val allowed = Whitelist.isAllowed("https://${s.domain}/")
         return LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
@@ -2783,8 +2782,8 @@ class MainActivity : Activity() {
             setPadding(Ui.dp(ctx, 12), Ui.dp(ctx, 10), Ui.dp(ctx, 12), Ui.dp(ctx, 10))
             minimumHeight = Ui.dp(ctx, 56)
             isClickable = true; isFocusable = true
-            contentDescription = "${s.name}, ${s.domain}" + if (allowed) ", already allowed" else ""
-            setOnClickListener { onPick(s, allowed) }
+            contentDescription = "${s.name}, ${s.domain}"
+            setOnClickListener { onPick(s) }
             val iconBox = android.widget.FrameLayout(ctx).apply { background = Ui.rounded(Ui.SOFT, Ui.dp(ctx, 10).toFloat()) }
             val letter = Ui.text(ctx, s.name.take(1).uppercase(), 16f, Ui.ACCENT_TEXT, "bold").apply { gravity = android.view.Gravity.CENTER }
             val img = android.widget.ImageView(ctx).apply { visibility = View.GONE; scaleType = android.widget.ImageView.ScaleType.FIT_CENTER }
@@ -2798,7 +2797,7 @@ class MainActivity : Activity() {
             addView(LinearLayout(ctx).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(Ui.text(ctx, s.name, 15f, Ui.INK, "bold").apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-                addView(Ui.text(ctx, s.domain + if (allowed) " · already allowed" else "", 13f, Ui.ACCENT_TEXT))
+                addView(Ui.text(ctx, s.domain, 13f, Ui.ACCENT_TEXT))
                 if (s.description.isNotBlank()) addView(Ui.text(ctx, s.description, 12.5f, Ui.MUTED).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
             }, LinearLayout.LayoutParams(0, -2, 1f))
         }
