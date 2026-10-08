@@ -35,6 +35,13 @@ object PageTranslate {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putStringSet("auto", now).apply()
     }
 
+    /** Languages whose pages don't get the "Translate?" bar (turned off in ⋮ → Translate page). */
+    fun noOffer(ctx: Context): Set<String> = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet("noOffer", emptySet()) ?: emptySet()
+    fun setOffer(ctx: Context, lang: String, on: Boolean) {
+        val now = noOffer(ctx).toMutableSet().apply { if (on) remove(lang) else add(lang) }
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putStringSet("noOffer", now).apply()
+    }
+
     /** "Hebrew", "English"… in the phone's language. */
     fun name(lang: String): String = java.util.Locale(lang).let { it.getDisplayLanguage(java.util.Locale.getDefault()) }
         .replaceFirstChar { it.uppercase() }

@@ -741,6 +741,7 @@ class MainActivity : Activity() {
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 topUrl = url
+                pageLang = null; langCheckedFor = null; hideTranslateBar()     // (a new page: its language is checked again)
                 if (!HomePage.isHome(url)) showLoading(8)          // at once: something is happening
                 if (!HomePage.isHome(url) && url?.startsWith("http") == true) {
                     pageAds.set(0); pageMedia.set(0); pageFrames.set(0); pageScriptErrors.set(0)
@@ -778,7 +779,7 @@ class MainActivity : Activity() {
                         (if (pageScriptErrors.get() > 0) "; ${pageScriptErrors.get()} script errors" else ""))
                     pageStartedAt = 0L
                 }
-                autoTranslate(url)
+                checkLanguage(url)
                 // Where this site was left off (the home page's "Open where you left off").
                 if (url != null && Whitelist.isAllowed(url)) siteScope(url)?.let { Tiles.rememberPage(this@MainActivity, it, url, view?.title) }
                 if (mediaOffHere) view?.evaluateJavascript(MediaBlock.script(photosOffHere, videosOffHere, soundOffHere, Whitelist.mediaAllowList()), null)
@@ -1317,6 +1318,15 @@ class MainActivity : Activity() {
         findViewById<android.widget.ImageButton>(R.id.frameNoteClose).imageTintList = android.content.res.ColorStateList.valueOf(Ui.AMBER_INK)
         findViewById<View>(R.id.frameNoteAsk).setOnClickListener { showFramesRequest() }
         findViewById<View>(R.id.frameNoteClose).setOnClickListener { frameNoteClosedFor = web.url; hideFrameNote() }
+        // The "This page is in Hebrew · Translate" bar.
+        findViewById<View>(R.id.translateBar).setBackgroundColor(Ui.SOFT)
+        findViewById<android.widget.ImageView>(R.id.translateBarIcon).imageTintList = android.content.res.ColorStateList.valueOf(Ui.ACCENT_TEXT)
+        findViewById<TextView>(R.id.translateBarText).apply { setTextColor(Ui.INK); typeface = Ui.bodyFace; setOnClickListener { showTranslate() } }
+        findViewById<TextView>(R.id.translateBarAction).apply { setTextColor(Ui.ACCENT_TEXT); typeface = Ui.boldFace; setOnClickListener { translateBarAction() } }
+        findViewById<android.widget.ImageButton>(R.id.translateBarClose).apply {
+            imageTintList = android.content.res.ColorStateList.valueOf(Ui.INK2)
+            setOnClickListener { hideTranslateBar() }
+        }
         findViewById<View>(R.id.listCheck).setOnClickListener { checkListNow() }
         if (tinyBar) {                             // room for the site's name: these go in the ⋮ menu
             forwardBtn.visibility = View.GONE
@@ -2549,11 +2559,56 @@ class MainActivity : Activity() {
         translateToken = java.util.UUID.randomUUID().toString()
         web.evaluateJavascript(PageTranslate.PAGE_SCRIPT + "\nwindow.__wlbTr.start(" + org.json.JSONObject.quote(translateToken) + ")", null)
         AppLog.i("Translate", "${AppLog.site(web.url)}: $from → $to")
+        pageLang = from
+        showTranslateBar()
     }
 
     private fun showOriginal() {
         translatedFrom = null; translateToken = ""
         web.evaluateJavascript("window.__wlbTr && window.__wlbTr.restore()", null)
+        showTranslateBar()
+    }
+
+    // ---- the bar under the toolbar: "This page is in Hebrew · Translate", then "Translated from Hebrew · Show original" ----
+
+    private var pageLang: String? = null          // the open page's language, once known (and not the phone's)
+    private var langCheckedFor: String? = null    // the page already checked (a page can finish loading more than once)
+    private var downloadingLang: String? = null   // a language getting ready (downloading) for the bar's Translate
+
+    private fun showTranslateBar() {
+        val from = pageLang ?: return hideTranslateBar()
+        val text = findViewById<TextView>(R.id.translateBarText)
+        val action = findViewById<TextView>(R.id.translateBarAction)
+        when {
+            downloadingLang == from -> { text.text = "Getting ${PageTranslate.name(from)} ready to translate…"; action.visibility = View.GONE }
+            translatedFrom != null -> { text.text = "Translated from ${PageTranslate.name(from)}"; action.text = "Show original"; action.visibility = View.VISIBLE }
+            else -> { text.text = "This page is in ${PageTranslate.name(from)}"; action.text = "Translate"; action.visibility = View.VISIBLE }
+        }
+        text.contentDescription = text.text.toString() + ". Translation options"
+        findViewById<View>(R.id.translateBar).visibility = View.VISIBLE
+    }
+
+    private fun hideTranslateBar() {
+        findViewById<View>(R.id.translateBar)?.visibility = View.GONE
+    }
+
+    /** Translate (straight away; the first time, its languages download first), or Show original. */
+    private fun translateBarAction() {
+        if (translatedFrom != null) { showOriginal(); return }
+        val from = pageLang ?: return
+        val to = PageTranslate.target(this)
+        val url = web.url
+        PageTranslate.ready(from, to) { ok ->
+            if (ok) { startTranslation(from, to); return@ready }
+            downloadingLang = from; showTranslateBar()
+            PageTranslate.download(from, to) { err ->
+                downloadingLang = null
+                if (isDestroyed) return@download
+                if (err != null) { showTranslateBar(); toast("Couldn't download the languages. Check the phone is online, then try again.") }
+                else if (web.url == url) startTranslation(from, to)
+                else showTranslateBar()
+            }
+        }
     }
 
     /** ⋮ → Translate page: from the page's language into the phone's (or another), optionally always. */
@@ -2591,6 +2646,10 @@ class MainActivity : Activity() {
             val (autoRow, auto) = Ui.switchRow(this, "Always translate ${PageTranslate.name(from)} pages",
                 "They're translated as they open", from in PageTranslate.autoLangs(this))
             d.add(autoRow)
+            val (offerRow, offer) = Ui.switchRow(this, "Offer to translate ${PageTranslate.name(from)} pages",
+                "A bar under the toolbar, when one opens", from !in PageTranslate.noOffer(this))
+            offer.setOnCheckedChangeListener { _, on -> PageTranslate.setOffer(this, from, on) }
+            d.add(offerRow, 6)
             val note = Ui.text(this, "", 12.5f, Ui.MUTED).apply { visibility = View.GONE }
             d.add(note, 4)
             PageTranslate.ready(from, to) { ok ->
@@ -2602,32 +2661,33 @@ class MainActivity : Activity() {
                 if (to == from) { toast("Pick another language to translate into"); return@button }
                 PageTranslate.setAuto(this, from, auto.isChecked)
                 it.dismiss()
-                val target = to
-                PageTranslate.ready(from, target) { ok ->
-                    if (ok) startTranslation(from, target)
-                    else {
-                        toast("Downloading ${PageTranslate.name(from)} and ${PageTranslate.name(target)}…")
-                        PageTranslate.download(from, target) { err ->
-                            if (err != null) toast("Couldn't download the languages. Check the phone is online, then try again.")
-                            else { startTranslation(from, target); toast("Translated from ${PageTranslate.name(from)}") }
-                        }
-                    }
-                }
+                pageLang = from
+                if (translatedFrom != null) showOriginal()        // (shown in another language: from the original again)
+                translateBarAction()
             }
             d.show()
         }
     }
 
-    /** A page opened in a language translated automatically: translated (if its languages are downloaded already). */
-    private fun autoTranslate(url: String?) {
-        if (url == null || !url.startsWith("http") || PageTranslate.autoLangs(this).isEmpty() || translatedFrom != null) return
+    /**
+     * A page finished opening: if it isn't in the phone's language, the bar offers to translate it, or (a language
+     * set to "Always translate", already downloaded) it's translated at once.
+     */
+    private fun checkLanguage(url: String?) {
+        if (url == null || !url.startsWith("http") || HomePage.isHome(url) || url.startsWith(BLOCKED_PAGE) ||
+            translatedFrom != null || url == langCheckedFor) return
+        langCheckedFor = url
         pageLanguage { from ->
-            if (from == null || from !in PageTranslate.autoLangs(this) || web.url != url) return@pageLanguage
+            if (isDestroyed || web.url != url || translatedFrom != null) return@pageLanguage
             val to = PageTranslate.target(this)
-            if (from == to) return@pageLanguage
-            PageTranslate.ready(from, to) { ok ->
-                if (ok && web.url == url && translatedFrom == null) { startTranslation(from, to); toast("Translated from ${PageTranslate.name(from)}. ⋮ → Show original") }
-            }
+            if (from == null || from == to) { pageLang = null; hideTranslateBar(); return@pageLanguage }
+            pageLang = from
+            if (from in PageTranslate.autoLangs(this)) {
+                PageTranslate.ready(from, to) { ok ->
+                    if (web.url != url || translatedFrom != null) return@ready
+                    if (ok) startTranslation(from, to) else showTranslateBar()
+                }
+            } else if (from !in PageTranslate.noOffer(this)) showTranslateBar()
         }
     }
 

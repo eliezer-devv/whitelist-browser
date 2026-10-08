@@ -72,6 +72,59 @@
         android:textSize="12sp"
         android:visibility="gone" />
 
+    <!-- "This page is in Hebrew · Translate": offered when a page isn't in the phone's language. -->
+    <LinearLayout
+        android:id="@+id/translateBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/edge"
+        android:paddingEnd="4dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/translateBarIcon"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginEnd="10dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_d_translate" />
+
+        <TextView
+            android:id="@+id/translateBarText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="?android:attr/selectableItemBackground"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/translateBarAction"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:gravity="center"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:text="Translate"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/translateBarClose"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Close"
+            android:scaleType="center"
+            android:src="@drawable/ic_d_x" />
+    </LinearLayout>
+
     <!-- "Parts of this page were blocked": embedded content (a video, a map) from a site that isn't allowed here. -->
     <LinearLayout
         android:id="@+id/frameNote"
