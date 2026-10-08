@@ -206,7 +206,7 @@ class MainActivity : Activity() {
         AppLog.start(applicationContext)                      // the rolling log (About this phone → Share log)
         CrashLog.install(applicationContext)                  // a crash is recorded (About this phone shows it)
         if (CrashLog.takeUnsent(applicationContext)) main.postDelayed({ sendLog("after a crash", quiet = true) }, 5_000)
-        if (intent?.action == AdminAlerts.ACTION_OPEN_ADMIN) main.post { openAdmin() }   // a notification tapped
+        if (intent?.action == AdminAlerts.ACTION_OPEN_ADMIN) { val i = intent; main.post { openAdmin(i) } }   // a notification tapped
         Whitelist.loadCache(this) // last known list, so it works offline
         val stopFilter = android.content.IntentFilter(PlaybackService.ACTION_MEDIA)
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(stopReceiver, stopFilter, Context.RECEIVER_NOT_EXPORTED)
@@ -442,7 +442,11 @@ class MainActivity : Activity() {
     }
 
     /** A notification tapped: the admin screen (which still needs its PIN). */
-    private fun openAdmin() { runCatching { startActivity(Intent(this, AdminActivity::class.java)) } }
+    private fun openAdmin(from: Intent? = null) {
+        val i = Intent(this, AdminActivity::class.java)
+        from?.extras?.let { i.putExtras(it) }                      // what the notification was about
+        runCatching { startActivity(i) }
+    }
 
     // ---------- sound in the background ----------
 
@@ -1132,7 +1136,7 @@ class MainActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.action == AdminAlerts.ACTION_OPEN_ADMIN) { openAdmin(); return }   // an admin phone's notification tapped
+        if (intent.action == AdminAlerts.ACTION_OPEN_ADMIN) { openAdmin(intent); return }   // an admin phone's notification tapped
         openLinkFrom(intent)                                    // a link from another app while this one is open
     }
 
@@ -2031,9 +2035,37 @@ class MainActivity : Activity() {
         }
         d.add(filterWarning)
 
-        val siteField = Ui.field(this, "Website, e.g. scratch.mit.edu",
-            type = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI)
-        if (siteDomain == null) { d.add(Ui.label(this, "Website")); d.add(siteField, 6) }
+        val siteField = Ui.field(this, "e.g. scratch.mit.edu, or maths practice",
+            type = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI).apply {
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH; setSingleLine()
+        }
+        // Don't know the address? Words find matching sites (Discovery); tapping one fills it in.
+        val findStatus = Ui.text(this, "", 13.5f, Ui.MUTED).apply { visibility = View.GONE }
+        val findResults = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val findButton = Button(this).apply {
+            text = "Find sites"; isAllCaps = false; typeface = Ui.boldFace; stateListAnimator = null
+            setTextColor(Ui.ACCENT_TEXT)
+            background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 14).toFloat(), Ui.OUTLINE, Ui.dp(this@MainActivity, 1))
+            minHeight = Ui.dp(this@MainActivity, 44); minimumHeight = Ui.dp(this@MainActivity, 44)
+            visibility = View.GONE
+        }
+        fun findNow() {
+            val q = siteField.text.toString().trim()
+            if (q.isEmpty()) return
+            (getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)?.hideSoftInputFromWindow(siteField.windowToken, 0)
+            findSites(q, findResults, findStatus) { s, allowed ->
+                if (allowed) { d.dismiss(); navigate("https://${s.domain}/"); return@findSites }   // already allowed: it opens
+                siteField.setText(s.domain); siteField.setSelection(s.domain.length)
+                findResults.removeAllViews()
+                findStatus.text = "${s.name} (${s.domain}). Tap Send to ask for it."
+            }
+        }
+        findButton.setOnClickListener { findNow() }
+        siteField.setOnEditorActionListener { _, _, _ -> if (looksLikeWords(siteField.text.toString())) { findNow(); true } else false }
+        if (siteDomain == null) {
+            d.add(Ui.label(this, "Website, or what you're looking for")); d.add(siteField, 6)
+            d.add(findButton, 6); d.add(findStatus, 6); d.add(findResults, 4)
+        }
         lateinit var sendButton: Button
         // After a site couldn't be found: the address that "Send anyway" would send. Editing it resets this.
         var sendAnyway: String? = null
@@ -2043,6 +2075,7 @@ class MainActivity : Activity() {
             override fun beforeTextChanged(t: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(t: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun afterTextChanged(e: android.text.Editable?) {
+                findButton.visibility = if (looksLikeWords(e?.toString().orEmpty())) View.VISIBLE else View.GONE
                 if (sendAnyway != null || askAnyway != null) {
                     sendAnyway = null
                     askAnyway = null
@@ -2200,6 +2233,8 @@ class MainActivity : Activity() {
 
         d.button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
         sendButton = d.button(if (filteredNow.isNotEmpty()) "Ask anyway" else "Send", Ui.Kind.PRIMARY) {
+            // Words, not an address: look for matching sites first.
+            if (siteDomain == null && looksLikeWords(siteField.text.toString())) { findNow(); return@button }
             val domain = siteDomain ?: Whitelist.normalize(siteField.text.toString())
             if (domain == null) {
                 siteField.error = "Type a website address"
@@ -2456,6 +2491,72 @@ class MainActivity : Activity() {
         if (!quiet) toast("Sending the log to whoever manages this browser")
     }
 
+    // ---------- finding a website ----------
+
+    /** Words rather than an address ("maths practice", "nasa"): look for sites instead of asking for it as typed. */
+    private fun looksLikeWords(text: String): Boolean {
+        val t = text.trim()
+        return t.isNotEmpty() && (t.contains(' ') || !t.contains('.')) && !t.contains("://")
+    }
+
+    /**
+     * Finds sites matching [query] (Discovery) and lists them in [results]: icon, name, address, what it is. Sites the
+     * content filters or "Always blocked" block never show. [onPick]: a site tapped (and whether it's already allowed).
+     */
+    private fun findSites(query: String, results: LinearLayout, status: TextView, onPick: (Discovery.Site, Boolean) -> Unit) {
+        val ctx = this
+        status.text = "Looking for sites…"; status.visibility = View.VISIBLE; results.removeAllViews()
+        io.execute {
+            val found = runCatching {
+                // (The content filters must be ready, so nothing they block is ever suggested.)
+                val st = Whitelist.state
+                if (st.adult) Filters.adult.ensureLoaded(applicationContext)
+                if (st.gambling) Filters.gambling.ensureLoaded(applicationContext)
+                if (st.malware) Filters.malware.ensureLoaded(applicationContext)
+                Discovery.search(query).filter { s ->
+                    Whitelist.filteredAs(s.domain).isEmpty() && Whitelist.state.block.none { b -> s.domain == b || s.domain.endsWith(".$b") }
+                }
+            }
+            AppLog.i("Find", "Searched (${query.length} letters): " + (found.getOrNull()?.size?.let { "$it sites" } ?: "failed: ${found.exceptionOrNull()?.message}"))
+            main.post {
+                if (results.parent == null) return@post
+                val list = found.getOrNull()
+                status.text = when {
+                    list == null -> "Couldn't look for sites. Check the phone is online, then try again."
+                    list.isEmpty() -> "No sites found. Try other words, or type the site's address."
+                    else -> "Tap a site to ask for it."
+                }
+                list?.forEach { s ->
+                    val allowed = Whitelist.isAllowed("https://${s.domain}/")
+                    results.addView(LinearLayout(ctx).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = android.view.Gravity.CENTER_VERTICAL
+                        background = Ui.rounded(Ui.CARD, Ui.dp(ctx, 16).toFloat(), Ui.LINE, Ui.dp(ctx, 1))
+                        setPadding(Ui.dp(ctx, 12), Ui.dp(ctx, 10), Ui.dp(ctx, 12), Ui.dp(ctx, 10))
+                        minimumHeight = Ui.dp(ctx, 56)
+                        isClickable = true; isFocusable = true
+                        contentDescription = "${s.name}, ${s.domain}" + if (allowed) ", already allowed" else ""
+                        setOnClickListener { onPick(s, allowed) }
+                        // The site's icon (fetched in the background); its first letter until then.
+                        val iconBox = android.widget.FrameLayout(ctx).apply { background = Ui.rounded(Ui.SOFT, Ui.dp(ctx, 10).toFloat()) }
+                        val letter = Ui.text(ctx, s.name.take(1).uppercase(), 16f, Ui.ACCENT_TEXT, "bold").apply { gravity = android.view.Gravity.CENTER }
+                        val img = android.widget.ImageView(ctx).apply { visibility = View.GONE }
+                        iconBox.addView(letter, android.widget.FrameLayout.LayoutParams(-1, -1))
+                        iconBox.addView(img, android.widget.FrameLayout.LayoutParams(Ui.dp(ctx, 24), Ui.dp(ctx, 24), android.view.Gravity.CENTER))
+                        addView(iconBox, LinearLayout.LayoutParams(Ui.dp(ctx, 40), Ui.dp(ctx, 40)).apply { marginEnd = Ui.dp(ctx, 12) })
+                        io.execute { Discovery.icon(s.domain)?.let { b -> main.post { img.setImageBitmap(b); img.visibility = View.VISIBLE; letter.visibility = View.GONE } } }
+                        addView(LinearLayout(ctx).apply {
+                            orientation = LinearLayout.VERTICAL
+                            addView(Ui.text(ctx, s.name, 15f, Ui.INK, "bold").apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                            addView(Ui.text(ctx, s.domain + if (allowed) " · already allowed" else "", 13f, Ui.ACCENT_TEXT))
+                            if (s.description.isNotBlank()) addView(Ui.text(ctx, s.description, 12.5f, Ui.MUTED).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+                        }, LinearLayout.LayoutParams(0, -2, 1f))
+                    }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = Ui.dp(ctx, 8) })
+                }
+            }
+        }
+    }
+
     /** A link or picture long-pressed: Open, Copy link, Copy link text, Share link. False: not a link (text selection). */
     private fun linkMenu(view: WebView): Boolean {
         val hit = view.hitTestResult
@@ -2517,12 +2618,15 @@ class MainActivity : Activity() {
                 if (s.isEmpty()) { subject.error = "Type a subject"; return@button }
                 if (m.isEmpty()) { body.error = "Type your message"; return@button }
                 val log = if (attach.isChecked) logReport() else null
+                it.dismiss()
+                toast("Sending your message…")
                 io.execute {
                     Requests.queueMessage(applicationContext, s.take(120), m.take(4000), log)
                     Outbox.flush(applicationContext)
+                    // Told once it has really gone (or that it will, once online).
+                    val waiting = Outbox.has(applicationContext, "message")
+                    main.post { toast(if (waiting) "Your message will be sent as soon as the phone is online" else "Message sent") }
                 }
-                it.dismiss()
-                toast("Message sent to whoever manages this browser")
             }
         }.show()
     }

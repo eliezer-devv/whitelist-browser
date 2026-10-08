@@ -641,7 +641,10 @@ const S = {
   L: null, listSha: null, listDirty: false,       // the open list (editable model)
   D: null, devicesSha: null, devDirty: false,      // devices.json
   requests: null, newPhones: [], inboxError: null, answered: [],
-  tab: 'requests', sub: null, focusRequest: new URLSearchParams(location.search).get('request')
+  tab: 'requests', sub: null, focusRequest: new URLSearchParams(location.search).get('request'),
+  // Opened from an admin phone's notification about a phone (a message, a log, a crash): that screen, once connected.
+  pendingSub: (() => { const q = new URLSearchParams(location.search), id = q.get('phone'), log = q.get('log');
+    return id && /^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(id) ? (log && /^[\w.-]+\.txt$/.test(log) ? { name: 'log', id, file: log } : { name: 'phone', id }) : null; })()
 };
 
 // The open list, as an editable model. Unknown keys in the file are kept as they are.
@@ -1102,6 +1105,7 @@ const screenTitle = (title, sub) => h('div', { class: 'title' }, h('h1', null, t
 const backLink = (label, onclick = back) => h('button', { type: 'button', class: 'back', onclick }, icon('back', 20, 2), label);
 function render() {
   const view = $('view');
+  if (S.connected && S.pendingSub) { S.tab = 'phones'; S.sub = S.pendingSub; S.pendingSub = null; S.focusRequest = null; }
   let node;
   if (!S.connected && INAPP && getLock() && !S.usePaste) node = unlockScreen();
   else if (!S.connected || (S.sub && S.sub.name === 'connect')) node = connectScreen();

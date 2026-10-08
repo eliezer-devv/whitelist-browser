@@ -62,6 +62,18 @@ class AdminActivity : Activity() {
         true
     }.getOrElse { AppLog.e("Download", "Saving $name from the admin page failed", it); false }
 
+    /** Opened from a notification: what it was about (the page opens it after the PIN). */
+    private fun focusParams(): String {
+        val phone = intent?.getStringExtra(AdminAlerts.EXTRA_PHONE)?.takeIf { Regex("[A-Z0-9]{4}-[A-Z0-9]{4}").matches(it) }
+        val file = intent?.getStringExtra(AdminAlerts.EXTRA_FILE)?.takeIf { Regex("[\\w.-]+\\.txt").matches(it) }
+        val request = intent?.getIntExtra(AdminAlerts.EXTRA_REQUEST, 0) ?: 0
+        return when {
+            phone != null -> "&phone=" + Uri.encode(phone) + (file?.let { "&log=" + Uri.encode(it) } ?: "")
+            request > 0 -> "&request=$request"
+            else -> ""
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         Ui.applyTheme(this)                         // the same light or dark as the rest of the app
         setTheme(if (Ui.dark) R.style.AppThemeDark else R.style.AppTheme)
@@ -119,7 +131,7 @@ class AdminActivity : Activity() {
         }
         web.loadUrl("https://${HomePage.HOST}${PATH}admin.html?inapp=1" +
             "&owner=${Uri.encode(Config.GITHUB_USERNAME)}&repo=${Uri.encode(PrivateRepo.NAME)}" +
-            "&theme=${if (Ui.dark) "dark" else "light"}")
+            "&theme=${if (Ui.dark) "dark" else "light"}" + focusParams())
     }
 
     private fun serve(path: String): WebResourceResponse {

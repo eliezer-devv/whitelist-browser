@@ -85,7 +85,8 @@ object AdminAlerts {
             if (created <= since) continue
             val m = marker.find(c.optString("body").orEmpty()) ?: continue
             val note = runCatching { Seal.open(JSONObject(m.groupValues[1].trim())) }.getOrNull() ?: continue
-            notify(ctx, note.optString("title"), note.optString("text"), note.optInt("number", i))
+            notify(ctx, note.optString("title"), note.optString("text"), note.optInt("number", i),
+                note.optString("phone").takeIf { it.isNotBlank() }, note.optString("file").takeIf { it.isNotBlank() })
             found++
         }
         noteCheck(ctx, "${list.length()} new comments, $found for this phone" + if (!allowed(ctx)) " (Android isn't allowing notifications)" else "")
@@ -96,14 +97,21 @@ object AdminAlerts {
     private fun iso(t: Long) = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
         .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date(t))
 
-    private fun notify(ctx: Context, title: String, text: String, id: Int) {
+    const val EXTRA_REQUEST = "adminRequest"
+    const val EXTRA_PHONE = "adminPhone"
+    const val EXTRA_FILE = "adminFile"
+
+    /** Tapped: the admin screen opens at what it's about (a request, or a phone's message or log), after the PIN. */
+    private fun notify(ctx: Context, title: String, text: String, id: Int, phone: String? = null, file: String? = null) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CHANNEL) == null) {
             nm.createNotificationChannel(NotificationChannel(CHANNEL, "Requests and logs (admin phone)", NotificationManager.IMPORTANCE_HIGH)
                 .apply { description = "New requests, new phones, logs someone sent, and crashes" })
         }
-        val open = PendingIntent.getActivity(ctx, id, Intent(ctx, MainActivity::class.java).setAction(ACTION_OPEN_ADMIN)
-            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val target = Intent(ctx, MainActivity::class.java).setAction(ACTION_OPEN_ADMIN).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        if (phone != null) { target.putExtra(EXTRA_PHONE, phone); file?.let { target.putExtra(EXTRA_FILE, it) } }
+        else if (id > 0) target.putExtra(EXTRA_REQUEST, id)
+        val open = PendingIntent.getActivity(ctx, id, target, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         @Suppress("DEPRECATION")
         val b = if (Build.VERSION.SDK_INT >= 26) android.app.Notification.Builder(ctx, CHANNEL) else android.app.Notification.Builder(ctx)
         b.setSmallIcon(R.drawable.ic_d_inbox).setContentTitle(title).setContentText(text)
