@@ -1387,6 +1387,14 @@ const pwField = (id, label, autocomplete) => h('div', { class: 'field' }, h('lab
       const i = $(id); i.type = i.type === 'password' ? 'text' : 'password';
       e.currentTarget.textContent = i.type === 'password' ? 'Show' : 'Hide'; } }, 'Show')));
 
+// Already signed in on this browser (another tab did it): open the admin. False if that didn't work.
+async function openSignedIn() {
+  S.signin = null; S.starting = true; render();
+  try { const ok = await loadAll(); S.starting = false; if (ok) { render(); return true; } }
+  catch (e) { S.starting = false; say(e.message, true); }
+  S.starting = false; render();
+  return false;
+}
 // Signed in on this device: its session, and the signing key (kept here).
 async function finishSignIn(r, macKey) {
   if (macKey) await idb.set('mac', macKey);
@@ -1422,12 +1430,21 @@ function signInScreen() {
     go1.disabled = true; go1.textContent = 'Signing in… (up to a minute)';
     st.email = em;
     try {
-      const dev = await deviceKeys();
+      // Signed in meanwhile, in another tab of this browser (say, by the emailed link): just open the admin.
+      if (getSession() && await openSignedIn()) return;
+      let dev = await deviceKeys();
       const mac = await newMacSecret();
       const number = await postCommand({ p: JSON.stringify({ op: 'signin', email: em, password: pw, did: dev.did, enc: dev.enc, mac: mac.b64, name: deviceName(), rk: dev.enc, at: Date.now() }) });
       const seen = new Set();
       const first = await awaitAnswers(number, () => true, { seen });
       if (!first) throw new Error('No answer from GitHub yet. Its automation may be busy or switched off (private repository → Actions). Try again in a minute.');
+      if (first.code === 'DEVICE_ACTIVE') {
+        // This browser is signed in already (in another tab). Open it; or, if this tab lost track, start afresh.
+        if (getSession() && await openSignedIn()) return;
+        await forgetDevice();
+        go1.disabled = false; go1.textContent = 'Sign in';
+        return say('Something went wrong on this device, so it was reset. Tap Sign in again.', true);
+      }
       if (!first.ok) throw new Error(first.error);
       if (first.active) return finishSignIn(first, mac.key);
       // A new device: waiting for the emailed link (the answer comes on the same issue).
@@ -1497,7 +1514,9 @@ function linkScreen() {
     const r = L.result;
     return h('main', { class: 'stack' }, screenTitle(r ? (r.ok ? 'Confirmed' : 'Not confirmed') : 'Confirming…', ''),
       r ? h('div', { class: 'card' }, h('p', { style: 'margin:0' }, r.ok ? r.msg : r.error)) : waitNote('Confirming it\'s you… (up to a minute)'),
-      r ? h('button', { type: 'button', class: 'btn s', onclick: () => { LINK.kind = 'done'; render(); } }, 'Sign in on this device too') : null);
+      r ? (getSession()
+        ? h('button', { type: 'button', class: 'btn p', onclick: () => { LINK.kind = 'done'; openSignedIn(); } }, 'Open the admin here')
+        : h('button', { type: 'button', class: 'btn s', onclick: () => { LINK.kind = 'done'; render(); } }, 'Sign in on this device too')) : null);
   }
   const invite = L.kind === 'invite';
   const rules = h('ul', { class: 'rules' });
