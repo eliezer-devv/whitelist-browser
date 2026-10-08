@@ -67,4 +67,7 @@ android {
 dependencies {
     // Google's WebView additions: lets AdGuard's scripts run before a page's own scripts (as AdGuard does).
     implementation("androidx.webkit:webkit:1.11.0")
+    // Translating pages on the phone (Google ML Kit): the page's text never leaves the phone.
+    implementation("com.google.mlkit:translate:17.0.3")
+    implementation("com.google.mlkit:language-id:17.0.6")
 }

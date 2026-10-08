@@ -1255,6 +1255,17 @@ If Android wants to ask first (older Android, or the app was last installed by h
 app?" screen shows when the app's open, else a **"Update ready: tap to install"** notification opens it. Android
 doesn't let an app open that screen by itself while it isn't on screen.
 
+### Translating pages
+**⋮ → Translate page** translates the open page into the phone's language (or another), on the phone itself with
+Google ML Kit: the page's text never leaves the phone. Each language downloads once (about 30 MB, after asking), then
+it works offline. **Always translate … pages** translates that language's pages as they open. **⋮ → Show original**
+puts the page back.
+
+### Finding a website
+**⋮ → Ask for a new site** takes an address, or words ("maths practice"): words show matching sites (from Wikipedia:
+organisations, brands and well-known sites), with icon, name and address; tapping one fills it in. Sites the content
+filters or "Always blocked" block are never suggested.
+
 ### Sound in the background
 While a site plays sound, its **media notification** shows (in the app too), so it **keeps playing when you leave the
 app** or the screen turns off:

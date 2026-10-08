@@ -744,6 +744,7 @@ class MainActivity : Activity() {
                 if (!HomePage.isHome(url)) showLoading(8)          // at once: something is happening
                 if (!HomePage.isHome(url) && url?.startsWith("http") == true) {
                     pageAds.set(0); pageMedia.set(0); pageFrames.set(0); pageScriptErrors.set(0)
+                    translatedFrom = null; translateToken = ""
                     pageStartedAt = System.currentTimeMillis()
                     AppLog.i("Page", "Opening ${AppLog.site(url)}" + (if (isDesktop(url)) " (desktop site)" else ""))
                 }
@@ -777,6 +778,7 @@ class MainActivity : Activity() {
                         (if (pageScriptErrors.get() > 0) "; ${pageScriptErrors.get()} script errors" else ""))
                     pageStartedAt = 0L
                 }
+                autoTranslate(url)
                 // Where this site was left off (the home page's "Open where you left off").
                 if (url != null && Whitelist.isAllowed(url)) siteScope(url)?.let { Tiles.rememberPage(this@MainActivity, it, url, view?.title) }
                 if (mediaOffHere) view?.evaluateJavascript(MediaBlock.script(photosOffHere, videosOffHere, soundOffHere, Whitelist.mediaAllowList()), null)
@@ -861,6 +863,7 @@ class MainActivity : Activity() {
         // Files a page makes itself ("blob:" addresses, e.g. GitHub's download button on a file): the page hands
         // them over through this bridge, which only accepts files the app asked for (a one-time code).
         web.addJavascriptInterface(BlobBridge(), "WLBlobSaver")
+        web.addJavascriptInterface(TranslateBridge(), "WLBTranslate")
         web.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
             startDownload(url, userAgent, contentDisposition, mimeType)
         }
@@ -1491,6 +1494,8 @@ class MainActivity : Activity() {
         if (onRealSite) {
             if (asked) divider()
             item(R.drawable.ic_d_desktop, "Desktop site", if (isDesktop(cur)) "On" else null) { toggleDesktop() }
+            if (translatedFrom != null) item(R.drawable.ic_d_translate, "Show original") { showOriginal() }
+            else item(R.drawable.ic_d_translate, "Translate page") { showTranslate() }
             asked = true
         }
         if (asked) divider()
@@ -2489,6 +2494,128 @@ class MainActivity : Activity() {
             Outbox.flush(applicationContext)
         }
         if (!quiet) toast("Sending the log to whoever manages this browser")
+    }
+
+    // ---------- translating pages (on the phone: PageTranslate) ----------
+
+    private var translatedFrom: String? = null        // the open page's language, while it's shown translated
+    private var translateTo: String = ""
+    @Volatile private var translateToken = ""         // only this page's script can hand text to translate
+
+    /** The page script hands over its text in batches; each comes back translated. */
+    private inner class TranslateBridge {
+        @android.webkit.JavascriptInterface
+        fun texts(token: String, json: String) {
+            val from = translatedFrom ?: return
+            if (token.isEmpty() || token != translateToken) return
+            val pairs = runCatching { org.json.JSONArray(json) }.getOrNull() ?: return
+            val ids = (0 until pairs.length()).map { pairs.getJSONArray(it).getInt(0) }
+            val texts = (0 until pairs.length()).map { pairs.getJSONArray(it).getString(1).take(5000) }
+            main.post {
+                PageTranslate.translate(from, translateTo, texts) { out ->
+                    if (token != translateToken) return@translate
+                    val back = org.json.JSONArray()
+                    ids.forEachIndexed { i, id -> back.put(org.json.JSONArray().put(id).put(out[i])) }
+                    web.evaluateJavascript("window.__wlbTr && window.__wlbTr.apply($back)", null)
+                }
+            }
+        }
+    }
+
+    /** The open page's text (a sample) and its declared language, then [done] with the language detected. */
+    private fun pageLanguage(done: (String?) -> Unit) {
+        web.evaluateJavascript("(function(){var b=document.body;return JSON.stringify({lang:document.documentElement.lang||'',text:b?b.innerText.slice(0,2000):''})})()") { raw ->
+            val o = runCatching { org.json.JSONObject(org.json.JSONArray("[$raw]").getString(0)) }.getOrNull()
+            PageTranslate.detect(o?.optString("text").orEmpty(), o?.optString("lang"), done)
+        }
+    }
+
+    /** Translates the open page from [from] into [to] (both downloaded already). */
+    private fun startTranslation(from: String, to: String) {
+        translatedFrom = from; translateTo = to
+        translateToken = java.util.UUID.randomUUID().toString()
+        web.evaluateJavascript(PageTranslate.PAGE_SCRIPT + "\nwindow.__wlbTr.start(" + org.json.JSONObject.quote(translateToken) + ")", null)
+        AppLog.i("Translate", "${AppLog.site(web.url)}: $from → $to")
+    }
+
+    private fun showOriginal() {
+        translatedFrom = null; translateToken = ""
+        web.evaluateJavascript("window.__wlbTr && window.__wlbTr.restore()", null)
+    }
+
+    /** ⋮ → Translate page: from the page's language into the phone's (or another), optionally always. */
+    private fun showTranslate() {
+        pageLanguage { from ->
+            if (isDestroyed) return@pageLanguage
+            if (from == null) { toast("Couldn't tell which language this page is in"); return@pageLanguage }
+            var to = PageTranslate.target(this)
+            val d = Ui.AppDialog(this, sheet = true)
+            d.title("Translate page", sub = "This page is in ${PageTranslate.name(from)}", icon = R.drawable.ic_d_translate)
+            val intoButton = Button(this).apply {
+                isAllCaps = false; typeface = Ui.boldFace; stateListAnimator = null; setTextColor(Ui.ACCENT_TEXT)
+                background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 14).toFloat(), Ui.OUTLINE, Ui.dp(this@MainActivity, 1))
+                minHeight = Ui.dp(this@MainActivity, 48); minimumHeight = Ui.dp(this@MainActivity, 48)
+            }
+            fun showInto() { intoButton.text = "Into: ${PageTranslate.name(to)}  ▾" }
+            showInto()
+            intoButton.setOnClickListener {
+                // Every language it knows, by name.
+                val pick = Ui.AppDialog(this, sheet = true)
+                pick.title("Translate into")
+                PageTranslate.all().filter { it != from }.forEach { lang ->
+                    pick.add(Button(this).apply {
+                        text = PageTranslate.name(lang) + if (lang == to) "  ✓" else ""
+                        isAllCaps = false; typeface = Ui.boldFace; setTextColor(Ui.INK); background = null
+                        gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
+                        minHeight = Ui.dp(this@MainActivity, 46); minimumHeight = Ui.dp(this@MainActivity, 46)
+                        setOnClickListener { to = lang; PageTranslate.setTarget(this@MainActivity, lang); showInto(); pick.dismiss() }
+                    }, 0)
+                }
+                pick.button("Close", Ui.Kind.SECONDARY) { it.dismiss() }
+                pick.show()
+            }
+            d.add(intoButton, 6)
+            val (autoRow, auto) = Ui.switchRow(this, "Always translate ${PageTranslate.name(from)} pages",
+                "They're translated as they open", from in PageTranslate.autoLangs(this))
+            d.add(autoRow)
+            val note = Ui.text(this, "", 12.5f, Ui.MUTED).apply { visibility = View.GONE }
+            d.add(note, 4)
+            PageTranslate.ready(from, to) { ok ->
+                if (!ok) { note.text = "The first time, these languages download to this phone (about 30 MB each; Wi-Fi is best). " +
+                    "Then pages are translated on the phone, even offline."; note.visibility = View.VISIBLE }
+            }
+            d.button("Cancel", Ui.Kind.SECONDARY) { it.dismiss() }
+            d.button("Translate", Ui.Kind.PRIMARY) {
+                if (to == from) { toast("Pick another language to translate into"); return@button }
+                PageTranslate.setAuto(this, from, auto.isChecked)
+                it.dismiss()
+                val target = to
+                PageTranslate.ready(from, target) { ok ->
+                    if (ok) startTranslation(from, target)
+                    else {
+                        toast("Downloading ${PageTranslate.name(from)} and ${PageTranslate.name(target)}…")
+                        PageTranslate.download(from, target) { err ->
+                            if (err != null) toast("Couldn't download the languages. Check the phone is online, then try again.")
+                            else { startTranslation(from, target); toast("Translated from ${PageTranslate.name(from)}") }
+                        }
+                    }
+                }
+            }
+            d.show()
+        }
+    }
+
+    /** A page opened in a language translated automatically: translated (if its languages are downloaded already). */
+    private fun autoTranslate(url: String?) {
+        if (url == null || !url.startsWith("http") || PageTranslate.autoLangs(this).isEmpty() || translatedFrom != null) return
+        pageLanguage { from ->
+            if (from == null || from !in PageTranslate.autoLangs(this) || web.url != url) return@pageLanguage
+            val to = PageTranslate.target(this)
+            if (from == to) return@pageLanguage
+            PageTranslate.ready(from, to) { ok ->
+                if (ok && web.url == url && translatedFrom == null) { startTranslation(from, to); toast("Translated from ${PageTranslate.name(from)}. ⋮ → Show original") }
+            }
+        }
     }
 
     // ---------- finding a website ----------
