@@ -2726,7 +2726,7 @@ class MainActivity : Activity() {
             val next = waiting.take(8)
             waiting.subList(0, next.size).clear()
             if (next.isNotEmpty()) (results.parent as? View)?.visibility = View.VISIBLE
-            next.forEach { s -> results.addView(siteRow(s, onPick), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = Ui.dp(this, 8) }) }
+            next.forEach { s -> results.addView(siteRow(s, onPick), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = Ui.dp(this@MainActivity, 8) }) }
             shownCount += next.size
             more.visibility = if (waiting.isNotEmpty() || !done) View.VISIBLE else View.GONE
         }
@@ -3876,9 +3876,9 @@ class MainActivity : Activity() {
  * scrolls, a drag on it moves its own list (while it can), not the whole sheet.
  */
 private class CappedScroll(ctx: Context, private val maxPx: Int) : android.widget.ScrollView(ctx) {
-    init { isNestedScrollingEnabled = true; isVerticalScrollBarEnabled = true; overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS }
+    init { isNestedScrollingEnabled = true; isVerticalScrollBarEnabled = true; overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS }
     override fun onMeasure(widthSpec: Int, heightSpec: Int) =
-        super.onMeasure(widthSpec, MeasureSpec.makeMeasureSpec(maxPx, MeasureSpec.AT_MOST))
+        super.onMeasure(widthSpec, View.MeasureSpec.makeMeasureSpec(maxPx, View.MeasureSpec.AT_MOST))
     private var lastY = 0f
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
         when (ev.actionMasked) {
