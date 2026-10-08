@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bar"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/toolbar_height"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="2dp"
+        android:paddingEnd="2dp">
+
+        <ImageButton android:id="@+id/back" style="@style/ToolButton"
+            android:contentDescription="Back" android:src="@drawable/ic_back" />
+        <ImageButton android:id="@+id/forward" style="@style/ToolButton"
+            android:contentDescription="Forward" android:src="@drawable/ic_forward" />
+        <ImageButton android:id="@+id/reload" style="@style/ToolButton"
+            android:contentDescription="Reload" android:src="@drawable/ic_reload" />
+        <ImageButton android:id="@+id/home" style="@style/ToolButton"
+            android:contentDescription="Home" android:src="@drawable/ic_home" />
+
+        <!-- The open site's name, just for reading: sites are opened from the home page tiles. -->
+        <TextView
+            android:id="@+id/pageTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:textColor="@color/ink"
+            android:textSize="@dimen/title_size"
+            android:textStyle="bold" />
+
+        <!-- Check the list now (not the same as Reload, which reloads the page). -->
+        <ImageButton android:id="@+id/listCheck" style="@style/ToolButton"
+            android:contentDescription="Check the list now" android:src="@drawable/ic_list_check" />
+
+        <ImageButton android:id="@+id/menu" style="@style/ToolButton"
+            android:layout_marginStart="2dp"
+            android:contentDescription="More options" android:src="@drawable/ic_menu" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/updateBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/update"
+        android:paddingStart="@dimen/edge"
+        android:paddingTop="10dp"
+        android:paddingEnd="@dimen/edge"
+        android:paddingBottom="10dp"
+        android:textColor="@color/bar"
+        android:textSize="14sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:paddingStart="@dimen/edge"
+        android:paddingEnd="@dimen/edge"
+        android:paddingBottom="6dp"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:textColor="@color/muted"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <!-- "This page is in Hebrew · Translate": offered when a page isn't in the phone's language. -->
+    <LinearLayout
+        android:id="@+id/translateBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/edge"
+        android:paddingEnd="4dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/translateBarIcon"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginEnd="10dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_d_translate" />
+
+        <TextView
+            android:id="@+id/translateBarText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="?android:attr/selectableItemBackground"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/translateBarAction"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:gravity="center"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:text="Translate"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/translateBarClose"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Close"
+            android:scaleType="center"
+            android:src="@drawable/ic_d_x" />
+    </LinearLayout>
+
+    <!-- "Parts of this page were blocked": embedded content (a video, a map) from a site that isn't allowed here. -->
+    <LinearLayout
+        android:id="@+id/frameNote"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/edge"
+        android:paddingEnd="4dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/frameNoteText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/frameNoteAsk"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:gravity="center"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:text="Ask"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/frameNoteClose"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Close"
+            android:scaleType="center"
+            android:src="@drawable/ic_d_x" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <WebView
+            android:id="@+id/web"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- How far a page has loaded: a thin bar over the top of the page while it opens. -->
+        <View
+            android:id="@+id/loadBar"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:layout_gravity="top"
+            android:visibility="gone" />
+    </FrameLayout>
+</LinearLayout>
