@@ -3091,7 +3091,9 @@ function phoneScreen() {
       pinMode === 'own' ? h('button', { type: 'button', class: 'btn s sm', onclick: () => open({ name: 'approvalpin', scope: id }) }, 'Change its PIN') : null,
       pinMode === 'none' ? null : pinsHere(id),
       locked ? h('p', { class: 'warn' }, `Locked after 5 wrong PINs, until ${new Date(d.pinLockedUntil).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. `,
-        h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlock', onclick: () => unlockPin(id) }, 'Unlock')) : null),
+        h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlock', onclick: () => unlockPin(id) }, 'Unlock'))
+        : h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlockAny', onclick: () => unlockPin(id) }, 'Unlock PIN approvals on this phone'),
+      locked ? null : h('p', { class: 'hint', style: 'margin:0' }, 'If the phone says PIN approval is locked, this unlocks it (it picks it up within a few minutes).')),
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Ads'), ads),
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Filters'), ...filterRows,
       h('p', { class: 'hint', style: 'margin:0' }, 'Usual follows Settings → Filters.')),
@@ -3114,6 +3116,7 @@ function unlockPin(id) {
   const d = S.D.devices[id];
   if (!d) return;
   delete d.pinLockedUntil; delete d.pinFails;
+  d.pinUnlocks = (Number(d.pinUnlocks) || 0) + 1;         // (clears a lock the phone itself remembers, too)
   markDevices(); saveAll();
   say(`PIN approvals unlocked on ${d.name || id}. The phone picks it up within a few minutes.`);
 }
@@ -3128,7 +3131,8 @@ function readOnlyPart(d, locked, M) {
       row('Content filters', filters.length ? filters.join(', ') : 'Usual'),
       row('Approving with a PIN', d.approvalPin === 'none' ? 'Off on this phone' : canDo('pin') ? 'On: your own PIN works here (Settings → Your account)' : 'On')),
     locked ? h('p', { class: 'warn' }, `PIN approvals are locked after 5 wrong PINs, until ${new Date(d.pinLockedUntil).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. `,
-      M ? h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlock', onclick: () => unlockPin(Object.keys(S.D.devices).find(k => S.D.devices[k] === d)) }, 'Unlock') : null) : null];
+      M ? h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlock', onclick: () => unlockPin(Object.keys(S.D.devices).find(k => S.D.devices[k] === d)) }, 'Unlock') : null)
+      : M ? h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlockAny', style: 'align-self:flex-start', onclick: () => unlockPin(Object.keys(S.D.devices).find(k => S.D.devices[k] === d)) }, 'Unlock PIN approvals on this phone') : null];
 }
 // The main admin: every PIN that works on a phone (yours, and each helper's who looks after it).
 function pinsHere(id) {

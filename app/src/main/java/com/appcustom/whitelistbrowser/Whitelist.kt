@@ -75,6 +75,7 @@ object Whitelist {
         val logRequested: Long = 0L,                       // the admin page asked for this phone's log (when)
         val adminPhone: Boolean = false,                   // an admin phone (phone notifications; set on the admin page)
         val pinLockedUntil: Long = 0L,                     // PIN approvals locked until (5 wrong PINs)
+        val pinUnlocks: Int = 0,                           // times an admin pressed Unlock for this phone (clears its own lock too)
         // Embedded content allowed on a site: site -> sites whose content may show inside its pages
         // (a list's "embeds", approved from a request after the phone blocked it).
         val embeds: Map<String, List<String>> = emptyMap(),
@@ -300,6 +301,7 @@ object Whitelist {
             trackers = b.optBoolean("trackers", true),
             logRequested = device?.optLong("logRequested", 0L) ?: 0L,
             adminPhone = device?.optBoolean("admin", false) ?: false,
+            pinUnlocks = device?.optInt("pinUnlocks", 0) ?: 0,
             pinLockedUntil = device?.optString("pinLockedUntil")?.takeIf { it.isNotBlank() }?.let { t ->
                 runCatching { java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
                     .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.parse(t.take(19))!!.time }.getOrNull() } ?: 0L,
@@ -336,6 +338,99 @@ object Whitelist {
         }
     }
 
+    // ---- Quick checks: the newest lists straight from the repository, instead of waiting for GitHub Pages ----
+    // GitHub Pages takes a minute or two to rebuild after each change, and can then hand out an older copy for up to
+    // 10 minutes. Instead, the phone asks GitHub which version of the public repository is newest (a tiny request;
+    // "nothing new" answers don't count against GitHub's hourly allowance), and only when there's something new
+    // downloads its bundle at exactly that version. Spaced by how many phones there are (all phones share one
+    // hourly allowance, with the admin pages), and if GitHub says no (allowance used up, a hiccup, a blocked
+    // address), it falls back to GitHub Pages as before: never worse than that.
+    private sealed class Quick {
+        object Same : Quick()                                // nothing new since the version this phone has
+        class Newer(val sha: String) : Quick()               // something new: this version
+        object Skip : Quick()                                // too soon to ask again (and it was fine moments ago)
+        object Unavailable : Quick()                         // can't ask now: use GitHub Pages
+    }
+    private const val QUICK_SHARE_PER_HOUR = 3000            // of GitHub's 5,000: room left for requests and admin pages
+
+    /** How long between quick checks: 1 minute, longer with many phones (so together they stay inside the allowance). */
+    fun quickGapMs(ctx: Context): Long {
+        val phones = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt("phoneCount", 1).coerceAtLeast(1)
+        return (phones * 3_600_000L / QUICK_SHARE_PER_HOUR).coerceIn(60_000L, 20 * 60_000L)
+    }
+    /** Are quick checks working (not waiting after GitHub said no)? The app then checks every [quickGapMs]. */
+    fun quickOn(ctx: Context) = System.currentTimeMillis() >= ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("quickBackoffUntil", 0L)
+
+    /** Asks GitHub for the public repository's newest version. [eager]: right after a request, ask anyway. */
+    private fun quickCheck(ctx: Context, eager: Boolean): Quick {
+        val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        if (now < p.getLong("quickBackoffUntil", 0L)) return Quick.Unavailable
+        val loaded = p.getString("quickLoadedSha", null)
+        if (!eager && now - p.getLong("quickAskedAt", 0L) < quickGapMs(ctx) - 2_000L) {
+            // Too soon: what this phone has was confirmed newest moments ago, so nothing to do.
+            return if (loaded != null && now - p.getLong("quickOkAt", 0L) < 15 * 60_000L) Quick.Skip else Quick.Unavailable
+        }
+        p.edit().putLong("quickAskedAt", now).apply()
+        val backoff = { minutes: Long, why: String ->
+            AppLog.w("Lists", "Quick check off for $minutes minutes ($why): using GitHub Pages")
+            p.edit().putLong("quickBackoffUntil", now + minutes * 60_000L).apply()
+            Quick.Unavailable
+        }
+        val conn = runCatching { URL("https://api.github.com/repos/${Config.GITHUB_REPO}/commits/HEAD").openConnection() as HttpURLConnection }
+            .getOrElse { return backoff(5L, it.javaClass.simpleName) }
+        try {
+            conn.connectTimeout = 8_000; conn.readTimeout = 8_000
+            conn.useCaches = false
+            conn.setRequestProperty("Accept", "application/vnd.github.sha")
+            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+            conn.setRequestProperty("User-Agent", "WhitelistBrowser/${BuildConfig.VERSION_NAME}")
+            // (With the app's token: its allowance is far bigger. If the token can't be used for this, without it.)
+            val noAuth = p.getBoolean("quickNoAuth", false)
+            if (!noAuth) runCatching { BuildConfig.REQUESTS_TOKEN_REV.reversed() }.getOrNull()?.takeIf { it.isNotBlank() && !it.startsWith("__") }
+                ?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
+            val etag = p.getString("quickEtag", null)
+            val known = p.getString("quickSha", null)
+            if (etag != null && known != null) conn.setRequestProperty("If-None-Match", etag)
+            val code = conn.responseCode
+            val left = conn.getHeaderField("X-RateLimit-Remaining")?.toIntOrNull()
+            return when {
+                code == 304 && known != null -> {
+                    p.edit().putLong("quickOkAt", now).apply()
+                    if (known == loaded) Quick.Same else Quick.Newer(known)
+                }
+                code == 200 -> {
+                    val sha = conn.inputStream.bufferedReader().use { it.readText() }.trim()
+                    if (!Regex("^[0-9a-f]{40}$").matches(sha)) return backoff(5L, "an odd answer")
+                    p.edit().putString("quickSha", sha).putString("quickEtag", conn.getHeaderField("ETag")).putLong("quickOkAt", now).apply()
+                    // Getting low (other phones, the admin pages): leave the rest for requests for a while.
+                    if (left != null && left < 500) p.edit().putLong("quickBackoffUntil", now + 30 * 60_000L).apply()
+                    if (sha == loaded) Quick.Same else Quick.Newer(sha)
+                }
+                code == 403 || code == 429 -> if (left == 0 || code == 429) backoff(30L, "GitHub's allowance used up for now")
+                    else if (!noAuth) { p.edit().putBoolean("quickNoAuth", true).apply(); backoff(1L, "GitHub said $code with the token") }
+                    else backoff(360L, "GitHub said $code")
+                code == 401 -> if (!noAuth) { p.edit().putBoolean("quickNoAuth", true).apply(); backoff(1L, "the token wasn't accepted") } else backoff(360L, "GitHub said 401")
+                else -> backoff(5L, "GitHub said $code")
+            }
+        } catch (e: Exception) {
+            return backoff(5L, e.javaClass.simpleName)
+        } finally { conn.disconnect() }
+    }
+
+    /**
+     * This phone's bundle at exactly version [sha], straight from the repository. Throws on any failure, including
+     * "not there" (then GitHub Pages decides: a phone never loses its lists over a quick download that didn't work).
+     */
+    private fun fetchAt(sha: String, path: String): String {
+        val conn = URL("https://raw.githubusercontent.com/${Config.GITHUB_REPO}/$sha/docs/$path").openConnection() as HttpURLConnection
+        try {
+            conn.connectTimeout = 10_000; conn.readTimeout = 10_000
+            if (conn.responseCode != 200) throw IOException("List fetch failed: HTTP ${conn.responseCode}")
+            return conn.inputStream.bufferedReader().use { it.readText() }
+        } finally { conn.disconnect() }
+    }
+
     /** This phone's sealed bundle couldn't be opened (its key changed): it registers its key again. */
     @Volatile var keyMismatch = false
 
@@ -345,9 +440,28 @@ object Whitelist {
      * from its ID, without showing it) with its settings and every list it uses. No bundle yet: the phone
      * isn't set up, so it opens nothing until it is (its registration, with its key, makes one).
      */
-    fun refresh(ctx: Context) {
+    fun refresh(ctx: Context, eager: Boolean = false) {
         val id = Device.id(ctx)
-        val sealed = fetch("${Config.PAGES_BASE}p/${Seal.bundleName(id)}.json")
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val path = "p/${Seal.bundleName(id)}.json"
+        // Quickly, straight from the repository when it can; else GitHub Pages, as before.
+        val quick = quickCheck(ctx, eager)
+        if (quick is Quick.Same) {                           // nothing new: the lists stay as they are (just checked)
+            val now = System.currentTimeMillis()
+            state = state.copy(updatedAt = now)
+            prefs.edit().putLong("fetchedAt", now).apply()
+            return
+        }
+        if (quick is Quick.Skip) return                      // checked moments ago
+        var quickSha: String? = null
+        var sealed: String? = null
+        var viaPages = true
+        if (quick is Quick.Newer) {
+            val got = runCatching { fetchAt(quick.sha, path) }
+            if (got.isSuccess) { sealed = got.getOrNull(); quickSha = quick.sha; viaPages = false }
+            else AppLog.w("Lists", "Quick download failed (${got.exceptionOrNull()?.message}): using GitHub Pages")
+        }
+        if (viaPages) sealed = fetch("${Config.PAGES_BASE}$path")
         val opened = sealed?.let {
             runCatching { Seal.open(JSONObject(it)) }.getOrElse { e ->
                 if (e is org.json.JSONException) throw IOException("The lists file is broken") // keep the old lists
@@ -355,6 +469,14 @@ object Whitelist {
             }
         }
         if (opened != null) keyMismatch = false
+        // Never back to an older copy (GitHub Pages can lag behind what a quick check already got).
+        val at = opened?.optLong("at", 0L) ?: 0L
+        if (opened != null && at < prefs.getLong("bundleAt", 0L)) { AppLog.i("Lists", "An older copy of the lists: kept the newer one"); return }
+        if (opened != null) {
+            val e = prefs.edit().putLong("bundleAt", at).putInt("phoneCount", opened.optInt("count", 1).coerceAtLeast(1))
+            if (quickSha != null) e.putString("quickLoadedSha", quickSha)
+            e.apply()
+        }
         val devices = opened?.optJSONObject("phones")
         val listData = opened?.optJSONObject("lists") ?: JSONObject()
         val device = devices?.optJSONObject("devices")?.optJSONObject(id)

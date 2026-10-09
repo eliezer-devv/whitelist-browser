@@ -1277,7 +1277,7 @@ class MainActivity : Activity() {
         io.execute {
             val before = Whitelist.state
             val error = try {
-                Whitelist.refresh(applicationContext); null
+                Whitelist.refresh(applicationContext, eager = fast || checkingByHand); null
             } catch (e: Exception) {
                 e.message ?: e.javaClass.simpleName
             }
@@ -1303,7 +1303,10 @@ class MainActivity : Activity() {
                 if (HomePage.isHome(web.url) && !Whitelist.state.sameContent(before)) web.reload()
                 enforceCurrent()
                 updateUi()
-                if (isResumedNow) main.postDelayed(refreshTask, if (fast) 20_000L else Whitelist.state.refreshMinutes * 60_000L)
+                // (Quick checks working: every minute or so, more apart with many phones; else every few minutes, as before.)
+                val normal = Whitelist.state.refreshMinutes * 60_000L
+                if (isResumedNow) main.postDelayed(refreshTask, if (fast) 20_000L
+                    else if (Whitelist.quickOn(applicationContext)) minOf(normal, Whitelist.quickGapMs(applicationContext)) else normal)
                 // Online: send anything waiting (a registration, requests made offline), and check in
                 // so the phone isn't archived as unused (every 12 hours at most).
                 if (error == null) {

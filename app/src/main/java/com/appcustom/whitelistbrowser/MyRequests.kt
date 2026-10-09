@@ -162,7 +162,9 @@ object MyRequests {
         // The lock noted here from GitHub's answer counts only until the lists have caught up with it (a few minutes):
         // after that the lists decide, so unlocking it on the admin page works.
         val noted = p.getLong("pinLockNotedAt", 0L)
-        val here = if (noted > 0L && Whitelist.state.updatedAt > noted + 4 * 60_000L) 0L else p.getLong("pinLockedUntil", 0L)
+        // An admin pressed Unlock since this phone noted its lock: unlocked, whatever else this phone remembers.
+        val unlocked = Whitelist.state.pinUnlocks > p.getInt("pinUnlocksSeen", 0)
+        val here = if (unlocked || (noted > 0L && Whitelist.state.updatedAt > noted + 4 * 60_000L)) 0L else p.getLong("pinLockedUntil", 0L)
         return maxOf(here, Whitelist.state.pinLockedUntil).takeIf { it > System.currentTimeMillis() } ?: 0L
     }
 
@@ -190,7 +192,8 @@ object MyRequests {
                         if (answer.second.contains("PIN approvals are now locked")) {
                             ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                                 .putLong("pinLockedUntil", System.currentTimeMillis() + 24 * 3_600_000L)
-                                .putLong("pinLockNotedAt", System.currentTimeMillis()).apply()
+                                .putLong("pinLockNotedAt", System.currentTimeMillis())
+                                .putInt("pinUnlocksSeen", Whitelist.state.pinUnlocks).apply()
                         }
                         if (o.optString("message") != answer.second || o.optBoolean("pinChecking")) {
                             // e.g. "Wrong PIN": it can be ticked again in approval mode.

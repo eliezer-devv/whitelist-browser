@@ -595,14 +595,25 @@ signing in to the admin page on their phone.
   requests.
 
 ### How quickly changes reach the phone
-A change goes through a short relay: GitHub's automation checks and saves it (about a minute after you tap Save or
-answer on the admin page), seals each phone's lists into the public repository, and GitHub Pages publishes them
-(**Publish list**, another 30 to 60 seconds). So it's live about **1 to 3 minutes** after you tap. Then the phone has
+A change goes through a short relay: GitHub's automation checks and saves it (about half a minute to a minute after
+you tap Save or answer on the admin page), and seals each phone's lists into the public repository. Then the phone has
 to check:
+- **Quick checks (usually):** while the app is open, the phone asks GitHub every minute or so whether anything is new
+  (a tiny question; "nothing new" answers are free), and when something is, downloads its lists **straight from the
+  repository**, at exactly that version. So a change reaches the phone **within about a minute** of being saved.
+  - **With many phones, they ask less often** (each phone learns how many there are with its lists): every minute up
+    to about 50 phones, every 2 minutes with 100, every 4 with 200, and so on (at most every 20 minutes), so all of
+    them together stay well inside GitHub's hourly allowance, which the requests and admin pages share.
+  - **If GitHub says no** (allowance used up, a hiccup, a network that blocks it), the phone goes back to GitHub
+    Pages, as below, for a while: never slower than before. And it never goes back to an older copy of its lists.
+- **GitHub Pages (the fallback):** **Publish list** puts the lists on GitHub Pages too (another 30 to 60 seconds, and
+  Pages can hand out an older copy for a few minutes more), so through Pages it's live about **1 to 3 minutes** after
+  you tap, and the phone checks:
 - **After sending a request,** the phone checks every **20 seconds** for the next 10 minutes (and for a few more minutes
   once an approval arrives), so an approved site opens within moments of being published.
 - **Otherwise,** it checks every few minutes while the app is open (**List settings** → **Phones check for changes
-  every**; the files are tiny, so 1 or 2 minutes is fine), and straight away whenever the app is opened.
+  every**; the files are tiny, so 1 or 2 minutes is fine; with quick checks working, it's the shorter of this and the
+  quick-check spacing), and straight away whenever the app is opened.
 - **To check now,** tap the list button (a list with a tick) in the top bar.
 
 ### How the person who asked hears back
@@ -935,7 +946,7 @@ into the app (below). It never needs a GitHub token.
 - **Not saved: tap for details** (in red) means it was refused, with why: tap it for **Try again** or **Start over**
   (reload everything from GitHub). The usual reason is that the list or the phones changed meanwhile (a request was
   approved, say): **Start over**, then redo the edit.
-- **Phones pick changes up** within a few minutes of **Saved**.
+- **Phones pick changes up** within about a minute of **Saved** while their app is open (see [How quickly changes reach the phone](#how-quickly-changes-reach-the-phone)).
 - **Your account and Admins save by themselves:** a switch (notifications, say), a PIN, or a change to an admin shows
   at once, and the same **Saving…** pill shows it going to GitHub; you can carry on, or leave the screen. If GitHub
   refuses it, the page says why and shows what's really saved.
