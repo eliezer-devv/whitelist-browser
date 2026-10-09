@@ -130,20 +130,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: v1.0.${{ github.run_number }}
         run: |
-          # "Re-run" of a build reuses its number: replace that release's APK instead of failing.
+          # Both apps in the same release, each under its own name: whitelist-browser.apk (the browser) and
+          # whitelist-admin.apk (Whitelist Admin). Each app updates only from the file with its own name. The
+          # browser goes in first, so older phones (which take the first app file they find) still get the browser.
+          # "Re-run" of a build reuses its number: that release's files are replaced instead.
           if gh release view "$VERSION" >/dev/null 2>&1; then
             gh release upload "$VERSION" whitelist-browser.apk --clobber
           else
             gh release create "$VERSION" whitelist-browser.apk \
-              --title "Version ${VERSION#v}" --notes "Built from ${GITHUB_SHA::7}." --latest
+              --title "Version ${VERSION#v}" --notes "Built from ${GITHUB_SHA::7}. whitelist-browser.apk: the browser (for the phones). whitelist-admin.apk: Whitelist Admin (the admin app)." --latest
           fi
-          # The admin app: its own release ("admin-app"), always the newest, so the browser never picks it up as
-          # its update (and the admin app updates from here). Its download link never changes:
-          # https://github.com/<you>/<repo>/releases/download/admin-app/whitelist-admin.apk
-          if gh release view admin-app >/dev/null 2>&1; then
-            gh release upload admin-app whitelist-admin.apk --clobber
-            gh release edit admin-app --title "Whitelist Admin ${VERSION#v}" --latest=false
-          else
-            gh release create admin-app whitelist-admin.apk --title "Whitelist Admin ${VERSION#v}" --latest=false \
-              --notes "The admin app (just the admin page). Install it on the phones of the people who manage Whitelist Browser."
-          fi
+          gh release upload "$VERSION" whitelist-admin.apk --clobber
+          # (The admin app had its own release, "admin-app", for a while: not needed any more.)
+          if gh release view admin-app >/dev/null 2>&1; then gh release delete admin-app --yes --cleanup-tag || true; fi
