@@ -1,0 +1,58 @@
+name: Release to everyone
+
+# Releases the newest TEST build (made by Build APK) to every phone: no rebuild, so everyone gets exactly what
+# was tested. Actions tab > Release to everyone > Run workflow. (To release an older test build, type its version.)
+# The admin web page follows too: the version from that build becomes the one at admin.html (until then, the
+# newest one is at admin-test.html, to try it out).
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Which test build (e.g. 1.0.57). Empty: the newest.'
+        type: string
+        default: ''
+
+permissions:
+  contents: write   # the release, and the admin page's released copy
+  actions: write    # to publish the web page afterwards
+
+concurrency:
+  group: build-apk
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Release it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WANT: ${{ inputs.version }}
+        run: |
+          if [ -n "$WANT" ]; then tag="v${WANT#v}"
+          else tag="$(gh release list --limit 30 --json tagName,isPrerelease,createdAt --jq '[.[] | select(.isPrerelease)] | sort_by(.createdAt) | last | .tagName')"; fi
+          if [ -z "$tag" ] || [ "$tag" = "null" ]; then echo "::error::No test build to release. Run Build APK first."; exit 1; fi
+          if [ "$(gh release view "$tag" --json isPrerelease --jq .isPrerelease)" != "true" ]; then
+            echo "::notice::$tag is already released to everyone."; echo "TAG=$tag" >> "$GITHUB_ENV"; exit 0; fi
+          gh release edit "$tag" --prerelease=false --latest --title "Version ${tag#v}" \
+            --notes "whitelist-browser.apk: the browser (for the phones). whitelist-for-admins.apk: Whitelist Admin (the admin app). Tested, then released to everyone."
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          echo "::notice::$tag is released to everyone: phones update within a few hours (or straight away from ⋮ > Settings > App update)."
+      # The admin web page: the copy from that build becomes the released one (admin.html on the web).
+      - name: Release the admin page with it
+        run: |
+          git fetch --quiet --tags
+          if git show "$TAG:docs/admin.html" > /tmp/admin.html 2>/dev/null; then
+            cp /tmp/admin.html docs/admin-live.html
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add docs/admin-live.html
+            git diff --cached --quiet || { git commit -m "Release the admin page with $TAG"; git push; }
+          fi
+      - name: Publish the web page
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml || echo "::warning::Run Publish list by hand to update the admin web page."

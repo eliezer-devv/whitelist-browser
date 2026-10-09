@@ -1,9 +1,16 @@
 name: Build APK
 
 # Runs when the app code changes, or manually: Actions tab > Build APK > Run workflow.
-# Each run publishes a new release (v1.0.<run number>) that the app's updater finds.
+# Each run publishes a new release (v1.0.<run number>) with both apps. Normally a TEST build: a pre-release, which
+# only phones with "Get test versions" on update to. When it's good: Actions > "Release to everyone" > Run workflow,
+# and every phone updates to exactly that build. (Run by hand, it can go straight to everyone instead.)
 on:
   workflow_dispatch:
+    inputs:
+      everyone:
+        description: 'Release straight to everyone (skip testing)'
+        type: boolean
+        default: false
   push:
     branches: [main]
     # docs/admin.html too: it's packed into the app (the hidden in-app admin).
@@ -123,23 +130,29 @@ jobs:
         run: |
           gradle assembleRelease
           cp app/build/outputs/apk/browser/release/app-browser-release.apk whitelist-browser.apk
-          cp app/build/outputs/apk/admin/release/app-admin-release.apk whitelist-admin.apk
+          cp app/build/outputs/apk/admin/release/app-admin-release.apk whitelist-for-admins.apk
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: v1.0.${{ github.run_number }}
+          EVERYONE: ${{ inputs.everyone == true }}
         run: |
           # Both apps in the same release, each under its own name: whitelist-browser.apk (the browser) and
-          # whitelist-admin.apk (Whitelist Admin). Each app updates only from the file with its own name. The
-          # browser goes in first, so older phones (which take the first app file they find) still get the browser.
-          # "Re-run" of a build reuses its number: that release's files are replaced instead.
+          # whitelist-for-admins.apk (Whitelist Admin). Each app updates only from the file with its own name.
+          # Older browsers took the FIRST app file in the release, so the browser's must come first: GitHub lists
+          # them by name (b before f), and the browser's is also uploaded last (in case it lists newest first).
+          # A test build is a pre-release: phones only ever update from the newest normal release, except those
+          # with "Get test versions" on. "Re-run" of a build reuses its number: that release's files are replaced.
+          NOTES="whitelist-browser.apk: the browser (for the phones). whitelist-for-admins.apk: Whitelist Admin (the admin app)."
           if gh release view "$VERSION" >/dev/null 2>&1; then
-            gh release upload "$VERSION" whitelist-browser.apk --clobber
+            gh release upload "$VERSION" whitelist-for-admins.apk --clobber
+          elif [ "$EVERYONE" = "true" ]; then
+            gh release create "$VERSION" whitelist-for-admins.apk --latest --title "Version ${VERSION#v}" --notes "Built from ${GITHUB_SHA::7}. $NOTES"
           else
-            gh release create "$VERSION" whitelist-browser.apk \
-              --title "Version ${VERSION#v}" --notes "Built from ${GITHUB_SHA::7}. whitelist-browser.apk: the browser (for the phones). whitelist-admin.apk: Whitelist Admin (the admin app)." --latest
+            gh release create "$VERSION" whitelist-for-admins.apk --prerelease --title "Test ${VERSION#v}" \
+              --notes "TEST BUILD from ${GITHUB_SHA::7}: only phones with \"Get test versions\" get it. When it's good: Actions > Release to everyone. $NOTES"
           fi
-          gh release upload "$VERSION" whitelist-admin.apk --clobber
+          gh release upload "$VERSION" whitelist-browser.apk --clobber
           # (The admin app had its own release, "admin-app", for a while: not needed any more.)
           if gh release view admin-app >/dev/null 2>&1; then gh release delete admin-app --yes --cleanup-tag || true; fi
