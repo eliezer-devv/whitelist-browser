@@ -37,7 +37,7 @@
   if (location.hostname.endsWith('.github.io')) {
     const owner = location.hostname.split('.')[0], repo = location.pathname.split('/')[1];
     document.getElementById('apk').href = `https://github.com/${owner}/${repo}/releases/latest/download/whitelist-browser.apk`;
-    document.getElementById('adminApk').href = `https://github.com/${owner}/${repo}/releases/download/admin-app/whitelist-admin.apk`;
+    document.getElementById('adminApk').href = `https://github.com/${owner}/${repo}/releases/latest/download/whitelist-admin.apk`;
   }
 </script>
 </body>

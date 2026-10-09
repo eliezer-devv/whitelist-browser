@@ -28,23 +28,21 @@ object Updater {
     /** Newest published release, or null if there isn't one. Blocking. */
     fun fetchLatest(): Release? {
         val repo = repo() ?: throw IOException("Set GITHUB_USERNAME in Config.kt")
-        // The browser: the newest release (whitelist-browser.apk). The admin app: its own release, "admin-app"
-        // (whitelist-admin.apk), so a browser never picks up the admin app, or the other way round.
-        val conn = open(if (BuildConfig.ADMIN_APP) "https://api.github.com/repos/$repo/releases/tags/admin-app"
-            else "https://api.github.com/repos/$repo/releases/latest")
+        // The newest release holds both apps, each under its own name: each app takes only its own file
+        // (whitelist-browser.apk or whitelist-admin.apk), so neither can ever pick up the other.
+        val conn = open("https://api.github.com/repos/$repo/releases/latest")
         conn.setRequestProperty("Accept", "application/vnd.github+json")
         try {
             if (conn.responseCode == 404) return null
             if (conn.responseCode != 200) throw IOException("GitHub returned ${conn.responseCode}")
             val o = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
-            // The version: in the tag (v1.0.42), or for the admin app in the release's name ("Whitelist Admin 1.0.42").
-            val label = if (BuildConfig.ADMIN_APP) o.optString("name") else o.getString("tag_name")
+            val label = o.getString("tag_name")                     // e.g. v1.0.42
             val code = Regex("(\\d+)$").find(label.trim())?.value?.toIntOrNull() ?: return null
             val version = Regex("(\\d+\\.\\d+\\.\\d+)$").find(label.trim())?.value ?: "1.0.$code"
             val want = if (BuildConfig.ADMIN_APP) "whitelist-admin.apk" else "whitelist-browser.apk"
             val assets = o.getJSONArray("assets")
             val all = (0 until assets.length()).map { assets.getJSONObject(it) }.filter { it.getString("name").endsWith(".apk") }
-            val apk = all.firstOrNull { it.getString("name") == want } ?: all.firstOrNull().takeIf { !BuildConfig.ADMIN_APP } ?: return null
+            val apk = all.firstOrNull { it.getString("name") == want } ?: return null       // only its own file, never the other app
             return Release(code, version, apk.getString("browser_download_url"))
         } finally {
             conn.disconnect()

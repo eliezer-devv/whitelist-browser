@@ -1090,14 +1090,15 @@ The same admin page is built into the app, so you can manage everything from the
 A separate app that's **just the admin page**, for the people who manage Whitelist Browser (you, and helper admins)
 on their own phones. It's built from the same code, every time **Build APK** runs.
 - **Get it:** the status page's **Download the admin app**, or
-  `https://github.com/YOUR_USERNAME/whitelist-browser/releases/download/admin-app/whitelist-admin.apk`
+  `https://github.com/YOUR_USERNAME/whitelist-browser/releases/latest/download/whitelist-admin.apk`
   (always the newest). It has its own icon (the tick on a shield) and name, **Whitelist Admin**, and sits next to
   the browser if both are on one phone.
 - **It opens straight to the admin page:** sign in once (email, password, the emailed link), then a PIN or your
   fingerprint, the same as inside the browser. No browsing, no lists, and it doesn't ask for the camera,
   microphone or location.
-- **It updates itself** (every 6 hours at most, when it's opened), from its own release (**admin-app**), so the
-  browser never picks it up by mistake.
+- **It updates itself** (every 6 hours at most, when it's opened), from the same release as the browser. Each app
+  takes only the file with its own name (`whitelist-admin.apk` or `whitelist-browser.apk`), so neither can pick up
+  the other.
 - **Notifications on the phone:** in the admin app, **Settings** → **Your account** → **On this phone** (Android
   asks to allow them). New requests, messages and logs, and crashes, only for what that admin may see, sealed so only
   that app can read them. Within a minute while it's open, and every 15 minutes or so when it isn't. Tapping one opens
@@ -1163,8 +1164,8 @@ A new version is built whenever you commit a change to the app code (anything in
 - **Don't rename or delete the Build APK workflow.** Its run count is the version number, so starting over would make new versions look older.
 - **The download link always gives the newest version:**
   `https://github.com/YOUR_USERNAME/whitelist-browser/releases/latest/download/whitelist-browser.apk`
-- **Each build makes the admin app too** (`whitelist-admin.apk`, in the release named **admin-app**, which is
-  replaced each time). It's signed with the same key, and updates itself the same way. See
+- **Each build makes the admin app too:** every release has both files, `whitelist-browser.apk` (the browser) and
+  `whitelist-admin.apk` (Whitelist Admin), signed with the same key. Each app updates only from its own file. See
   [The admin app](#the-admin-app-whitelist-admin).
 
 ---
