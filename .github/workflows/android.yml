@@ -119,9 +119,11 @@ jobs:
           KEY_ALIAS: whitelist
           KEY_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           REQUESTS_TOKEN: ${{ secrets.REQUESTS_TOKEN }}
+        # Two apps from the same code: the browser (for the phones) and Whitelist Admin (just the admin page).
         run: |
           gradle assembleRelease
-          cp app/build/outputs/apk/release/app-release.apk whitelist-browser.apk
+          cp app/build/outputs/apk/browser/release/app-browser-release.apk whitelist-browser.apk
+          cp app/build/outputs/apk/admin/release/app-admin-release.apk whitelist-admin.apk
 
       - name: Publish release
         env:
@@ -134,4 +136,14 @@ jobs:
           else
             gh release create "$VERSION" whitelist-browser.apk \
               --title "Version ${VERSION#v}" --notes "Built from ${GITHUB_SHA::7}." --latest
+          fi
+          # The admin app: its own release ("admin-app"), always the newest, so the browser never picks it up as
+          # its update (and the admin app updates from here). Its download link never changes:
+          # https://github.com/<you>/<repo>/releases/download/admin-app/whitelist-admin.apk
+          if gh release view admin-app >/dev/null 2>&1; then
+            gh release upload admin-app whitelist-admin.apk --clobber
+            gh release edit admin-app --title "Whitelist Admin ${VERSION#v}" --latest=false
+          else
+            gh release create admin-app whitelist-admin.apk --title "Whitelist Admin ${VERSION#v}" --latest=false \
+              --notes "The admin app (just the admin page). Install it on the phones of the people who manage Whitelist Browser."
           fi
