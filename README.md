@@ -936,6 +936,13 @@ into the app (below). It never needs a GitHub token.
   (reload everything from GitHub). The usual reason is that the list or the phones changed meanwhile (a request was
   approved, say): **Start over**, then redo the edit.
 - **Phones pick changes up** within a few minutes of **Saved**.
+- **Your account and Admins save by themselves:** a switch (notifications, say), a PIN, or a change to an admin shows
+  at once, and the same **Saving…** pill shows it going to GitHub; you can carry on, or leave the screen. If GitHub
+  refuses it, the page says why and shows what's really saved.
+- **Why saving takes a little while:** every change is done by GitHub's automation (that's what keeps it safe without
+  a server of your own), and GitHub takes about half a minute to start it. Nothing waits for it, though.
+- **The page keeps itself up to date** while it's open: every 45 seconds (and when you come back to it), it loads the
+  newest data, so a new request, a locked PIN or another admin's change shows without reloading.
 
 ### Admins: people who help (for you only)
 **Settings** → **Admins** lists everyone who can open the admin page. **Add an admin** for a teacher, say, who looks
@@ -1021,7 +1028,8 @@ One compact row per phone: its name, ID, lists and groups, and tags only when so
   after every phone in it, including phones added later.
 - **Tapping a phone** lets you change its **First name** and **Last name**, the **Lists it uses** (tap to switch each on
   or off), where its approved requests go, its **Groups**, its **Approval PIN** (Usual / Own PIN / None; after 5
-  wrong PINs it shows *Locked* with **Unlock**) with **PINs that work here** (yours, and each helper's who looks after
+  wrong PINs it shows *Locked* with **Unlock**, which saves at once; locked phones are also listed at the top of
+  **Phones**) with **PINs that work here** (yours, and each helper's who looks after
   it), **Ads** and **Filters** (Usual / On / Off), and **Admin phone** (every notification on that phone). A helper
   admin sees only what they're allowed to change; the rest shows under **Set by the main admin**. Then:
   - **Messages and logs:** messages its user sent you, and the app's logs (**Get log** asks the phone for one).
@@ -1338,6 +1346,11 @@ short description. Tapping one fills it in, ready to **Send**.
 - **8 at a time:** **Show more results** shows the next 8 (the next page is fetched ahead). The results scroll in
   their own box, so the rest of the sheet stays put.
 - **If DuckDuckGo doesn't answer** (after a second try), it says *"Couldn't search right now"*: try again in a moment.
+- **"Are you a person?"** DuckDuckGo has no fixed limit, but after many searches from one internet connection (phones
+  on the same Wi-Fi count together) it may ask to check a person is searching. The app then shows **DuckDuckGo's own
+  check** in a small window for the person to answer (the app never answers it itself); once it's passed, the search
+  carries on, and DuckDuckGo leaves that phone alone for a while. The window shows only that check: links in it go
+  nowhere, it isn't an approved site, and it closes by itself. **Cancel** stops the search.
   Searching the same words again within 15 minutes is instant.
 - **Icons** come from Google's public icon service (the site's first letter until it loads).
 
@@ -1473,7 +1486,7 @@ The app, its dialogs, the home page, the blocked page and the admin page all wor
 | Admin page: **Not saved** for another reason, or *"Not done"* on a GitHub issue | Open the private repo → **Actions** → the latest **Admin page** run → the **actions/github-script** step: a line *Not done (…)* says why (only you can see it). |
 | The admin page asks for the email check every time on the same device | That browser is deleting the page's saved data: a private/incognito window, or a setting that clears site data on closing. Use a normal window, and don't clear that site's data. |
 | A helper admin didn't get the invitation | Check their spam folder, then Settings → Admins → them → **Send the invitation again**. If no email goes at all, see *"Couldn't send the email"* above. |
-| Find sites says *"Couldn't search right now"* | DuckDuckGo didn't answer (or is limiting the phone for a while). Try again in a moment, or type the site's address. |
+| Find sites says *"Couldn't search right now"* | DuckDuckGo didn't answer (or is limiting the phone for a while, and its person check wasn't answered). Try again in a moment, or type the site's address. |
 
 ---
 

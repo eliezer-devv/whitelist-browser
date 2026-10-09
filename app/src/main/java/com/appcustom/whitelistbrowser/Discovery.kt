@@ -12,6 +12,13 @@ import java.net.URLEncoder
 object Discovery {
     data class Site(val domain: String, val name: String, val description: String)
 
+    /**
+     * DuckDuckGo wants to check a person is searching (too many searches from this internet connection). The app never
+     * answers it itself: the person does, in a small window showing DuckDuckGo's own check ([url]); then searching
+     * carries on, with the pass DuckDuckGo gives (a cookie, shared with that window).
+     */
+    class Challenge(val url: String) : java.io.IOException("asked to prove it's a person")
+
     private const val AGENT = "WhitelistBrowser/${BuildConfig.VERSION_NAME} (a family/school browser; site discovery)"
 
     /**
@@ -34,17 +41,32 @@ object Discovery {
     private fun pageFresh(q: String, page: Int): List<Site> {
         // Given time, and a second try.
         return runCatching { duckDuckGo(q, page) }
-            .recoverCatching { AppLog.w("Find", "DuckDuckGo didn't answer (${it.message}); trying again"); Thread.sleep(800); duckDuckGo(q, page) }
+            .recoverCatching { if (it is Challenge) throw it        // (trying again won't help: a person has to answer it)
+                AppLog.w("Find", "DuckDuckGo didn't answer (${it.message}); trying again"); Thread.sleep(800); duckDuckGo(q, page) }
             .onFailure { AppLog.w("Find", "DuckDuckGo didn't answer again (${it.message})") }
             .getOrThrow()
     }
 
     /** DuckDuckGo's plain (HTML) results page [page], as sites. Ads are left out. */
     private fun duckDuckGo(q: String, page: Int): List<Site> {
-        val html = get("https://html.duckduckgo.com/html/?q=${enc(q)}&kp=1&kl=wt-wt" + if (page > 0) "&s=${page * 30}&dc=${page * 30 + 1}" else "",
-            accept = "text/html", agent = BROWSER_AGENT)
-        if (html.contains("anomaly-modal") || html.contains("challenge-form")) throw java.io.IOException("asked to prove it's a person")
+        val url = searchUrl(q, page)
+        val html = get(url, accept = "text/html", agent = BROWSER_AGENT, cookies = true)
+        if (isChallenge(html)) throw Challenge(url)
         return parseDuckDuckGo(html)
+    }
+    private fun searchUrl(q: String, page: Int) =
+        "https://html.duckduckgo.com/html/?q=${enc(q)}&kp=1&kl=wt-wt" + if (page > 0) "&s=${page * 30}&dc=${page * 30 + 1}" else ""
+
+    /** Is this DuckDuckGo's "are you a person?" check (rather than results)? */
+    fun isChallenge(html: String) = html.contains("anomaly-modal") || html.contains("challenge-form")
+
+    /** Where the check window may go: DuckDuckGo's plain results page and its check, nothing else (not its full site). */
+    fun checkMayOpen(url: String): Boolean {
+        val u = runCatching { java.net.URI(url) }.getOrNull() ?: return false
+        val host = u.host?.lowercase() ?: return false
+        val path = u.path.orEmpty()
+        return u.scheme == "https" && (host == "html.duckduckgo.com" && (path.startsWith("/html") || path.startsWith("/anomaly") || path.startsWith("/t/")) ||
+            host == "duckduckgo.com" && (path.startsWith("/anomaly") || path.startsWith("/t/")))
     }
 
     /** Reads DuckDuckGo's results page: each result's site, title and snippet, in order, one per site. */
@@ -89,14 +111,18 @@ object Discovery {
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
     /** DuckDuckGo turns away apps that name themselves; its results page expects a browser. */
-    private const val BROWSER_AGENT = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+    const val BROWSER_AGENT = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
 
-    private fun get(url: String, accept: String = "application/json", agent: String = AGENT, connectMs: Int = 10_000, readMs: Int = 15_000): String {
+    private fun get(url: String, accept: String = "application/json", agent: String = AGENT, connectMs: Int = 10_000, readMs: Int = 15_000,
+                    cookies: Boolean = false): String {
         val c = URL(url).openConnection() as HttpURLConnection
         try {
             c.connectTimeout = connectMs; c.readTimeout = readMs
             c.setRequestProperty("User-Agent", agent)
             c.setRequestProperty("Accept", accept)
+            // DuckDuckGo's pass, once a person answered its check (kept by Android's web cookies, like a browser).
+            if (cookies) runCatching { android.webkit.CookieManager.getInstance().getCookie(url) }.getOrNull()
+                ?.takeIf { it.isNotBlank() }?.let { c.setRequestProperty("Cookie", it) }
             if (c.responseCode != 200) throw java.io.IOException("Search answered ${c.responseCode}")
             return c.inputStream.bufferedReader().use { it.readText() }
         } finally { c.disconnect() }

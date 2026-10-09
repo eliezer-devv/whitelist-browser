@@ -628,7 +628,7 @@ async function postCommand(sealed) {
 // Waits for the automation's answers on that issue (sealed for this device). onEach(result) returns true to stop.
 async function awaitAnswers(number, onEach, { minutes = 4, seen = new Set() } = {}) {
   const until = Date.now() + minutes * 60000;
-  for (let wait = window.__wlPoll || 6000; Date.now() < until; wait = window.__wlPoll || Math.min(wait + 1000, 8000)) {
+  for (let wait = window.__wlPoll || 3000; Date.now() < until; wait = window.__wlPoll || Math.min(wait + 500, 4000)) {
     await sleep(wait);
     let list;
     try {
@@ -830,14 +830,36 @@ async function refreshData(sha) {
   S.logFiles = null; S.otherLists = null;
   await loadInbox();
 }
+// Account and admin changes (notifications, PINs, admins…): shown here at once, saved in the background (the
+// "Saving…" pill), so nothing waits for GitHub. If GitHub refuses one, it says why, and shows what GitHub has.
+const CMDQ = { pending: 0 };
+function bg(cmd, okText, apply) {
+  if (apply) { try { apply(); } catch (e) { console.log(e); } }
+  CMDQ.pending++; renderSync(); render();
+  command(cmd).then(async r => {
+    if (!r.ok) throw new Error(r.error || 'It wasn\'t saved.');
+    QUEUE.savedAt = Date.now();
+    await refreshData(r.sha).catch(() => {});
+    if (r.warning) say(r.warning, true); else if (okText) say(r.msg || okText);
+  }).catch(async e => {
+    if (e.message === 'SIGNED_OUT') return;
+    say(e.message, true);
+    await refreshData().catch(() => {});               // (back to what GitHub has)
+  }).finally(() => {
+    CMDQ.pending--; renderSync();
+    // (Not while something's being typed: that would clear it.)
+    const a = document.activeElement;
+    if (!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'checkbox')) render();
+  });
+}
 // "Saving…" / "Saved" / "Not saved", at the top of every screen.
 function renderSync() {
   const el = $('syncPill');
   if (!el) return;
-  const busy = QUEUE.busy || QUEUE.ops.length;
+  const busy = QUEUE.busy || QUEUE.ops.length || CMDQ.pending;
   el.hidden = !(busy || QUEUE.failed || (QUEUE.savedAt && Date.now() - QUEUE.savedAt < 5000));
   el.className = QUEUE.failed ? 'bad' : busy ? 'busy' : 'ok';
-  el.replaceChildren(QUEUE.failed ? 'Not saved: tap for details' : busy ? 'Saving… (about a minute)' : 'Saved');
+  el.replaceChildren(QUEUE.failed ? 'Not saved: tap for details' : busy ? 'Saving…' : 'Saved');
   if (!busy && !QUEUE.failed && QUEUE.savedAt) setTimeout(renderSync, 5200);
 }
 async function showSaveProblem() {
@@ -1793,7 +1815,7 @@ function accountScreen() {
     h('div', { class: 'group', id: 'myDevices' }, devs.map(([did, d]) => h('div', { class: 'row' }, h('span', { class: 'ic' }, icon(did === dev ? 'check' : 'phone', 20)),
       h('span', { class: 'grow' }, h('span', { class: 't' }, d.name + (did === dev ? ' (this one)' : '')),
         h('span', { class: 's' }, `Since ${new Date(d.added).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}` + (d.lastUsed ? ` · last used ${ago(d.lastUsed)}` : ''))),
-      did === dev ? null : h('button', { type: 'button', class: 'btn d sm', onclick: e => runCommand(e.currentTarget, 'Removing…', { op: 'device-remove', device: did }, `${d.name} is signed out.`).then(() => render()) }, 'Sign out')))),
+      did === dev ? null : h('button', { type: 'button', class: 'btn d sm', onclick: () => bg({ op: 'device-remove', device: did }, `${d.name} is signed out.`, () => { delete ME.devices[did]; }) }, 'Sign out')))),
     h('p', { class: 'hint' }, 'Don\'t recognise one? Sign it out, and change your password.'),
     h('h2', { class: 'sec' }, 'Change password'),
     pwField('acOld', 'Current password', 'current-password'), pwField('acNew', 'New password', 'new-password'), pwField('acNew2', 'The same new password again', 'new-password'),
@@ -1819,11 +1841,11 @@ function myPinSection() {
     const a = $('myPin').value, b = $('myPin2').value;
     if (!/^\d{4,8}$/.test(a)) return say('The PIN needs 4 to 8 digits.', true);
     if (a !== b) { $('myPin2').value = ''; return say('The two PINs don\'t match. Type it again.', true); }
-    if (await runCommand(go, 'Saving… (up to a minute)', { op: 'setpin', pin: a }, 'Your PIN is set.')) render();
+    bg({ op: 'setpin', pin: a }, 'Your PIN is set. It works on your phones within a few minutes.', () => { ME.pin = { set: new Date().toISOString() }; });
   };
   const remove = h('button', { type: 'button', class: 'btn d sm', id: 'myPinRemove' }, 'Remove my PIN');
   remove.onclick = async () => { if (await uiConfirm('Remove your PIN?', 'You won\'t be able to approve on the phone until you set one again.', 'Remove', { icon: 'warn' }) &&
-    await runCommand(remove, 'Removing…', { op: 'setpin', pin: '' }, 'Your PIN is removed.')) render(); };
+    true) bg({ op: 'setpin', pin: '' }, 'Your PIN is removed.', () => { ME.pin = null; }); };
   const where = allPhonesAdmin() ? 'any phone' : `${plural(Object.keys(S.D.devices).length, 'phone')} you look after`;
   return [h('h2', { class: 'sec' }, 'Your approval PIN'),
     h('div', { class: 'card', style: 'gap:8px' },
@@ -1838,16 +1860,14 @@ function notifySection() {
   const n = (ME && ME.notify) || { phones: [], email: false, kinds: {} };
   const here = (() => { try { return INAPP && window.WLBAdmin && WLBAdmin.deviceId ? String(WLBAdmin.deviceId()) : null; } catch { return null; } })();
   const onHere = !!here && (n.phones || []).includes(here);
-  const save = async (el, cmd) => {
-    el.disabled = true;
-    try {
-      const r = await command({ op: 'notify', ...cmd });
-      if (!r.ok) throw new Error(r.error);
-      await refreshData(r.sha).catch(() => {});
-      say(cmd.phone && cmd.here ? 'Notifications are on for this phone. They start within a few minutes.' : 'Saved.');
-    } catch (e) { if (e.message !== 'SIGNED_OUT') say(e.message, true); }
-    render();
-  };
+  // Each switch saves by itself (no Save button): it shows at once, and the "Saving…" pill shows it going to GitHub.
+  const save = (el, cmd) => bg({ op: 'notify', ...cmd }, cmd.phone && cmd.here ? 'Notifications are on for this phone. They start within a few minutes.' : 'Notifications saved.', () => {
+    const next = { phones: [], email: false, kinds: {}, ...(ME.notify || {}) };
+    if ('email' in cmd) next.email = cmd.email;
+    if (cmd.kinds) next.kinds = cmd.kinds;
+    if (cmd.phone) next.phones = cmd.here ? [...new Set([...(next.phones || []), cmd.phone])] : (next.phones || []).filter(x => x !== cmd.phone);
+    ME.notify = next;
+  });
   const sw = (id, title, sub, on, onchange, disabled) => h('label', { class: 'tg', for: id, style: disabled ? 'opacity:.55' : '' },
     h('span', { class: 'grow' }, h('span', { class: 't' }, title), h('span', { class: 's' }, sub)),
     h('input', { type: 'checkbox', class: 'sw', id, checked: on, disabled: !!disabled, onchange }));
@@ -1878,11 +1898,11 @@ function adminsScreen() {
   const list = Object.entries(S.admins).sort(([, a], [, b]) => (a.role === 'owner' ? -1 : b.role === 'owner' ? 1 : (a.name || a.email).localeCompare(b.name || b.email)));
   return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Settings'),
     screenTitle('Admins', 'Who can open this admin page, and what they can do'),
-    h('div', { class: 'group', id: 'adminRows' }, list.map(([aid, a]) => h('button', { type: 'button', class: 'row', 'data-aid': aid, onclick: () => open({ name: 'admin', aid }) },
+    h('div', { class: 'group', id: 'adminRows' }, list.map(([aid, a]) => h('button', { type: 'button', class: 'row', 'data-aid': aid, disabled: !!a.sending, onclick: () => open({ name: 'admin', aid }) },
       h('span', { class: 'av' + (a.status === 'active' ? '' : ' grey') }, (a.name || a.email)[0].toUpperCase()),
       h('span', { class: 'grow', style: 'min-width:0' }, h('span', { class: 't' }, a.name || a.email),
         h('span', { class: 's' }, a.name ? `${a.email} · ${whoText(a)}` : whoText(a))),
-      a.status === 'invited' ? chip('Invited', 'amber') : a.status === 'paused' ? chip('Paused', 'red') : null,
+      a.sending ? chip('Sending…', 'amber') : a.status === 'invited' ? chip('Invited', 'amber') : a.status === 'paused' ? chip('Paused', 'red') : null,
       h('span', { class: 'chev' }, icon('chev', 18))))),
     h('button', { type: 'button', class: 'btn p wide', id: 'addAdmin', onclick: () => open({ name: 'admin', aid: null }) }, icon('plus', 18, 2.2), 'Add an admin'),
     h('p', { class: 'hint' }, 'A new admin gets an email to confirm their address and choose a password; until then they can\'t sign in. ' +
@@ -1927,32 +1947,36 @@ function adminScreen() {
     if (phonesOut !== 'all' && !phonesOut.length && !groupsOut.length) return say('Tick at least one group or phone (or All phones).', true);
     const canOut = { ...f.can }; if (phonesOut !== 'all') canOut.settings = false;
     if (a) {
-      if (await runCommand(save, 'Saving… (up to a minute)', { op: 'update', target: aid, name: f.name, phones: phonesOut, groups: groupsOut, can: canOut }, 'Saved.')) open({ name: 'admins' });
+      bg({ op: 'update', target: aid, name: f.name, phones: phonesOut, groups: groupsOut, can: canOut }, `${f.name || a.email}: saved.`,
+        () => { S.admins[aid] = { ...a, name: f.name, phones: phonesOut, groups: groupsOut, can: canOut }; S.sub = { name: 'admins' }; });
     } else {
       const em = (f.email || '').trim();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return say('Type their email address.', true);
-      if (await runCommand(save, 'Sending… (up to a minute)', { op: 'invite', email: em, name: f.name, phones: phonesOut, groups: groupsOut, can: canOut }, `Invitation sent to ${em}.`)) open({ name: 'admins' });
+      bg({ op: 'invite', email: em, name: f.name, phones: phonesOut, groups: groupsOut, can: canOut }, `Invitation sent to ${em}.`, () => {
+        S.admins[`sending-${em}`] = { email: em.toLowerCase(), name: f.name || '', role: 'admin', status: 'invited', sending: true, phones: phonesOut, groups: groupsOut, can: canOut };
+        S.sub = { name: 'admins' };
+      });
     }
   };
   const extra = [];
   if (a) {
     if (a.status === 'invited') extra.push(h('p', { class: 'warn' }, `Invited: waiting for them to confirm their email${a.invitedUntil ? ` (the link works until ${new Date(a.invitedUntil).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''}.`),
-      h('button', { type: 'button', class: 'btn s wide', id: 'adResend', onclick: e => runCommand(e.currentTarget, 'Sending…', { op: 'resend', target: aid }, 'Invitation sent again.') }, 'Send the invitation again'));
+      h('button', { type: 'button', class: 'btn s wide', id: 'adResend', onclick: () => bg({ op: 'resend', target: aid }, 'Invitation sent again.') }, 'Send the invitation again'));
     const devs = Object.entries(a.devices || {});
     if (devs.length) extra.push(h('h2', { class: 'sec' }, 'Signed in on'), h('div', { class: 'group' }, devs.map(([did, d]) => h('div', { class: 'row' }, h('span', { class: 'ic' }, icon('phone', 20)),
       h('span', { class: 'grow' }, h('span', { class: 't' }, d.name), h('span', { class: 's' }, d.lastUsed ? `Last used ${ago(d.lastUsed)}` : '')),
-      h('button', { type: 'button', class: 'btn d sm', onclick: e => runCommand(e.currentTarget, 'Removing…', { op: 'device-remove', target: aid, device: did }, `${d.name} is signed out.`).then(() => render()) }, 'Sign out')))));
+      h('button', { type: 'button', class: 'btn d sm', onclick: () => bg({ op: 'device-remove', target: aid, device: did }, `${d.name} is signed out.`, () => { delete S.admins[aid].devices[did]; }) }, 'Sign out')))));
     extra.push(h('div', { class: 'stack', style: 'gap:8px;margin-top:8px' },
       a.status === 'paused'
-        ? h('button', { type: 'button', class: 'btn s wide', id: 'adUnpause', onclick: e => runCommand(e.currentTarget, 'Saving…', { op: 'update', target: aid, status: 'active' }, 'They can sign in again.').then(r => r && open({ name: 'admins' })) }, 'Let them sign in again')
+        ? h('button', { type: 'button', class: 'btn s wide', id: 'adUnpause', onclick: () => bg({ op: 'update', target: aid, status: 'active' }, 'They can sign in again.', () => { S.admins[aid].status = 'active'; S.sub = { name: 'admins' }; }) }, 'Let them sign in again')
         : a.status === 'active' ? h('button', { type: 'button', class: 'btn dline wide', id: 'adPause', onclick: async e => {
           const btn = e.currentTarget;
           if (!(await uiConfirm(`Pause ${a.name || a.email}?`, 'They\'re signed out everywhere and can\'t sign in until you let them again. Nothing else changes.', 'Pause', { icon: 'ban', red: true }))) return;
-          const r = await runCommand(btn, 'Pausing…', { op: 'update', target: aid, status: 'paused' }, 'Paused.'); if (r) open({ name: 'admins' }); } }, 'Pause') : null,
+          bg({ op: 'update', target: aid, status: 'paused' }, 'Paused.', () => { S.admins[aid].status = 'paused'; S.sub = { name: 'admins' }; }); } }, 'Pause') : null,
       h('button', { type: 'button', class: 'btn d wide', id: 'adRemove', onclick: async e => {
         const btn = e.currentTarget;
         if (!(await uiConfirmDanger(`Remove ${a.name || a.email}?`, 'They can\'t sign in any more. You can invite them again later.', 'Remove'))) return;
-        const r = await runCommand(btn, 'Removing…', { op: 'remove', target: aid }, 'Removed.'); if (r) open({ name: 'admins' }); } }, 'Remove')));
+        bg({ op: 'remove', target: aid }, 'Removed.', () => { delete S.admins[aid]; S.sub = { name: 'admins' }; }); } }, 'Remove')));
   }
   return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Admins', () => open({ name: 'admins' })),
     screenTitle(a ? (a.name || a.email) : 'Add an admin', a ? a.email : 'They get an email to confirm their address and choose a password.'),
@@ -2917,6 +2941,16 @@ function phonesScreen() {
   return h('main', { class: 'stack' },
     screenTitle('Phones', `${plural(entries.length, 'phone')}${gf ? ` in ${groupName(gf)}` : ''}${archived && !gf ? ` · ${archived} archived` : ''}`),
     fullAdmin() || canDo('edit') || canDo('manage') ? null : h('p', { class: 'hint', style: 'margin:0' }, 'You can look at your phones and read what they send. Changing them is up to the main admin.'),
+    // Phones where PIN approvals are locked (5 wrong PINs): unlock right here.
+    (() => {
+      const locked = Object.entries(S.D.devices).filter(([, d]) => pinLocked(d));
+      if (!locked.length || !(fullAdmin() || canDo('manage'))) return null;
+      return h('div', { class: 'card', id: 'lockedPins', style: 'gap:8px' }, h('b', null, locked.length === 1 ? 'PIN approvals are locked on a phone' : 'PIN approvals are locked on some phones'),
+        h('p', { class: 'hint', style: 'margin:0' }, 'After 5 wrong PINs. Unlock lets PINs work there again.'),
+        h('div', { class: 'group' }, locked.map(([id, d]) => h('div', { class: 'row' }, h('span', { class: 'grow' }, h('span', { class: 't' }, d.name || id),
+          h('span', { class: 's' }, `Until ${new Date(d.pinLockedUntil).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`)),
+          h('button', { type: 'button', class: 'btn s sm', onclick: () => unlockPin(id) }, 'Unlock')))));
+    })(),
     gchips,
     entries.length || gf ? search : null,
     entries.length ? h('div', { class: 'group phones' }, cards) : h('div', { class: 'card empty' }, h('b', null, 'No phones yet'), 'Phones appear here when the app is opened on them.'),
@@ -3057,7 +3091,7 @@ function phoneScreen() {
       pinMode === 'own' ? h('button', { type: 'button', class: 'btn s sm', onclick: () => open({ name: 'approvalpin', scope: id }) }, 'Change its PIN') : null,
       pinMode === 'none' ? null : pinsHere(id),
       locked ? h('p', { class: 'warn' }, `Locked after 5 wrong PINs, until ${new Date(d.pinLockedUntil).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. `,
-        h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlock', onclick: () => { delete d.pinLockedUntil; delete d.pinFails; markDevices(); render(); say('Unlocked. Tap Save to apply it.'); } }, 'Unlock')) : null),
+        h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlock', onclick: () => unlockPin(id) }, 'Unlock')) : null),
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Ads'), ads),
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Filters'), ...filterRows,
       h('p', { class: 'hint', style: 'margin:0' }, 'Usual follows Settings → Filters.')),
@@ -3074,6 +3108,15 @@ function phoneScreen() {
       h('p', { class: 'hint' }, 'Block: it stays here but can\'t open any site, for a lost phone or one that shouldn\'t be used. ' +
         'Archive: put it away, with its own list, until it\'s needed again (Phones → Archived phones → Restore). If it\'s still being used, it comes back by itself.')));
 }
+// PIN approvals locked on a phone (5 wrong PINs): unlocked, and saved, straight away.
+const pinLocked = d => !!(d && d.pinLockedUntil && Date.parse(d.pinLockedUntil) > Date.now());
+function unlockPin(id) {
+  const d = S.D.devices[id];
+  if (!d) return;
+  delete d.pinLockedUntil; delete d.pinFails;
+  markDevices(); saveAll();
+  say(`PIN approvals unlocked on ${d.name || id}. The phone picks it up within a few minutes.`);
+}
 // A helper's view of what only the main admin changes on a phone (and the PIN lock, which managing can unlock).
 function readOnlyPart(d, locked, M) {
   const usual = (v, on, off) => v === 'on' ? on : v === 'off' ? off : 'Usual';
@@ -3085,7 +3128,7 @@ function readOnlyPart(d, locked, M) {
       row('Content filters', filters.length ? filters.join(', ') : 'Usual'),
       row('Approving with a PIN', d.approvalPin === 'none' ? 'Off on this phone' : canDo('pin') ? 'On: your own PIN works here (Settings → Your account)' : 'On')),
     locked ? h('p', { class: 'warn' }, `PIN approvals are locked after 5 wrong PINs, until ${new Date(d.pinLockedUntil).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. `,
-      M ? h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlock', onclick: () => { delete d.pinLockedUntil; delete d.pinFails; markDevices(); render(); say('Unlocked. Tap Save to apply it.'); } }, 'Unlock') : null) : null];
+      M ? h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlock', onclick: () => unlockPin(Object.keys(S.D.devices).find(k => S.D.devices[k] === d)) }, 'Unlock') : null) : null];
 }
 // The main admin: every PIN that works on a phone (yours, and each helper's who looks after it).
 function pinsHere(id) {
@@ -3276,6 +3319,21 @@ function settingsScreen() {
 // ============================================================================================
 // Start
 // ============================================================================================
+// Keeping up to date by itself: every 45 seconds while this page is on screen (and as soon as it comes back), the
+// newest data, so a locked PIN, a new request or another admin's change shows without reloading. Never while
+// something is being edited, saved or typed.
+async function autoRefresh() {
+  try {
+    if (!S.connected || S.locked || document.visibilityState !== 'visible') return;
+    if (S.devDirty || S.listDirty || QUEUE.busy || QUEUE.ops.length || QUEUE.failed || CMDQ.pending) return;
+    const a = document.activeElement;
+    if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'checkbox') return;
+    const sha = await latestSha();
+    if (sha && sha !== DATA.sha) await refreshData(sha);
+  } catch {}
+}
+setInterval(autoRefresh, 45000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') autoRefresh(); });
 (async () => {
   if (INAPP) document.title = 'Admin';
   // (From before sign-in: a GitHub token kept here. Not used any more, so not kept.)

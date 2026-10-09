@@ -2746,6 +2746,7 @@ class MainActivity : Activity() {
         var page = 0
         var done = false
         var shownCount = 0
+        var checked = false                                  // DuckDuckGo's person check: shown once per search at most
         status.text = "Looking for sites…"; status.visibility = View.VISIBLE
         results.removeAllViews(); (results.parent as? View)?.visibility = View.GONE
         more.visibility = View.GONE
@@ -2787,6 +2788,19 @@ class MainActivity : Activity() {
                     if (gen != findGen || results.parent == null) return@post
                     more.isEnabled = true; more.text = "Show more results"
                     val (all, list) = found.getOrNull() ?: run {
+                        // DuckDuckGo wants to check a person is searching: its own check, for the person to answer.
+                        val err = found.exceptionOrNull()?.let { it.cause ?: it }
+                        if (err is Discovery.Challenge && !checked) {
+                            checked = true
+                            status.text = "DuckDuckGo wants to check a person is searching."
+                            more.visibility = View.GONE
+                            showSearchCheck(err.url) { passed ->
+                                if (gen != findGen || results.parent == null) return@showSearchCheck
+                                if (passed) { status.text = "Looking for sites…"; nextTask = null; fetch() }
+                                else status.text = "Couldn't search without DuckDuckGo's check. Try again in a while."
+                            }
+                            return@post
+                        }
                         status.text = if (shownCount == 0) "Couldn't search right now. Check the phone is online, or try again in a moment."
                             else "Couldn't get more sites right now. Try again in a moment."
                         more.visibility = if (shownCount == 0) View.GONE else View.VISIBLE
@@ -2805,6 +2819,62 @@ class MainActivity : Activity() {
 
         more.setOnClickListener { if (waiting.isNotEmpty()) showSome() else if (!done) fetch() }
         fetch()
+    }
+
+    /**
+     * DuckDuckGo's own "are you a person?" check, in a small window, for the person to answer (the app never answers it).
+     * It can only show DuckDuckGo's check and plain results page: links go nowhere, and it's not an approved site. As
+     * soon as the results page comes (the check passed), it closes, and [done] hears true; closed without: false.
+     * DuckDuckGo's pass is a cookie, which the search then sends too.
+     */
+    private fun showSearchCheck(url: String, done: (Boolean) -> Unit) {
+        var finished = false
+        fun finish(ok: Boolean) { if (!finished) { finished = true; done(ok) } }
+        val cookies = android.webkit.CookieManager.getInstance()
+        cookies.setAcceptCookie(true)
+        val web = WebView(this)
+        cookies.setAcceptThirdPartyCookies(web, false)
+        web.settings.javaScriptEnabled = true                // (the check needs it)
+        web.settings.domStorageEnabled = true
+        web.settings.userAgentString = Discovery.BROWSER_AGENT   // (the same as the search, so the pass fits it)
+        web.settings.allowFileAccess = false
+        web.settings.setSupportMultipleWindows(false)
+        web.alpha = 0f
+        val dlg = Ui.AppDialog(this, sheet = true)
+        val wait = Ui.text(this, "Opening DuckDuckGo's check…", 14f, Ui.INK2)
+        web.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val u = request?.url?.toString() ?: return true
+                if (!Discovery.checkMayOpen(u)) { AppLog.i("Find", "Person check: a link that goes elsewhere, not opened"); return true }
+                view?.alpha = 0f                                 // (hidden until it's known to be the check)
+                return false
+            }
+            override fun onPageFinished(view: WebView?, u: String?) {
+                if (finished || view == null) return
+                view.evaluateJavascript("document.documentElement.outerHTML") { raw ->
+                    if (finished) return@evaluateJavascript
+                    val html = runCatching { org.json.JSONArray("[$raw]").getString(0) }.getOrDefault(raw ?: "")
+                    if (Discovery.isChallenge(html)) {
+                        view.alpha = 1f; wait.visibility = View.GONE
+                    } else if (u != null && Uri.parse(u).host == "html.duckduckgo.com" && Uri.parse(u).path.orEmpty().startsWith("/html")) {
+                        AppLog.i("Find", "Person check passed")
+                        cookies.flush()
+                        finish(true); dlg.dismiss()
+                    }
+                }
+            }
+        }
+        web.webChromeClient = WebChromeClient()
+        dlg.title("Are you a person?", "DuckDuckGo asks this when there have been many searches. Answer it to carry on searching.",
+            icon = R.drawable.ic_d_globe)
+        dlg.add(wait, 4)
+        // (A set height: the check's pictures need the room, and a web page can't size itself inside the dialog.)
+        dlg.add(android.widget.FrameLayout(this).apply { addView(web, android.widget.FrameLayout.LayoutParams(-1, Ui.dp(this@MainActivity, 460))) }, 8)
+        dlg.button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
+        dlg.onDismiss { finish(false); web.stopLoading(); web.destroy() }
+        dlg.show()
+        AppLog.i("Find", "DuckDuckGo asked to check a person is searching: showing its check")
+        web.loadUrl(url)
     }
 
     /** One found site: its icon (fetched in the background; its first letter until then), name, address and what it is. */
