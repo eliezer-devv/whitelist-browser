@@ -202,6 +202,7 @@ class MainActivity : Activity() {
             }
         }
 
+        Updater.init(this)        // (whether this phone gets test versions of the app)
         TempTime.load(this)       // time already used on "time on the site" temporary access
         AppLog.start(applicationContext)                      // the rolling log (About this phone → Share log)
         CrashLog.install(applicationContext)                  // a crash is recorded (About this phone shows it)

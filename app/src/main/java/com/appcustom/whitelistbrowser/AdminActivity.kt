@@ -109,6 +109,7 @@ class AdminActivity : Activity() {
         setTheme(if (Ui.dark) R.style.AppThemeDark else R.style.AppTheme)
         super.onCreate(savedInstanceState)
         if (BuildConfig.ADMIN_APP) AppLog.start(applicationContext)    // (the admin app: this is the whole app)
+        Updater.init(this)
         // No screenshots or app-switcher previews of the admin screen (a password is typed here).
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         web = WebView(this)
@@ -132,6 +133,17 @@ class AdminActivity : Activity() {
             /** This phone's ID: so an admin can turn on notifications for this phone (Settings → Your account). */
             @android.webkit.JavascriptInterface
             fun deviceId(): String = Device.id(this@AdminActivity)
+
+            /** Test versions of the app on this phone (Settings → Your account → This device). */
+            @android.webkit.JavascriptInterface
+            fun testVersions(): Boolean = Updater.testVersions(this@AdminActivity)
+            @android.webkit.JavascriptInterface
+            fun setTestVersions(on: Boolean) {
+                Updater.setTestVersions(applicationContext, on)
+                // (Look again soon: the next check finds the newest test build.)
+                getSharedPreferences("adminApp", MODE_PRIVATE).edit().putLong("updateCheck", 0L).apply()
+                getSharedPreferences("updates", MODE_PRIVATE).edit().putLong("lastCheck", 0L).apply()
+            }
 
             /** The admin app: is this it (notifications work differently: it isn't a listed phone)? */
             @android.webkit.JavascriptInterface

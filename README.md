@@ -1083,21 +1083,22 @@ The same admin page is built into the app, so you can manage everything from the
 - **To leave,** tap **Close** at the top or the phone's back button. The browser checks for your changes straight away.
 - **Screenshots are blocked** on the admin screen, and it doesn't appear in the recent-apps preview.
 - **"Clear cookies and site data → All sites"** in the browser also signs the admin out on this phone. Just sign in again.
-- **It's the version of the page from when the app was built.** Changing `docs/admin.html` updates the web page
-  straight away, and starts a **Build APK** so the in-app one follows with the next app update.
+- **It's the version of the page from when the app was built.** Changing `docs/admin.html` starts a **Build APK**
+  (a test build), and shows on the web at `admin-test.html` until you **Release to everyone** (see
+  [Test first, then release to everyone](#test-first-then-release-to-everyone)).
 
 ### The admin app (Whitelist Admin)
 A separate app that's **just the admin page**, for the people who manage Whitelist Browser (you, and helper admins)
 on their own phones. It's built from the same code, every time **Build APK** runs.
 - **Get it:** the status page's **Download the admin app**, or
-  `https://github.com/YOUR_USERNAME/whitelist-browser/releases/latest/download/whitelist-admin.apk`
+  `https://github.com/YOUR_USERNAME/whitelist-browser/releases/latest/download/whitelist-for-admins.apk`
   (always the newest). It has its own icon (the tick on a shield) and name, **Whitelist Admin**, and sits next to
   the browser if both are on one phone.
 - **It opens straight to the admin page:** sign in once (email, password, the emailed link), then a PIN or your
   fingerprint, the same as inside the browser. No browsing, no lists, and it doesn't ask for the camera,
   microphone or location.
 - **It updates itself** (every 6 hours at most, when it's opened), from the same release as the browser. Each app
-  takes only the file with its own name (`whitelist-admin.apk` or `whitelist-browser.apk`), so neither can pick up
+  takes only the file with its own name (`whitelist-for-admins.apk` or `whitelist-browser.apk`), so neither can pick up
   the other.
 - **Notifications on the phone:** in the admin app, **Settings** → **Your account** → **On this phone** (Android
   asks to allow them). New requests, messages and logs, and crashes, only for what that admin may see, sealed so only
@@ -1150,7 +1151,25 @@ You only need this when you change the app itself. List changes and approved req
 
 ### Publishing a new version
 A new version is built whenever you commit a change to the app code (anything in `app/`) or run
-**Actions** → **Build APK** → **Run workflow**. Each build becomes a release named `v1.0.<number>`.
+**Actions** → **Build APK** → **Run workflow**. Each build becomes a release named `v1.0.<number>`, with both apps.
+
+### Test first, then release to everyone
+**Every build is a test build first:** a GitHub *pre-release* titled **Test 1.0.<number>**. Phones don't get it,
+except your test phones:
+1. **Make a phone a test phone:** open the admin inside the app (or the Whitelist Admin app) → **Settings** →
+   **Your account** → **This device** → **Get test versions of the app**. It then updates to test builds by itself
+   (or straight away from ⋮ → Settings → App update). You can also install a test build by hand from its release page.
+2. **Try it out.** Something wrong? Fix it and build again: nobody else got it.
+3. **When it's good:** **Actions** → **Release to everyone** → **Run workflow**. The newest test build becomes the
+   normal release (no rebuild: everyone gets exactly what you tested), and every phone updates from it as usual.
+   To release an older test build instead, type its number (e.g. `1.0.57`).
+- **In a hurry:** **Build APK** → **Run workflow** → tick **Release straight to everyone**.
+- **The admin web page follows the same way:** `admin.html` on the web is the page from the last version released
+  to everyone. A new `docs/admin.html` shows first at **`admin-test.html`** (same address, `admin-test.html` instead
+  of `admin.html`), to try it, and becomes `admin.html` when you **Release to everyone**. (Inside the apps, the
+  admin page is always the one built into that version.)
+- **GitHub's automation** (the private repository's scripts) is shared by every version, so changes there work
+  with the apps already out as well as new ones.
 
 ### How phones get it
 1. The app checks every `UPDATE_CHECK_HOURS` (default 6), or right away from **⋮ → Settings → App update**.
@@ -1165,7 +1184,7 @@ A new version is built whenever you commit a change to the app code (anything in
 - **The download link always gives the newest version:**
   `https://github.com/YOUR_USERNAME/whitelist-browser/releases/latest/download/whitelist-browser.apk`
 - **Each build makes the admin app too:** every release has both files, `whitelist-browser.apk` (the browser) and
-  `whitelist-admin.apk` (Whitelist Admin), signed with the same key. Each app updates only from its own file. See
+  `whitelist-for-admins.apk` (Whitelist Admin), signed with the same key. Each app updates only from its own file. See
   [The admin app](#the-admin-app-whitelist-admin).
 
 ---
@@ -1572,7 +1591,8 @@ app/                           The Android app
   src/main/assets/home.html            The home page
   src/main/assets/blocked.html         The "not on the list" page
 signing/release.p12            Signing key, locked by your password (created on the first build)
-.github/workflows/android.yml  "Build APK": builds, signs and publishes the app
+.github/workflows/android.yml  "Build APK": builds, signs and publishes both apps (a test build, normally)
+.github/workflows/release.yml  "Release to everyone": makes the newest test build the release every phone gets
 .github/workflows/pages.yml    "Publish list": publishes docs/ to GitHub Pages
 ```
 

@@ -25,31 +25,77 @@ object Updater {
             setRequestProperty("User-Agent", "WhitelistBrowser/${BuildConfig.VERSION_NAME}")
         }
 
-    /** Newest published release, or null if there isn't one. Blocking. */
+    // ---- Test versions: a phone (or admin app) set to get them updates to test builds too ----
+    // Build APK normally makes a TEST build (a GitHub pre-release): phones never see it, except those with this on
+    // (admin page inside the app → Settings → Your account → This device → Get test versions). "Release to
+    // everyone" then makes it the normal release, for every phone.
+    private const val TEST_PREFS = "updateChannel"
+    fun testVersions(ctx: Context) = ctx.getSharedPreferences(TEST_PREFS, Context.MODE_PRIVATE).getBoolean("test", false)
+    fun setTestVersions(ctx: Context, on: Boolean) {
+        ctx.getSharedPreferences(TEST_PREFS, Context.MODE_PRIVATE).edit().putBoolean("test", on).apply()
+        AppLog.i("Update", if (on) "Test versions: on" else "Test versions: off")
+    }
+    @Volatile private var appCtx: Context? = null
+    /** (So the update check knows this phone's choice: set once when the app starts.) */
+    fun init(ctx: Context) { appCtx = ctx.applicationContext }
+
+    /** Newest published release, or null if there isn't one. Blocking. With test versions on: test builds too. */
     fun fetchLatest(): Release? {
         val repo = repo() ?: throw IOException("Set GITHUB_USERNAME in Config.kt")
+        val test = appCtx?.let { testVersions(it) } ?: false
         // The newest release holds both apps, each under its own name: each app takes only its own file
         // (whitelist-browser.apk or whitelist-admin.apk), so neither can ever pick up the other.
+        if (test) runCatching { newestOf(repo) }.onFailure { AppLog.w("Update", "Couldn't look for test versions: ${it.message}") }.getOrNull()?.let { return it }
         val conn = open("https://api.github.com/repos/$repo/releases/latest")
         conn.setRequestProperty("Accept", "application/vnd.github+json")
         try {
             if (conn.responseCode == 404) return null
             if (conn.responseCode != 200) throw IOException("GitHub returned ${conn.responseCode}")
-            val o = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
-            val label = o.getString("tag_name")                     // e.g. v1.0.42
-            val code = Regex("(\\d+)$").find(label.trim())?.value?.toIntOrNull() ?: return null
-            val version = Regex("(\\d+\\.\\d+\\.\\d+)$").find(label.trim())?.value ?: "1.0.$code"
-            val want = if (BuildConfig.ADMIN_APP) "whitelist-admin.apk" else "whitelist-browser.apk"
-            val assets = o.getJSONArray("assets")
-            val all = (0 until assets.length()).map { assets.getJSONObject(it) }.filter { it.getString("name").endsWith(".apk") }
-            val apk = all.firstOrNull { it.getString("name") == want } ?: return null       // only its own file, never the other app
-            return Release(code, version, apk.getString("browser_download_url"))
+            return releaseFrom(JSONObject(conn.inputStream.bufferedReader().use { it.readText() }))
         } finally {
             conn.disconnect()
         }
     }
 
+    /** The newest of the recent releases, test builds included (for phones with test versions on). */
+    private fun newestOf(repo: String): Release? {
+        val conn = open("https://api.github.com/repos/$repo/releases?per_page=15")
+        conn.setRequestProperty("Accept", "application/vnd.github+json")
+        try {
+            if (conn.responseCode != 200) throw IOException("GitHub returned ${conn.responseCode}")
+            val list = org.json.JSONArray(conn.inputStream.bufferedReader().use { it.readText() })
+            return (0 until list.length()).map { list.getJSONObject(it) }.filter { !it.optBoolean("draft") }
+                .mapNotNull { runCatching { releaseFrom(it) }.getOrNull() }.maxByOrNull { it.versionCode }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /** One release: its version, and this app's own file in it (null if it has none). */
+    private fun releaseFrom(o: JSONObject): Release? {
+        run {   // (one release's details)
+            val label = o.getString("tag_name")                     // e.g. v1.0.42
+            val code = Regex("(\\d+)$").find(label.trim())?.value?.toIntOrNull() ?: return null
+            val version = Regex("(\\d+\\.\\d+\\.\\d+)$").find(label.trim())?.value ?: "1.0.$code"
+            // (The admin app's file is named so it comes after the browser's: older browsers took the first file.)
+            val want = if (BuildConfig.ADMIN_APP) listOf("whitelist-for-admins.apk", "whitelist-admin.apk") else listOf("whitelist-browser.apk")
+            val assets = o.getJSONArray("assets")
+            val all = (0 until assets.length()).map { assets.getJSONObject(it) }.filter { it.getString("name").endsWith(".apk") }
+            val apk = want.firstNotNullOfOrNull { w -> all.firstOrNull { it.getString("name") == w } } ?: return null   // only its own file, never the other app
+            return Release(code, version, apk.getString("browser_download_url"))
+        }
+    }
+
     fun isNewer(r: Release) = r.versionCode > BuildConfig.VERSION_CODE
+
+    /** A downloaded update Android refused (the wrong app's file, say): forgotten, so the next check downloads afresh. */
+    fun forget(ctx: Context) {
+        val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        p.getString("file", null)?.let { name -> ctx.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)?.let { File(it, name).delete() } }
+        p.getLong("id", -1L).takeIf { it >= 0 }?.let { id -> runCatching { ctx.getSystemService(android.app.DownloadManager::class.java).remove(id) } }
+        p.edit().remove("id").remove("file").remove("version").putBoolean("pending", false).apply()
+        AppLog.w("Update", "The downloaded update wasn't right for this app: it's downloaded again next time")
+    }
 
     /** Downloads the APK into app-private storage. Blocking. */
     private const val PREFS = "update"

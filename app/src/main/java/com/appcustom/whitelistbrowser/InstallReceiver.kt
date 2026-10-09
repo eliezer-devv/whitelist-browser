@@ -28,7 +28,7 @@ class InstallReceiver : BroadcastReceiver() {
                     // isn't allowed to). Otherwise a notification does it ("Tap to install").
                     val show = showConfirm
                     if (show != null) android.os.Handler(android.os.Looper.getMainLooper()).post { show(confirm) }
-                    else notify(context, "Update ready", "Tap to install the new version of Whitelist Browser", confirm)
+                    else notify(context, "Update ready", "Tap to install the new version of ${context.getString(R.string.app_name)}", confirm)
                 }
             }
             PackageInstaller.STATUS_SUCCESS -> Unit // Android restarts the app on the new version
@@ -37,6 +37,8 @@ class InstallReceiver : BroadcastReceiver() {
                 toast(context, "Update refused: it's signed with a different key. Uninstall this app, then install the latest version from GitHub.")
             else -> {
                 val msg = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: "unknown error"
+                // Not this app's file (the other app's, say), or a broken download: forgotten, and fetched again.
+                if (status == PackageInstaller.STATUS_FAILURE_INVALID) { Updater.forget(context.applicationContext); return }
                 toast(context, "Update failed: $msg")
             }
         }

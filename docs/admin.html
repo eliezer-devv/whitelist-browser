@@ -1849,6 +1849,18 @@ function accountScreen() {
     pwField('acOld', 'Current password', 'current-password'), pwField('acNew', 'New password', 'new-password'), pwField('acNew2', 'The same new password again', 'new-password'),
     h('p', { class: 'hint', style: 'margin:0' }, 'At least 8 characters, with a letter and a number.'), changePw,
     h('h2', { class: 'sec' }, 'This device'),
+    // Test versions of the app (inside the app only): this phone updates to test builds too.
+    (() => {
+      let on = false; try { on = INAPP && window.WLBAdmin && WLBAdmin.testVersions ? !!WLBAdmin.testVersions() : null; } catch { on = null; }
+      if (on === null || !INAPP) return null;
+      return h('div', { class: 'group' }, h('label', { class: 'tg', for: 'testVersions' },
+        h('span', { class: 'grow' }, h('span', { class: 't' }, 'Get test versions of the app'),
+          h('span', { class: 's' }, 'This phone updates to test builds too, before everyone else (Build APK makes a test build; "Release to everyone" gives it to all phones)')),
+        h('input', { type: 'checkbox', class: 'sw', id: 'testVersions', checked: on, onchange: e => {
+          try { WLBAdmin.setTestVersions(e.target.checked); } catch {}
+          say(e.target.checked ? 'Test versions on: this phone looks for one next time the app opens.' : 'Test versions off: this phone gets only versions released to everyone.');
+        } })));
+    })(),
     h('button', { type: 'button', class: 'btn s wide', id: 'openPin', onclick: () => open({ name: 'pin' }) },
       getPin() || getBio() ? `The lock: ${[getBio() ? 'fingerprint' : '', getPin() ? 'PIN' : ''].filter(Boolean).join(' and ')}` : 'Lock with a PIN or fingerprint'),
     h('button', { type: 'button', class: 'btn dline wide', id: 'signOut', onclick: signOut }, 'Sign out on this device'));
