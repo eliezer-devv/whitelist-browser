@@ -30,13 +30,23 @@ object AdminAlerts {
     /** Is this an admin phone (set on the admin page; it arrives in this phone's sealed lists)? */
     fun isAdminPhone(): Boolean = Whitelist.state.adminPhone
 
+    // ---- The admin app (Whitelist Admin): notifications turned on in it (Settings → Your account → On this phone) ----
+    // Its notes are sealed with its own key (it isn't a listed phone), under their own marker, "whitelist-adminapp-<ID>"
+    // (the browser on the same phone has the same ID, and its own notes).
+    fun setAppOn(ctx: Context, on: Boolean) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("appOn", on).apply()
+        schedule(ctx)
+    }
+    private fun appOn(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("appOn", false)
+    private fun receives(ctx: Context) = if (BuildConfig.ADMIN_APP) appOn(ctx) else isAdminPhone()
+
     /** Phone notifications: on unless switched off in Settings (admin phones only). */
     fun wanted(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("on", true)
     fun setWanted(ctx: Context, on: Boolean) {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("on", on).apply()
         schedule(ctx)
     }
-    fun active(ctx: Context) = isAdminPhone() && wanted(ctx) && Requests.isSetUp()
+    fun active(ctx: Context) = receives(ctx) && wanted(ctx) && (BuildConfig.ADMIN_APP || Requests.isSetUp())
 
     /** Has Android allowed this app's notifications (Android 13+ asks the person)? */
     fun allowed(ctx: Context): Boolean = Build.VERSION.SDK_INT < 33 ||
@@ -75,7 +85,7 @@ object AdminAlerts {
         }
         val raw = runCatching { Requests.read("issues/comments?since=$since&sort=created&direction=asc&per_page=100") }
             .onFailure { AppLog.w("Notifications", "Couldn't check: ${it.message}"); noteCheck(ctx, "failed (${it.message})") }.getOrNull() ?: return
-        val marker = Regex("<!-- whitelist-admin-${Regex.escape(Device.id(ctx))}\\s*([\\s\\S]*?)-->")
+        val marker = Regex("<!-- whitelist-${if (BuildConfig.ADMIN_APP) "adminapp" else "admin"}-${Regex.escape(Device.id(ctx))}\\s*([\\s\\S]*?)-->")
         var latest: String = since
         var found = 0
         val list = JSONArray(raw)
@@ -109,7 +119,9 @@ object AdminAlerts {
             nm.createNotificationChannel(NotificationChannel(CHANNEL, "Requests and logs (admin phone)", NotificationManager.IMPORTANCE_HIGH)
                 .apply { description = "New requests, new phones, logs someone sent, and crashes" })
         }
-        val target = Intent(ctx, MainActivity::class.java).setAction(ACTION_OPEN_ADMIN).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        // (The admin app: straight to its admin page. The browser: through the browser, which opens it.)
+        val target = if (BuildConfig.ADMIN_APP) Intent(ctx, AdminActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            else Intent(ctx, MainActivity::class.java).setAction(ACTION_OPEN_ADMIN).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         if (phone != null) { target.putExtra(EXTRA_PHONE, phone); file?.let { target.putExtra(EXTRA_FILE, it) } }
         else if (id > 0) target.putExtra(EXTRA_REQUEST, id)
         val open = PendingIntent.getActivity(ctx, id, target, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)

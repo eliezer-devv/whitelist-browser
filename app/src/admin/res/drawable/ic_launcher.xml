@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The admin app's icon: the browser's tick, on a shield (so the two apps are easy to tell apart). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp" android:viewportWidth="48" android:viewportHeight="48">
+    <path android:fillColor="#7FD1A8" android:pathData="M10,2h28a8,8 0,0 1,8 8v28a8,8 0,0 1,-8 8h-28a8,8 0,0 1,-8 -8v-28a8,8 0,0 1,8 -8z" />
+    <path android:fillColor="#1F3A3D" android:pathData="M24,8 L36,12.5 V22 C36,30 31,36.5 24,40 C17,36.5 12,30 12,22 V12.5 Z" />
+    <path android:strokeColor="#7FD1A8" android:strokeWidth="3.4" android:strokeLineCap="round"
+        android:strokeLineJoin="round" android:pathData="M18,23.5 L22.5,28 L30.5,19" />
+</vector>

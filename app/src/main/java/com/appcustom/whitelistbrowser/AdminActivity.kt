@@ -108,6 +108,7 @@ class AdminActivity : Activity() {
         Ui.applyTheme(this)                         // the same light or dark as the rest of the app
         setTheme(if (Ui.dark) R.style.AppThemeDark else R.style.AppTheme)
         super.onCreate(savedInstanceState)
+        if (BuildConfig.ADMIN_APP) AppLog.start(applicationContext)    // (the admin app: this is the whole app)
         // No screenshots or app-switcher previews of the admin screen (a password is typed here).
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         web = WebView(this)
@@ -131,6 +132,24 @@ class AdminActivity : Activity() {
             /** This phone's ID: so an admin can turn on notifications for this phone (Settings → Your account). */
             @android.webkit.JavascriptInterface
             fun deviceId(): String = Device.id(this@AdminActivity)
+
+            /** The admin app: is this it (notifications work differently: it isn't a listed phone)? */
+            @android.webkit.JavascriptInterface
+            fun adminApp(): Boolean = BuildConfig.ADMIN_APP
+
+            /** The admin app's own public key: its notifications are sealed with it, so only it can read them. */
+            @android.webkit.JavascriptInterface
+            fun notifyKey(): String = if (BuildConfig.ADMIN_APP) runCatching { Seal.publicKey() }.getOrDefault("") else ""
+
+            /** The admin app: notifications on (or off) on this phone, as saved on the admin page. */
+            @android.webkit.JavascriptInterface
+            fun setNotify(on: Boolean) {
+                if (!BuildConfig.ADMIN_APP) return
+                AdminAlerts.setAppOn(applicationContext, on)
+                if (on && android.os.Build.VERSION.SDK_INT >= 33 &&
+                    checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                    runOnUiThread { requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 33) }
+            }
 
             /** Fingerprint (or face) unlock: can this phone do it? */
             @android.webkit.JavascriptInterface
@@ -183,7 +202,38 @@ class AdminActivity : Activity() {
         }
         web.loadUrl("https://${HomePage.HOST}${PATH}admin.html?inapp=1" +
             "&owner=${Uri.encode(Config.GITHUB_USERNAME)}&repo=${Uri.encode(PrivateRepo.NAME)}" +
-            "&theme=${if (Ui.dark) "dark" else "light"}" + focusParams() + linkPart())
+            "&theme=${if (Ui.dark) "dark" else "light"}" + (if (BuildConfig.ADMIN_APP) "&app=admin" else "") + focusParams() + linkPart())
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (BuildConfig.ADMIN_APP) {
+            checkForUpdate()
+            // Notifications: a look now (the background check also runs every 15 minutes or so).
+            val ctx = applicationContext
+            if (AdminAlerts.active(ctx)) Thread { runCatching { AdminAlerts.check(ctx) } }.start()
+        }
+    }
+
+    /**
+     * The admin app keeps itself up to date (the browser does this on its own screen): every 6 hours at most, the
+     * newest version is downloaded in the background and installed (Android may ask first).
+     */
+    private fun checkForUpdate() {
+        val p = getSharedPreferences("adminApp", MODE_PRIVATE)
+        if (System.currentTimeMillis() - p.getLong("updateCheck", 0L) < Config.UPDATE_CHECK_HOURS * 3_600_000L) return
+        p.edit().putLong("updateCheck", System.currentTimeMillis()).apply()
+        val ctx = applicationContext
+        Thread {
+            runCatching {
+                Updater.waiting(ctx)?.let { Updater.install(ctx, it); return@runCatching }
+                val r = Updater.fetchLatest() ?: return@runCatching
+                if (Updater.isNewer(r) && !Updater.downloading(ctx, r)) {
+                    Updater.startDownload(ctx, r)
+                    runOnUiThread { Toast.makeText(this, "Downloading an update (version ${r.versionName})", Toast.LENGTH_SHORT).show() }
+                }
+            }.onFailure { AppLog.w("Update", "Couldn't check for an update: ${it.message}") }
+        }.start()
     }
 
     private fun serve(path: String): WebResourceResponse {

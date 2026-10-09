@@ -65,24 +65,8 @@
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|uiMode"
             android:windowSoftInputMode="adjustResize">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <!-- A browser: web links from other apps can open here (each still checked against the lists), and it
-                 can be the phone's default browser (Settings > Apps > Default apps > Browser). -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="http" />
-                <data android:scheme="https" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.APP_BROWSER" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
+            <!-- (Its launcher icon and browser links: in src/browser/AndroidManifest.xml, the browser app only. The
+                 admin app, Whitelist Admin, opens straight to the admin page: src/admin/AndroidManifest.xml.) -->
         </activity>
 
         <!-- The app has just been updated (even when it isn't running): a notification says so. -->

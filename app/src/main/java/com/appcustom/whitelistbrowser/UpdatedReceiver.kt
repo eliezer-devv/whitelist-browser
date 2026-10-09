@@ -14,6 +14,6 @@ class UpdatedReceiver : BroadcastReceiver() {
         AppLog.ready(context)
         AppLog.i("Update", "Updated to ${BuildConfig.VERSION_NAME}")
         val open = context.packageManager.getLaunchIntentForPackage(context.packageName)
-        InstallReceiver.notify(context, "Whitelist Browser updated to ${BuildConfig.VERSION_NAME}", "Tap to open it", open)
+        InstallReceiver.notify(context, "${context.getString(R.string.app_name)} updated to ${BuildConfig.VERSION_NAME}", "Tap to open it", open)
     }
 }

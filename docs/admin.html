@@ -97,7 +97,7 @@
   .sugg:last-child { border-bottom: 0; }
   .sugg:hover, .sugg:focus-visible { background: var(--accent-soft); }
   .searchbox { position: relative; }
-  .searchbox > svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+  .searchbox > svg, .searchbox > .icwrap { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; z-index: 1; }
   .searchbox .inp { padding-left: 40px; }
   .phonerow { min-height: 58px; gap: 10px; }
   .phonerow .pname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -520,6 +520,8 @@ const C = { owner: '', repo: '', branch: 'main' };
 // Inside the phone app (opened from the hidden button) the app passes ?inapp=1&owner=…&repo=….
 const Q = new URLSearchParams(location.search);
 const INAPP = Q.get('inapp') === '1';
+// The separate admin app (Whitelist Admin): the same page, but there's no browser to go back to.
+const ADMINAPP = INAPP && Q.get('app') === 'admin';
 (() => {
   // On GitHub Pages (OWNER.github.io/REPO/admin.html): REPO-private holds everything.
   if (location.hostname.endsWith('.github.io')) {
@@ -586,7 +588,7 @@ const localTz = () => { try { return Intl.DateTimeFormat().resolvedOptions().tim
 const deviceName = () => {
   const ua = navigator.userAgent;
   const os = /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? (/iPad/.test(ua) ? 'iPad' : 'iPhone') : /Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /CrOS/.test(ua) ? 'Chromebook' : /Linux/.test(ua) ? 'Linux' : 'a computer';
-  const br = INAPP ? 'Whitelist app' : /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'A browser';
+  const br = ADMINAPP ? 'Whitelist Admin app' : INAPP ? 'Whitelist app' : /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'A browser';
   return `${br} on ${os}`;
 };
 
@@ -873,13 +875,16 @@ async function showSaveProblem() {
   render();
 }
 // ---------- a phone's logs (logs/<ID>/ in the private repository, kept 30 days) ----------
-async function logFiles(id) {
-  const dir = `logs/${id}`;
-  return Object.keys(DATA.index ? DATA.index.files : {}).filter(p => p.startsWith(dir + '/') && p.endsWith('.txt'))
+// A phone's logs and messages (newest first); [archived]: the ones put away (logs/<ID>/archive/, kept until deleted).
+async function logFiles(id, archived = false) {
+  const dir = archived ? `logs/${id}/archive` : `logs/${id}`;
+  const paths = new Set(Object.keys(DATA.index ? DATA.index.files : {}));
+  for (const [p, o] of OVER) { if (o.gone) paths.delete(p); else paths.add(p); }      // (archived or deleted just now)
+  return [...paths].filter(p => p.startsWith(dir + '/') && !p.slice(dir.length + 1).includes('/') && p.endsWith('.txt'))
     .map(p => ({ type: 'file', name: p.slice(dir.length + 1) })).sort((a, b) => b.name.localeCompare(a.name));
 }
 async function logText(id, name) {
-  const t = await fileText(`logs/${id}/${name}`);
+  const t = await textOf(`logs/${id}/${name}`);
   if (t == null) throw new Error('It isn\'t there any more.');
   return t;
 }
@@ -892,18 +897,41 @@ function logLabel(name) {
     (m[4] === 'message' ? ' · Message' : m[4] ? ' · ' + m[4].replace(/-/g, ' ') : '');
 }
 function logScreen() {
-  const { id, file } = S.sub;
-  if (!S.logView || S.logView.file !== file) {
-    S.logView = { file, text: null };
-    logText(id, file).then(t => { S.logView = { file, text: t }; render(); }).catch(e => { S.logView = { file, text: 'Couldn\'t load it: ' + e.message }; render(); });
+  const { id, file, arc } = S.sub;
+  const path = arc ? `archive/${file}` : file;
+  if (!S.logView || S.logView.file !== path) {
+    S.logView = { file: path, text: null };
+    logText(id, path).then(t => { S.logView = { file: path, text: t }; render(); }).catch(e => { S.logView = { file: path, text: 'Couldn\'t load it: ' + e.message }; render(); });
   }
   const text = S.logView.text;
   const download = () => saveFile(new Blob([text || ''], { type: 'text/plain' }), `whitelist-browser-log-${id}-${file}`);
   const name = (S.D.devices[id] && S.D.devices[id].name) || id;
   return h('main', { class: 'stack' }, backLink(name, () => open({ name: 'phone', id })),
     screenTitle(/_message\.txt$/.test(file) ? (String(text || '').match(/^Subject: (.*)/) || [, 'Message'])[1] : 'Log', `${name} · ${logLabel(file)}`),
-    h('button', { type: 'button', class: 'btn s', id: 'logDownload', disabled: text == null, onclick: download }, 'Download'),
+    h('div', { class: 'acts' },
+      h('button', { type: 'button', class: 'btn s', id: 'logDownload', disabled: text == null, onclick: download }, 'Download'),
+      h('button', { type: 'button', class: 'btn s', id: 'logArchive', onclick: () => archiveLog(id, file, !arc) }, icon('archive', 18), arc ? 'Restore' : 'Archive'),
+      h('button', { type: 'button', class: 'btn d', id: 'logDelete', onclick: () => deleteLog(id, path) }, icon('trash', 18), 'Delete')),
+    arc ? h('p', { class: 'hint', style: 'margin:0' }, 'Archived: kept until you delete it (other logs go after 30 days).') : null,
     h('pre', { class: 'logtext' }, text == null ? 'Loading…' : text));
+}
+// Archive a log or message (kept until deleted: the others go after 30 days), or bring it back.
+async function archiveLog(id, file, toArchive) {
+  const from = `logs/${id}/${toArchive ? '' : 'archive/'}${file}`, to = `logs/${id}/${toArchive ? 'archive/' : ''}${file}`;
+  if (await moveFile(from, to, `${toArchive ? 'Archive' : 'Restore'} a log of ${id}`)) {
+    S.logFiles = null; S.logView = null;
+    open({ name: 'phone', id });
+    say(toArchive ? 'Archived. It\'s under Show archived, and kept until you delete it.' : 'Restored.');
+  }
+}
+async function deleteLog(id, path) {
+  if (!(await uiConfirmDanger('Delete it?', 'It\'s deleted for good.', 'Delete'))) return;
+  const full = `logs/${id}/${path}`;
+  const f = await getRaw(full);
+  await deleteFile(full, f && f.sha, `Delete a log of ${id}`);
+  S.logFiles = null; S.logView = null;
+  open({ name: 'phone', id });
+  say('Deleted.');
 }
 // This device was signed out (removed, paused, or the password was reset elsewhere).
 async function signedOutHere(why) {
@@ -1428,7 +1456,7 @@ function renderTabs() {
 $('markIcon').append(icon('check', 16, 2.4));
 $('connBtn').onclick = () => go('settings');
 $('syncPill').onclick = () => showSaveProblem();
-$('closeBtn').hidden = !INAPP;
+$('closeBtn').hidden = !INAPP || ADMINAPP;
 $('closeBtn').onclick = async () => {
   if ((S.listDirty || S.devDirty) && !(await uiConfirmDanger('Close without saving?', 'Your changes haven\'t been saved.', 'Close', 'warn'))) return;
   if ((QUEUE.busy || QUEUE.ops.length) && !(await uiConfirmDanger('Still saving', 'Closing now may stop your last change from being saved. Wait a moment, or close anyway.', 'Close anyway', 'warn'))) return;
@@ -1859,13 +1887,16 @@ function myPinSection() {
 function notifySection() {
   const n = (ME && ME.notify) || { phones: [], email: false, kinds: {} };
   const here = (() => { try { return INAPP && window.WLBAdmin && WLBAdmin.deviceId ? String(WLBAdmin.deviceId()) : null; } catch { return null; } })();
-  const onHere = !!here && (n.phones || []).includes(here);
+  // (The admin app isn't a listed phone: its notes are sealed with its own key, kept with your account.)
+  const onHere = !!here && (ADMINAPP ? !!(n.apps || {})[here] : (n.phones || []).includes(here));
+  if (ADMINAPP && onHere && !S.appNotifySynced) { S.appNotifySynced = true; try { WLBAdmin.setNotify(true); } catch {} }
   // Each switch saves by itself (no Save button): it shows at once, and the "Saving…" pill shows it going to GitHub.
-  const save = (el, cmd) => bg({ op: 'notify', ...cmd }, cmd.phone && cmd.here ? 'Notifications are on for this phone. They start within a few minutes.' : 'Notifications saved.', () => {
+  const save = (el, cmd) => bg({ op: 'notify', ...cmd }, (cmd.phone || cmd.app) && cmd.here ? 'Notifications are on for this phone. They start within a few minutes.' : 'Notifications saved.', () => {
     const next = { phones: [], email: false, kinds: {}, ...(ME.notify || {}) };
     if ('email' in cmd) next.email = cmd.email;
     if (cmd.kinds) next.kinds = cmd.kinds;
     if (cmd.phone) next.phones = cmd.here ? [...new Set([...(next.phones || []), cmd.phone])] : (next.phones || []).filter(x => x !== cmd.phone);
+    if (cmd.app) { next.apps = { ...(next.apps || {}) }; if (cmd.here) next.apps[cmd.app.id] = { name: cmd.app.name }; else delete next.apps[cmd.app.id]; }
     ME.notify = next;
   });
   const sw = (id, title, sub, on, onchange, disabled) => h('label', { class: 'tg', for: id, style: disabled ? 'opacity:.55' : '' },
@@ -1875,8 +1906,18 @@ function notifySection() {
   const anyOn = onHere || (n.phones || []).length > 0 || n.email;
   return [h('h2', { class: 'sec' }, 'Notifications'),
     h('div', { class: 'group' },
-      sw('ntHere', 'On this phone', here ? 'A notification from the Whitelist Browser app on this phone' : 'Open this page in the Whitelist Browser app on your phone to turn this on',
-        onHere, e => save(e.target, { phone: here, here: e.target.checked }), !here),
+      sw('ntHere', 'On this phone', ADMINAPP ? 'A notification from the Whitelist Admin app on this phone'
+          : here ? 'A notification from the Whitelist Browser app on this phone'
+          : 'Open this page in the Whitelist Admin app (or the Whitelist Browser app) on your phone to turn this on',
+        onHere, e => {
+          const on = e.target.checked;
+          if (ADMINAPP) {
+            let key = ''; try { key = WLBAdmin.notifyKey(); } catch {}
+            if (!key) { e.target.checked = !on; return say('This phone can\'t make the key for notifications.', true); }
+            try { WLBAdmin.setNotify(on); } catch {}
+            save(e.target, { app: { id: here, key, name: deviceName() }, here: on });
+          } else save(e.target, { phone: here, here: on });
+        }, !here),
       sw('ntEmail', 'By email', `To ${ME ? ME.email : 'you'}`, !!n.email, e => save(e.target, { email: e.target.checked }))),
     anyOn ? h('span', { class: 'flabel' }, 'Tell me about') : null,
     anyOn ? h('div', { class: 'group' }, KINDS_UI.map(([k, t, s, need]) => {
@@ -2945,11 +2986,11 @@ function phonesScreen() {
     (() => {
       const locked = Object.entries(S.D.devices).filter(([, d]) => pinLocked(d));
       if (!locked.length || !(fullAdmin() || canDo('manage'))) return null;
-      return h('div', { class: 'card', id: 'lockedPins', style: 'gap:8px' }, h('b', null, locked.length === 1 ? 'PIN approvals are locked on a phone' : 'PIN approvals are locked on some phones'),
-        h('p', { class: 'hint', style: 'margin:0' }, 'After 5 wrong PINs. Unlock lets PINs work there again.'),
-        h('div', { class: 'group' }, locked.map(([id, d]) => h('div', { class: 'row' }, h('span', { class: 'grow' }, h('span', { class: 't' }, d.name || id),
-          h('span', { class: 's' }, `Until ${new Date(d.pinLockedUntil).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`)),
-          h('button', { type: 'button', class: 'btn s sm', onclick: () => unlockPin(id) }, 'Unlock')))));
+      // (A yellow banner for each, with Unlock: the way it always looked.)
+      return h('div', { class: 'stack', id: 'lockedPins', style: 'gap:8px' }, locked.map(([id, d]) =>
+        h('div', { class: 'warn', style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap' },
+          h('span', { style: 'flex:1;min-width:12rem' }, h('b', null, `${d.name || id}: `), `My requests PIN is locked (5 wrong PINs), until ${new Date(d.pinLockedUntil).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.`),
+          h('button', { type: 'button', class: 'btn s sm', onclick: () => unlockPin(id) }, 'Unlock'))));
     })(),
     gchips,
     entries.length || gf ? search : null,
@@ -2971,11 +3012,11 @@ function phonesScreen() {
 // A phone's logs: "Get log" (the phone sends it at its next check), and the ones it has sent (newest first).
 function logsSection(id, d) {
   if (!S.logFiles || S.logFiles.id !== id) {
-    S.logFiles = { id, list: null };
-    logFiles(id).then(l => { if (S.logFiles.id === id) { S.logFiles.list = l; render(); } })
+    S.logFiles = { id, list: null, archived: [] };
+    Promise.all([logFiles(id), logFiles(id, true)]).then(([l, a]) => { if (S.logFiles.id === id) { S.logFiles.list = l; S.logFiles.archived = a; render(); } })
       .catch(e => { if (S.logFiles.id === id) { S.logFiles.list = []; S.logFiles.err = e.message; render(); } });
   }
-  const list = S.logFiles.list;
+  const list = S.logFiles.list, archivedLogs = S.logFiles.archived || [];
   const newest = list && list[0] ? Date.parse(list[0].name.slice(0, 10) + 'T' + list[0].name.slice(11, 16).replace('-', ':') + ':00Z') : 0;
   const waiting = d.logRequested && d.logRequested > newest + 60000;
   const ask = async () => {
@@ -3004,13 +3045,23 @@ function logsSection(id, d) {
             }
           }
           const when = logLabel(f.name).split(' · ')[0];
-          return h('button', { type: 'button', class: 'row', onclick: () => open({ name: 'log', id, file: f.name }) },
+          return h('button', { type: 'button', class: 'row', onclick: () => open({ name: 'log', id, file: f.name, arc: f.arc }) },
             h('span', { class: 'ic', style: crash ? 'color:var(--red-ink,#8A2E1F)' : '' }, icon(isMsg ? 'send' : crash ? 'warn' : 'list', 20)),
             h('span', { class: 'grow' }, h('span', { class: 't' }, isMsg ? (info ? info.subject : 'Message') : 'Log'),
               h('span', { class: 's' }, isMsg ? `${when} · Message${info && info.withLog ? ', with the log' : ''}` : logLabel(f.name))),
             h('span', { class: 'chev' }, icon('chev', 18)));
         }))
-      : h('p', { class: 'hint', style: 'margin:0' }, S.logFiles.err ? 'Couldn\'t look for logs: ' + S.logFiles.err : 'No logs yet.'));
+      : h('p', { class: 'hint', style: 'margin:0' }, S.logFiles.err ? 'Couldn\'t look for logs: ' + S.logFiles.err : 'No logs yet.'),
+    // Archived: put away (open one to restore or delete it).
+    archivedLogs.length ? h('button', { type: 'button', class: 'btn s sm', id: 'logArchivedToggle', style: 'align-self:flex-start',
+      onclick: () => { S.showArchivedLogs = !S.showArchivedLogs; render(); } }, `${S.showArchivedLogs ? 'Hide' : 'Show'} archived (${archivedLogs.length})`) : null,
+    archivedLogs.length && S.showArchivedLogs ? h('div', { class: 'group', id: 'archivedLogs' }, archivedLogs.map(f => {
+      const isMsg = /_message\.txt$/.test(f.name);
+      return h('button', { type: 'button', class: 'row', onclick: () => open({ name: 'log', id, file: f.name, arc: true }) },
+        h('span', { class: 'ic' }, icon('archive', 20)),
+        h('span', { class: 'grow' }, h('span', { class: 't' }, isMsg ? 'Message' : 'Log'), h('span', { class: 's' }, logLabel(f.name))),
+        h('span', { class: 'chev' }, icon('chev', 18)));
+    })) : null);
 }
 
 function phoneScreen() {
@@ -3071,6 +3122,10 @@ function phoneScreen() {
     h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:10px' },
       h('div', { class: 'field' }, h('label', { for: 'pFirst' }, 'First name'), first),
       h('div', { class: 'field' }, h('label', { for: 'pLast' }, 'Last name'), last)),
+    // My requests PIN locked (5 wrong PINs): a yellow banner at the top, with Unlock.
+    locked ? h('div', { class: 'warn', id: 'pinLockedBanner', style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap' },
+      h('span', { style: 'flex:1;min-width:12rem' }, `My requests PIN is locked (5 wrong PINs), until ${new Date(d.pinLockedUntil).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.`),
+      M ? h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlock', onclick: () => unlockPin(id) }, 'Unlock') : null) : null,
     d.blocked ? h('p', { class: 'warn' }, `Blocked: it can't open any site. Its lists (${(d.blockedLists || []).map(listLabel).join(', ') || 'none'}) come back when you unblock it.`) : null,
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Lists it uses'), lists,
       h('p', { class: 'hint', style: 'margin:0' }, d.blocked ? 'Unblock it to change its lists.' : 'A site opens if any of these allows it, and is blocked if any of them blocks it.')),
@@ -3090,8 +3145,7 @@ function phoneScreen() {
         : S.D.approvalPin ? 'Uses the PIN for all phones (Settings).' : 'No PIN for all phones is set (Settings).'),
       pinMode === 'own' ? h('button', { type: 'button', class: 'btn s sm', onclick: () => open({ name: 'approvalpin', scope: id }) }, 'Change its PIN') : null,
       pinMode === 'none' ? null : pinsHere(id),
-      locked ? h('p', { class: 'warn' }, `Locked after 5 wrong PINs, until ${new Date(d.pinLockedUntil).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. `,
-        h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlock', onclick: () => unlockPin(id) }, 'Unlock'))
+      locked ? null
         : h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlockAny', onclick: () => unlockPin(id) }, 'Unlock PIN approvals on this phone'),
       locked ? null : h('p', { class: 'hint', style: 'margin:0' }, 'If the phone says PIN approval is locked, this unlocks it (it picks it up within a few minutes).')),
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Ads'), ads),
@@ -3130,8 +3184,7 @@ function readOnlyPart(d, locked, M) {
       row('Ads', usual(d.adblock, 'Blocked', 'Allowed')),
       row('Content filters', filters.length ? filters.join(', ') : 'Usual'),
       row('Approving with a PIN', d.approvalPin === 'none' ? 'Off on this phone' : canDo('pin') ? 'On: your own PIN works here (Settings → Your account)' : 'On')),
-    locked ? h('p', { class: 'warn' }, `PIN approvals are locked after 5 wrong PINs, until ${new Date(d.pinLockedUntil).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. `,
-      M ? h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlock', onclick: () => unlockPin(Object.keys(S.D.devices).find(k => S.D.devices[k] === d)) }, 'Unlock') : null)
+    locked ? null
       : M ? h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlockAny', style: 'align-self:flex-start', onclick: () => unlockPin(Object.keys(S.D.devices).find(k => S.D.devices[k] === d)) }, 'Unlock PIN approvals on this phone') : null];
 }
 // The main admin: every PIN that works on a phone (yours, and each helper's who looks after it).
@@ -3272,7 +3325,7 @@ function settingsScreen() {
     h('div', { class: 'card' }, h('p', { style: 'margin:0' }, allPhonesAdmin() ? 'You look after every phone.' : `You look after ${plural(Object.keys(S.D.devices).length, 'phone')}: ${Object.values(S.D.devices).map(d => d.name || 'no name').join(', ') || 'none yet'}.`),
       h('p', { class: 'hint', style: 'margin:0' }, 'The settings for every phone are changed by the main admin.')),
     accountSection(section),
-    INAPP ? h('button', { type: 'button', class: 'btn s wide', onclick: () => $('closeBtn').click() }, 'Close admin and go back to the browser') : null);
+    INAPP && !ADMINAPP ? h('button', { type: 'button', class: 'btn s wide', onclick: () => $('closeBtn').click() }, 'Close admin and go back to the browser') : null);
   const row = (ic, label, count, onclick, id) => h('button', { type: 'button', class: 'row', onclick, id }, h('span', { class: 'ic' }, icon(ic, 20)),
     h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, label)), count != null ? h('span', { class: 'count' }, count) : null, h('span', { class: 'chev' }, icon('chev', 18)));
   const days = h('span', null, `${D.inactiveDays || 14} days`);
@@ -3317,7 +3370,7 @@ function settingsScreen() {
             'Turn on phone notifications first (Phones → your phone → Admin phone), so you\'re never without either.')),
         h('span', { class: 'chev' }, icon('chev', 18))))),
     accountSection(section),
-    INAPP ? h('button', { type: 'button', class: 'btn s wide', onclick: () => $('closeBtn').click() }, 'Close admin and go back to the browser') : null);
+    INAPP && !ADMINAPP ? h('button', { type: 'button', class: 'btn s wide', onclick: () => $('closeBtn').click() }, 'Close admin and go back to the browser') : null);
 }
 
 // ============================================================================================

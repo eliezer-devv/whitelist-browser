@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The admin app's name (the browser app's is in src/main). -->
+<resources>
+    <string name="app_name">Whitelist Admin</string>
+</resources>

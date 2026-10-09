@@ -30,12 +30,14 @@
   <div class="card">
     <a class="row" href="admin.html">Open the admin page <span aria-hidden="true">›</span></a>
     <a class="row" id="apk" href="#">Download the Android app <span aria-hidden="true">›</span></a>
+    <a class="row" id="adminApk" href="#">Download the admin app (for admins' phones) <span aria-hidden="true">›</span></a>
   </div>
 </main>
 <script>
   if (location.hostname.endsWith('.github.io')) {
     const owner = location.hostname.split('.')[0], repo = location.pathname.split('/')[1];
     document.getElementById('apk').href = `https://github.com/${owner}/${repo}/releases/latest/download/whitelist-browser.apk`;
+    document.getElementById('adminApk').href = `https://github.com/${owner}/${repo}/releases/download/admin-app/whitelist-admin.apk`;
   }
 </script>
 </body>

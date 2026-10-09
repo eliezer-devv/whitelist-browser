@@ -1039,11 +1039,15 @@ One compact row per phone: its name, ID, lists and groups, and tags only when so
   after every phone in it, including phones added later.
 - **Tapping a phone** lets you change its **First name** and **Last name**, the **Lists it uses** (tap to switch each on
   or off), where its approved requests go, its **Groups**, its **Approval PIN** (Usual / Own PIN / None; after 5
-  wrong PINs it shows *Locked* with **Unlock**, which saves at once; locked phones are also listed at the top of
-  **Phones**) with **PINs that work here** (yours, and each helper's who looks after
+  wrong PINs a **yellow banner** at the top says *My requests PIN is locked*, with **Unlock**, which saves at once;
+  locked phones also get a yellow banner at the top of **Phones**, and **Unlock PIN approvals on this phone** works
+  even when the page doesn't know about the lock) with **PINs that work here** (yours, and each helper's who looks after
   it), **Ads** and **Filters** (Usual / On / Off), and **Admin phone** (every notification on that phone). A helper
   admin sees only what they're allowed to change; the rest shows under **Set by the main admin**. Then:
   - **Messages and logs:** messages its user sent you, and the app's logs (**Get log** asks the phone for one).
+    Open one to **Download**, **Archive** or **Delete** it. Logs and messages go by themselves after 30 days; archived
+    ones are kept until you delete them (**Show archived** under the list; open one to **Restore** or **Delete** it).
+    Helpers with **Messages and logs** can do this for their phones.
   - **Block this phone:** it stays listed but can't open any site, for a lost phone or one that shouldn't be used.
     Its lists are set aside, and **Unblock this phone** gives exactly those back.
   - **Archive now:** does straight away what the daily check does after a phone is unused for a while. **Restore**
@@ -1081,6 +1085,23 @@ The same admin page is built into the app, so you can manage everything from the
 - **"Clear cookies and site data → All sites"** in the browser also signs the admin out on this phone. Just sign in again.
 - **It's the version of the page from when the app was built.** Changing `docs/admin.html` updates the web page
   straight away, and starts a **Build APK** so the in-app one follows with the next app update.
+
+### The admin app (Whitelist Admin)
+A separate app that's **just the admin page**, for the people who manage Whitelist Browser (you, and helper admins)
+on their own phones. It's built from the same code, every time **Build APK** runs.
+- **Get it:** the status page's **Download the admin app**, or
+  `https://github.com/YOUR_USERNAME/whitelist-browser/releases/download/admin-app/whitelist-admin.apk`
+  (always the newest). It has its own icon (the tick on a shield) and name, **Whitelist Admin**, and sits next to
+  the browser if both are on one phone.
+- **It opens straight to the admin page:** sign in once (email, password, the emailed link), then a PIN or your
+  fingerprint, the same as inside the browser. No browsing, no lists, and it doesn't ask for the camera,
+  microphone or location.
+- **It updates itself** (every 6 hours at most, when it's opened), from its own release (**admin-app**), so the
+  browser never picks it up by mistake.
+- **Notifications on the phone:** in the admin app, **Settings** → **Your account** → **On this phone** (Android
+  asks to allow them). New requests, messages and logs, and crashes, only for what that admin may see, sealed so only
+  that app can read them. Within a minute while it's open, and every 15 minutes or so when it isn't. Tapping one opens
+  that request, message or log (after the PIN or fingerprint).
 
 **Without the admin page,** lists can still be edited as files on github.com (section 4), but requests can only be
 answered on the admin page (or with the approval PIN on the phone).
@@ -1142,6 +1163,9 @@ A new version is built whenever you commit a change to the app code (anything in
 - **Don't rename or delete the Build APK workflow.** Its run count is the version number, so starting over would make new versions look older.
 - **The download link always gives the newest version:**
   `https://github.com/YOUR_USERNAME/whitelist-browser/releases/latest/download/whitelist-browser.apk`
+- **Each build makes the admin app too** (`whitelist-admin.apk`, in the release named **admin-app**, which is
+  replaced each time). It's signed with the same key, and updates itself the same way. See
+  [The admin app](#the-admin-app-whitelist-admin).
 
 ---
 
@@ -1289,8 +1313,8 @@ request, message or log.
 - **Only the admin page decides** which phones are admin phones (it reaches the phone in its sealed lists): using the
   admin screen on someone's phone doesn't make it one.
 - **Each admin can turn on their own** (helpers too): **Settings** → **Your account** → **Notifications**.
-  - **On this phone:** open the admin page **in the app on your own phone** (tap the name at the top 7 times), and
-    switch it on. That phone then gets notes, like an admin phone.
+  - **On this phone:** open the **Whitelist Admin** app on your phone (or the admin inside the browser app: tap the
+    name at the top 7 times), and switch it on. That app then gets notes, like an admin phone.
   - **By email:** the same notes, to your email (from the Gmail set up for sign-in).
   - **Tell me about:** **New requests** (and new phones, for those who manage every phone), **Messages and logs**, and
     **Phone problems** (crashes). A helper only hears about **the phones they look after**, and only things they're
@@ -1517,7 +1541,9 @@ app/                           The Android app
   src/main/java/.../Config.kt          Your settings
   src/main/java/.../PrivateRepo.kt     The private repository's name (the public one's + "-private")
   src/main/java/.../MainActivity.kt    Browser screen, blocking, menu, requests, translation bar, finding sites
-  src/main/java/.../AdminActivity.kt   The admin page inside the app (7 taps on the name at the top)
+  src/main/java/.../AdminActivity.kt   The admin page inside the app (7 taps on the name at the top; the whole admin app)
+  src/browser/AndroidManifest.xml      The browser app only: its launcher icon, and opening web links
+  src/admin/                           The admin app only (Whitelist Admin): its name, icon, and opening to the admin page
   src/main/java/.../AdminAlerts.kt     Phone notifications for admin phones
   src/main/java/.../UserAlerts.kt      Notifications for answers to this phone's requests (app closed)
   src/main/java/.../Whitelist.kt       Downloading, unsealing and combining the phone's lists, checking addresses
