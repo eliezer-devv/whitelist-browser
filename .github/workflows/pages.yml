@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deploy1.outputs.page_url || steps.deploy2.outputs.page_url || steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/configure-pages@v6
@@ -39,5 +39,21 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: docs
+      # GitHub sometimes can't find the just-uploaded files for a few seconds ("No artifacts named github-pages"):
+      # then it waits and tries again, twice, before giving up.
+      - id: deploy1
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+      - name: Wait a moment (GitHub didn't find the files yet)
+        if: steps.deploy1.outcome == 'failure'
+        run: sleep 20
+      - id: deploy2
+        if: steps.deploy1.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+      - name: Wait a little longer
+        if: steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        run: sleep 60
       - id: deployment
+        if: steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure'
         uses: actions/deploy-pages@v5
