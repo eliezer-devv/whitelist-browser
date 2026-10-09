@@ -43,7 +43,10 @@ jobs:
           REQUESTS_TOKEN: ${{ secrets.REQUESTS_TOKEN }}
         run: |
           rev="$(printf '%s' "$REQUESTS_TOKEN" | tr -d '[:space:]' | rev)"
-          for f in docs/admin.html docs/admin-test.html; do [ -f "$f" ] && sed -i "s/__REQUESTS_TOKEN_REV__/${rev}/" "$f"; done
+          # (admin-test.html only once something has been released to everyone)
+          for f in docs/admin.html docs/admin-test.html; do
+            if [ -f "$f" ]; then sed -i "s/__REQUESTS_TOKEN_REV__/${rev}/" "$f"; fi
+          done
       - uses: actions/upload-pages-artifact@v5
         with:
           path: docs
