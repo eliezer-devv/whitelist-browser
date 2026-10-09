@@ -140,19 +140,35 @@ jobs:
         run: |
           # Both apps in the same release, each under its own name: whitelist-browser.apk (the browser) and
           # whitelist-for-admins.apk (Whitelist Admin). Each app updates only from the file with its own name.
-          # Older browsers took the FIRST app file in the release, so the browser's must come first: GitHub lists
-          # them by name (b before f), and the browser's is also uploaded last (in case it lists newest first).
+          # Older browsers took the FIRST app file in the release, and GitHub lists them in the order they were
+          # uploaded: so the browser's always goes up first, then the admin app's. (Checked below.)
           # A test build is a pre-release: phones only ever update from the newest normal release, except those
-          # with "Get test versions" on. "Re-run" of a build reuses its number: that release's files are replaced.
+          # with "Get test versions" on. "Re-run" of a build reuses its number: both files are uploaded again.
           NOTES="whitelist-browser.apk: the browser (for the phones). whitelist-for-admins.apk: Whitelist Admin (the admin app)."
           if gh release view "$VERSION" >/dev/null 2>&1; then
-            gh release upload "$VERSION" whitelist-for-admins.apk --clobber
+            gh release delete-asset "$VERSION" whitelist-for-admins.apk --yes 2>/dev/null || true
+            gh release upload "$VERSION" whitelist-browser.apk --clobber
           elif [ "$EVERYONE" = "true" ]; then
-            gh release create "$VERSION" whitelist-for-admins.apk --latest --title "Version ${VERSION#v}" --notes "Built from ${GITHUB_SHA::7}. $NOTES"
+            gh release create "$VERSION" whitelist-browser.apk --latest --title "Version ${VERSION#v}" --notes "Built from ${GITHUB_SHA::7}. $NOTES"
           else
-            gh release create "$VERSION" whitelist-for-admins.apk --prerelease --title "Test ${VERSION#v}" \
+            gh release create "$VERSION" whitelist-browser.apk --prerelease --title "Test ${VERSION#v}" \
               --notes "TEST BUILD from ${GITHUB_SHA::7}: only phones with \"Get test versions\" get it. When it's good: Actions > Release to everyone. $NOTES"
           fi
-          gh release upload "$VERSION" whitelist-browser.apk --clobber
+          gh release upload "$VERSION" whitelist-for-admins.apk --clobber
+          # The check: the first app file, as phones see it, must be the browser's.
+          first="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" --jq '[.assets[].name | select(endswith(".apk"))][0]')"
+          echo "First app file in $VERSION: $first"
+          if [ "$first" != "whitelist-browser.apk" ]; then
+            echo "::warning::The admin app's file came first: putting it back after the browser's."
+            gh release delete-asset "$VERSION" whitelist-for-admins.apk --yes
+            sleep 5
+            gh release upload "$VERSION" whitelist-for-admins.apk
+            first="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" --jq '[.assets[].name | select(endswith(".apk"))][0]')"
+            if [ "$first" != "whitelist-browser.apk" ]; then
+              gh release delete-asset "$VERSION" whitelist-for-admins.apk --yes
+              echo "::error::GitHub still lists the admin app first, so it was taken out of this release (older phones would pick it up). The browser is fine."
+              exit 1
+            fi
+          fi
           # (The admin app had its own release, "admin-app", for a while: not needed any more.)
           if gh release view admin-app >/dev/null 2>&1; then gh release delete admin-app --yes --cleanup-tag || true; fi
