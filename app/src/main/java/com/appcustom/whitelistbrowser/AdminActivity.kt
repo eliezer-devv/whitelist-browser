@@ -124,6 +124,14 @@ class AdminActivity : Activity() {
             @android.webkit.JavascriptInterface
             fun save(name: String, mime: String, base64: String): Boolean = saveToDownloads(name, mime, base64)
 
+            /** A problem the admin page showed (a save refused, say): kept in the app's log, to see what went wrong. */
+            @android.webkit.JavascriptInterface
+            fun log(text: String) { AppLog.w("Admin page", text.take(500)) }
+
+            /** This phone's ID: so an admin can turn on notifications for this phone (Settings → Your account). */
+            @android.webkit.JavascriptInterface
+            fun deviceId(): String = Device.id(this@AdminActivity)
+
             /** Fingerprint (or face) unlock: can this phone do it? */
             @android.webkit.JavascriptInterface
             fun canBiometric(): Boolean = canUseBiometric()
@@ -153,6 +161,12 @@ class AdminActivity : Activity() {
             }
         }
         web.webChromeClient = object : WebChromeClient() {
+            // The admin page's own script errors: in the app's log too.
+            override fun onConsoleMessage(m: android.webkit.ConsoleMessage?): Boolean {
+                if (m != null && m.messageLevel() == android.webkit.ConsoleMessage.MessageLevel.ERROR)
+                    AppLog.w("Admin page", "${m.message().take(400)} (line ${m.lineNumber()})")
+                return true
+            }
             // "Choose a file" for spreadsheet import. (Setting a WebChromeClient also enables the page's
             // confirm/prompt dialogs.)
             override fun onShowFileChooser(view: WebView?, callback: ValueCallback<Array<Uri>>?, params: FileChooserParams?): Boolean {

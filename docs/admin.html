@@ -135,6 +135,11 @@
   .acts .grow { flex: 1 1 auto; }
 
   .group { background: var(--card); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+  .pickcols { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 12px; align-items: start; }
+  .ro { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 16px; border-bottom: 1px solid var(--line); }
+  .group > .ro:last-child { border-bottom: 0; }
+  .ro .grow { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; } .ro .t { font-weight: 600; } .ro .s { font-size: 13px; color: var(--muted); }
+  .tag { flex: none; font-size: 12px; font-weight: 700; color: var(--muted); background: var(--line); border-radius: 8px; padding: 3px 8px; }
   .row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--line2); background: none; text-align: left; text-decoration: none; color: var(--ink); }
   .group > .row:last-child, .group > :last-child > .row { border-bottom: 0; }
   button.row:hover, a.row:hover { background: #FBFAF7; }
@@ -163,6 +168,7 @@
   .listchips::-webkit-scrollbar { display: none; }
   .lc { flex: none; min-height: 38px; padding: 0 14px; border-radius: 19px; font-size: 14px; font-weight: 600; white-space: nowrap; background: #fff; border: 1px solid var(--field); }
   .lc[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .lc.addtxt { display: inline-flex; align-items: center; gap: 6px; border-style: dashed; border-color: #B9B4A9; background: transparent; }
   .lc.add { width: 38px; padding: 0; border-style: dashed; border-color: #B9B4A9; background: transparent; display: grid; place-items: center; }
   .pick { display: inline-flex; align-items: center; gap: 5px; }
   .pick[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
@@ -304,7 +310,7 @@
   :root[data-theme="dark"] .btn.dline { border-color: #6B3A33; color: var(--red); }
   :root[data-theme="dark"] .lc[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
   :root[data-theme="dark"] .pick[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--mint); }
-  :root[data-theme="dark"] .lc.add { background: transparent; border-color: #56696A; }
+  :root[data-theme="dark"] .lc.add, :root[data-theme="dark"] .lc.addtxt { background: transparent; border-color: #56696A; }
   :root[data-theme="dark"] .listrow .lc.add { background: color-mix(in srgb, var(--bg) 60%, transparent); }
   :root[data-theme="dark"] .seg, :root[data-theme="dark"] .chip, :root[data-theme="dark"] .av.grey { background: #364748; }
   :root[data-theme="dark"] .seg button[aria-pressed="true"] { background: #435657; color: var(--ink); }
@@ -435,6 +441,8 @@ const tileColor = s => ['#3C3489', '#B4492F', '#6A4FB0', '#1F5F55', '#185FA5', '
 // ---------- messages ----------
 let toastTimer;
 function say(text, error = false) {
+  // (Problems shown here also go in the app's log, inside the app.)
+  if (error) { try { window.WLBAdmin && WLBAdmin.log && WLBAdmin.log(String(text)); } catch {} }
   const t = $('toast');
   t.textContent = text; t.className = error ? 'error' : ''; t.hidden = false;
   t.style.transform = ''; t.style.opacity = ''; t.style.transition = '';
@@ -442,6 +450,9 @@ function say(text, error = false) {
   toastTimer = setTimeout(() => { t.hidden = true; }, error ? 9000 : 3500);
 }
 $('toast').onclick = () => { $('toast').hidden = true; };
+// The page's own unexpected errors: in the app's log (inside the app), and the browser's console.
+window.addEventListener('error', e => { try { window.WLBAdmin && WLBAdmin.log && WLBAdmin.log(`Script error: ${e.message} (line ${e.lineno})`); } catch {} });
+window.addEventListener('unhandledrejection', e => { try { window.WLBAdmin && WLBAdmin.log && WLBAdmin.log(`Script error: ${(e.reason && (e.reason.stack || e.reason.message)) || e.reason}`); } catch {} });
 // Swiped to the side: it goes (a short drag springs back). It follows the finger, fading as it goes.
 (() => {
   const t = $('toast');
@@ -570,6 +581,8 @@ async function forgetDevice() {
   try { localStorage.removeItem('wl-admin-pin'); localStorage.removeItem('wl-admin-bio'); } catch {}   // (its locks go with it)
   await idb.del('device').catch(() => {}); await idb.del('mac').catch(() => {});
 }
+// This device's time zone (emails give times in it).
+const localTz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { return ''; } };
 const deviceName = () => {
   const ua = navigator.userAgent;
   const os = /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? (/iPad/.test(ua) ? 'iPad' : 'iPhone') : /Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /CrOS/.test(ua) ? 'Chromebook' : /Linux/.test(ua) ? 'Linux' : 'a computer';
@@ -645,7 +658,7 @@ function command(cmd, opts = {}) {
 }
 async function commandNow(cmd, { signed = true, minutes = 4 } = {}) {
   const dev = await deviceKeys();
-  const payload = { ...cmd, rk: dev.enc, at: Date.now() };
+  const payload = { ...cmd, rk: dev.enc, at: Date.now(), tz: localTz() };
   let sealed;
   if (signed) {
     const s = getSession(), mac = await idb.get('mac');
@@ -698,6 +711,7 @@ async function loadData(sha) {
   const index = JSON.parse(await aesOpen(key, await ires.text()));
   Object.assign(DATA, { sha, key, index, at });
   ME = index.me;
+  if (typeof S !== 'undefined') S.admins = null;                // (read again from this version, when needed)
   const now = getSession();
   if (now && now.sha !== sha) setSession({ ...now, sha });      // (the last version that opened here)
   return true;
@@ -735,6 +749,8 @@ const isOwner = () => !!ME && ME.role === 'owner';
 const canDo = what => isOwner() || !!(ME && ME.can && ME.can[what]);
 const allPhonesAdmin = () => isOwner() || (ME && ME.phones === 'all');
 const fullAdmin = () => isOwner() || (allPhonesAdmin() && canDo('settings'));
+// The Phones tab: for anyone who can change something there, or read their phones' messages.
+const seesPhones = () => fullAdmin() || canDo('edit') || canDo('manage') || canDo('logs');
 
 // ---------- Reading and changing files (the rest of the page uses these, as before) ----------
 // Changes show here at once ("overlay") and go to GitHub as one command; the next arrives once it's answered.
@@ -1011,7 +1027,7 @@ async function loadAll(sha) {
   await loadDevices();
   await openList(S.lists.includes(S.current) ? S.current : 'public');
   S.connected = true;
-  if (!canDo('requests') && S.tab === 'requests') S.tab = canDo('edit') ? 'sites' : 'phones';
+  if (!canDo('requests') && S.tab === 'requests') S.tab = canDo('edit') ? 'sites' : seesPhones() ? 'phones' : 'settings';
   loadInbox();   // in the background; the Requests tab fills in when it arrives
   return true;
 }
@@ -1365,7 +1381,7 @@ function render() {
   else if (!S.connected) node = signInScreen();
   else if (S.sub) node = ({ site: siteScreen, temp: tempScreen, block: blockScreen, nomedia: noMediaScreen, import: importScreen,
     listsettings: listSettingsScreen, phone: phoneScreen, archived: archivedScreen, neverblock: neverBlockScreen, pin: pinScreen,
-    log: logScreen, account: accountScreen, admins: adminsScreen, admin: adminScreen,
+    log: logScreen, account: accountScreen, admins: adminsScreen, admin: adminScreen, groups: groupsScreen,
     approvalpin: approvalPinScreen, embeds: embedsScreen, request: requestDetailsScreen })[S.sub.name]();
   else node = ({ requests: requestsScreen, sites: sitesScreen, phones: phonesScreen, settings: settingsScreen })[S.tab]();
   view.replaceChildren(node);
@@ -1383,7 +1399,7 @@ function renderTabs() {
   const waiting = S.requests ? S.requests.length + S.newPhones.length : 0;
   // (A mini admin sees only what they can use.)
   const tabs = [canDo('requests') ? ['requests', 'Requests', 'inbox', waiting] : null, canDo('edit') ? ['sites', 'Sites', 'globe', 0] : null,
-    ['phones', 'Phones', 'phone', 0], ['settings', 'Settings', 'sliders', 0]].filter(Boolean);
+    seesPhones() ? ['phones', 'Phones', 'phone', 0] : null, ['settings', 'Settings', 'sliders', 0]].filter(Boolean);
   $('tabs').replaceChildren(...tabs.map(([id, label, ic, badge]) => h('button', { type: 'button', 'aria-current': S.tab === id ? 'page' : null, onclick: () => go(id) },
     h('span', { class: 'pill' }, icon(ic, 22), badge ? h('span', { class: 'badge', 'aria-label': `${badge} waiting` }, badge) : null), label)));
 }
@@ -1461,7 +1477,7 @@ function signInScreen() {
       const mac = await newMacSecret();
       // (Kept here meanwhile: if the email link is tapped in another tab of this browser, that tab can finish signing in.)
       await idb.set('macPending', { did: dev.did, key: mac.key });
-      const number = await postCommand({ p: JSON.stringify({ op: 'signin', email: em, password: pw, did: dev.did, enc: dev.enc, mac: mac.b64, name: deviceName(), rk: dev.enc, at: Date.now() }) });
+      const number = await postCommand({ p: JSON.stringify({ op: 'signin', email: em, password: pw, did: dev.did, enc: dev.enc, mac: mac.b64, name: deviceName(), rk: dev.enc, at: Date.now(), tz: localTz() }) });
       const seen = new Set();
       const first = await awaitAnswers(number, () => true, { seen });
       if (!first) throw new Error('No answer from GitHub yet. Its automation may be busy or switched off (private repository → Actions). Try again in a minute.');
@@ -1719,10 +1735,12 @@ function unlockScreen() {
 // Your account (everyone), and Admins (the main admin): mini admins with their phones and what they can do
 // ============================================================================================
 const PERMS = [
-  ['requests', 'Answer requests', 'Approve or deny requests from their phones'],
-  ['edit', 'Change their phones', 'Their phones\' own lists, names and settings'],
-  ['logs', 'Messages and logs', 'Read messages and logs from their phones'],
-  ['settings', 'Settings for every phone', 'Filters, public lists, starting lists and the approval PIN (only with All phones)'],
+  ['requests', 'Answer requests', 'Approve or deny their phones\' requests, into each phone\'s own list'],
+  ['pin', 'Approve on the phone with their own PIN', 'Their personal PIN works in My requests on their phones'],
+  ['edit', 'Edit their lists', 'Add and remove sites on their phones\' own lists, open things for a while'],
+  ['manage', 'Manage their phones', 'Rename, block or unblock, archive, ask for a log'],
+  ['logs', 'Messages and logs', 'Read what their phones send'],
+  ['settings', 'Settings for every phone', 'Public lists, starting lists and where approvals go (only with All phones)'],
 ];
 // A signed command from a screen: the button shows it's working, then the answer.
 async function runCommand(btn, label, cmd, okText) {
@@ -1744,7 +1762,9 @@ async function adminsList() {
 }
 function whoText(a) {
   if (a.role === 'owner') return 'Main admin: everything';
-  const phones = a.phones === 'all' ? 'All phones' : `${(a.phones || []).length} phone${(a.phones || []).length === 1 ? '' : 's'}`;
+  const g = (a.groups || []).map(x => (groupDefs()[x] || {}).name).filter(Boolean);
+  const n = (a.phones || []).length;
+  const phones = a.phones === 'all' ? 'All phones' : [g.length ? g.join(', ') : '', n ? `${n} phone${n === 1 ? '' : 's'}` : ''].filter(Boolean).join(' + ') || 'No phones';
   const what = PERMS.filter(([k]) => a.can && a.can[k]).map(([, t]) => t.toLowerCase());
   return `${phones}: ${what.length ? what.join(', ') : 'look only'}`;
 }
@@ -1768,6 +1788,7 @@ function accountScreen() {
   };
   return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Settings'),
     screenTitle('Your account', ME ? `${ME.name ? ME.name + ' · ' : ''}${ME.email}` : ''),
+    ...myPinSection(), ...notifySection(),
     h('h2', { class: 'sec' }, 'Signed in on'),
     h('div', { class: 'group', id: 'myDevices' }, devs.map(([did, d]) => h('div', { class: 'row' }, h('span', { class: 'ic' }, icon(did === dev ? 'check' : 'phone', 20)),
       h('span', { class: 'grow' }, h('span', { class: 't' }, d.name + (did === dev ? ' (this one)' : '')),
@@ -1782,6 +1803,75 @@ function accountScreen() {
       getPin() || getBio() ? `The lock: ${[getBio() ? 'fingerprint' : '', getPin() ? 'PIN' : ''].filter(Boolean).join(' and ')}` : 'Lock with a PIN or fingerprint'),
     h('button', { type: 'button', class: 'btn dline wide', id: 'signOut', onclick: signOut }, 'Sign out on this device'));
 }
+
+// Your approval PIN: the main admin's is the one for all phones (Settings); a helper's own works on their phones only.
+function myPinSection() {
+  if (isOwner()) return [h('h2', { class: 'sec' }, 'Your approval PIN'),
+    h('div', { class: 'group' }, h('button', { type: 'button', class: 'row', id: 'acOwnerPin', onclick: () => open({ name: 'approvalpin', scope: 'all' }) }, h('span', { class: 'ic' }, icon('shield', 20)),
+      h('span', { class: 'grow' }, h('span', { class: 't' }, 'PIN for all phones'), h('span', { class: 's' }, S.D.approvalPin ? 'Set: it works on every phone' : 'Not set')),
+      h('span', { class: 'chev' }, icon('chev', 18))))];
+  if (!canDo('pin')) return [];
+  const set = ME.pin && ME.pin.set;
+  const pinIn = (id, label) => h('div', { class: 'field' }, h('label', { for: id }, label),
+    h('input', { class: 'inp', id, type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '8', placeholder: '4 to 8 digits', style: 'max-width:12rem;font-size:20px;letter-spacing:.2em' }));
+  const go = h('button', { type: 'button', class: 'btn p', id: 'myPinGo' }, set ? 'Change my PIN' : 'Set my PIN');
+  go.onclick = async () => {
+    const a = $('myPin').value, b = $('myPin2').value;
+    if (!/^\d{4,8}$/.test(a)) return say('The PIN needs 4 to 8 digits.', true);
+    if (a !== b) { $('myPin2').value = ''; return say('The two PINs don\'t match. Type it again.', true); }
+    if (await runCommand(go, 'Saving… (up to a minute)', { op: 'setpin', pin: a }, 'Your PIN is set.')) render();
+  };
+  const remove = h('button', { type: 'button', class: 'btn d sm', id: 'myPinRemove' }, 'Remove my PIN');
+  remove.onclick = async () => { if (await uiConfirm('Remove your PIN?', 'You won\'t be able to approve on the phone until you set one again.', 'Remove', { icon: 'warn' }) &&
+    await runCommand(remove, 'Removing…', { op: 'setpin', pin: '' }, 'Your PIN is removed.')) render(); };
+  const where = allPhonesAdmin() ? 'any phone' : `${plural(Object.keys(S.D.devices).length, 'phone')} you look after`;
+  return [h('h2', { class: 'sec' }, 'Your approval PIN'),
+    h('div', { class: 'card', style: 'gap:8px' },
+      h('p', { style: 'margin:0' }, `Type it in My requests on ${where} to approve or deny a request right there. It works only on the phones you look after.`),
+      h('p', { class: 'hint', style: 'margin:0' }, set ? `Set${typeof set === 'string' ? ' · last changed ' + new Date(set).toLocaleDateString([], { day: 'numeric', month: 'short' }) : ''}.` : 'Not set yet.'),
+      pinIn('myPin', set ? 'New PIN' : 'Your PIN'), pinIn('myPin2', 'The same PIN again'),
+      h('div', { class: 'acts' }, go, set ? remove : null),
+      h('p', { class: 'hint', style: 'margin:0' }, 'It has to be different from every other admin\'s. It only approves requests: it doesn\'t open this admin page. After 5 wrong tries on a phone, PIN approvals lock on it.'))];
+}
+// Your notifications: on this phone (in the app), by email, and about what (only what you can see).
+function notifySection() {
+  const n = (ME && ME.notify) || { phones: [], email: false, kinds: {} };
+  const here = (() => { try { return INAPP && window.WLBAdmin && WLBAdmin.deviceId ? String(WLBAdmin.deviceId()) : null; } catch { return null; } })();
+  const onHere = !!here && (n.phones || []).includes(here);
+  const save = async (el, cmd) => {
+    el.disabled = true;
+    try {
+      const r = await command({ op: 'notify', ...cmd });
+      if (!r.ok) throw new Error(r.error);
+      await refreshData(r.sha).catch(() => {});
+      say(cmd.phone && cmd.here ? 'Notifications are on for this phone. They start within a few minutes.' : 'Saved.');
+    } catch (e) { if (e.message !== 'SIGNED_OUT') say(e.message, true); }
+    render();
+  };
+  const sw = (id, title, sub, on, onchange, disabled) => h('label', { class: 'tg', for: id, style: disabled ? 'opacity:.55' : '' },
+    h('span', { class: 'grow' }, h('span', { class: 't' }, title), h('span', { class: 's' }, sub)),
+    h('input', { type: 'checkbox', class: 'sw', id, checked: on, disabled: !!disabled, onchange }));
+  const kindsNow = () => Object.fromEntries(KINDS_UI.map(([k]) => [k, (n.kinds || {})[k] !== false]));
+  const anyOn = onHere || (n.phones || []).length > 0 || n.email;
+  return [h('h2', { class: 'sec' }, 'Notifications'),
+    h('div', { class: 'group' },
+      sw('ntHere', 'On this phone', here ? 'A notification from the Whitelist Browser app on this phone' : 'Open this page in the Whitelist Browser app on your phone to turn this on',
+        onHere, e => save(e.target, { phone: here, here: e.target.checked }), !here),
+      sw('ntEmail', 'By email', `To ${ME ? ME.email : 'you'}`, !!n.email, e => save(e.target, { email: e.target.checked }))),
+    anyOn ? h('span', { class: 'flabel' }, 'Tell me about') : null,
+    anyOn ? h('div', { class: 'group' }, KINDS_UI.map(([k, t, s, need]) => {
+      const can = need.some(p => canDo(p));
+      return sw(`nt-${k}`, t, can ? s : `Needs "${PERMS.find(([p]) => p === need[0])[1]}", which you don't have`, can && kindsNow()[k],
+        e => save(e.target, { kinds: { ...kindsNow(), [k]: e.target.checked } }), !can);
+    })) : null,
+    h('p', { class: 'hint', style: 'margin:0' }, isOwner() ? 'About every phone.' : 'Only about the phones you look after, and only about things you\'re allowed to do.' +
+      (onHere ? ' (On this phone: notifications must be allowed for the app, and on in its Settings.)' : ''))];
+}
+const KINDS_UI = [
+  ['requests', 'New requests', 'Someone asks for a site or more time (and new phones, if you manage every phone)', ['requests']],
+  ['messages', 'Messages and logs', 'A phone sends a message or its log', ['logs']],
+  ['problems', 'Phone problems', 'The app crashed on a phone', ['manage']],
+];
 
 function adminsScreen() {
   if (!S.admins) { adminsList().then(() => render()); return h('main', { class: 'stack' }, backLink('Settings'), screenTitle('Admins', ''), waitNote('Loading…')); }
@@ -1804,8 +1894,8 @@ function adminScreen() {
   const aid = S.sub.aid;
   const a = aid ? (S.admins || {})[aid] : null;
   if (aid && !a) { S.sub = { name: 'admins' }; return adminsScreen(); }
-  const f = S.sub.form || (S.sub.form = a ? { name: a.name, phones: a.phones === 'all' ? 'all' : [...(a.phones || [])], can: { ...(a.can || {}) } }
-    : { name: '', email: '', phones: [], can: { requests: true, edit: true, logs: true, settings: false } });
+  const f = S.sub.form || (S.sub.form = a ? { name: a.name, phones: a.phones === 'all' ? 'all' : [...(a.phones || [])], groups: [...(a.groups || [])], can: { ...(a.can || {}) } }
+    : { name: '', email: '', phones: [], groups: [], can: { requests: true, pin: true, edit: true, manage: false, logs: true, settings: false } });
   if (a && a.role === 'owner') {
     return h('main', { class: 'stack' }, backLink('Admins', () => open({ name: 'admins' })), screenTitle(a.name || a.email, a.email),
       h('div', { class: 'card' }, h('p', { style: 'margin:0' }, 'The main admin can do everything, including adding and removing admins.'),
@@ -1814,9 +1904,17 @@ function adminScreen() {
   }
   const phones = Object.entries(S.D.devices).sort(([, x], [, y]) => (x.name || '').localeCompare(y.name || ''));
   const allBox = h('input', { type: 'checkbox', class: 'sw', id: 'adAll', checked: f.phones === 'all', onchange: e => { f.phones = e.target.checked ? 'all' : []; render(); } });
+  // Groups and single phones: two sections, side by side (one above the other on a narrow screen).
+  const groupBoxes = f.phones === 'all' ? null : h('div', { class: 'group', id: 'adGroups' }, groupIds().length ? groupIds().map(g => h('label', { class: 'check row', for: `adg-${g}` },
+    h('input', { type: 'checkbox', id: `adg-${g}`, checked: (f.groups || []).includes(g), onchange: e => { f.groups = e.target.checked ? [...(f.groups || []), g] : (f.groups || []).filter(x => x !== g); } }),
+    h('span', { class: 'grow' }, h('span', { class: 't' }, groupName(g)), h('span', { class: 's' }, `${plural(phonesInGroup(g).length, 'phone')} + future`))))
+    : h('p', { class: 'hint', style: 'padding:12px;margin:0' }, 'No groups yet (Phones → Groups).'));
   const phoneBoxes = f.phones === 'all' ? null : h('div', { class: 'group', id: 'adPhones' }, phones.length ? phones.map(([id, d]) => h('label', { class: 'check row', for: `adp-${id}` },
     h('input', { type: 'checkbox', id: `adp-${id}`, checked: f.phones.includes(id), onchange: e => { f.phones = e.target.checked ? [...f.phones, id] : f.phones.filter(x => x !== id); } }),
-    h('span', { class: 'grow' }, h('span', { class: 't' }, d.name || 'No name yet'), h('span', { class: 's mono' }, id)))) : h('p', { class: 'hint', style: 'padding:12px' }, 'No phones yet.'));
+    h('span', { class: 'grow' }, h('span', { class: 't' }, d.name || 'No name yet'), h('span', { class: 's mono' }, id)))) : h('p', { class: 'hint', style: 'padding:12px;margin:0' }, 'No phones yet.'));
+  const pickers = f.phones === 'all' ? null : h('div', { class: 'pickcols' },
+    h('div', { class: 'stack', style: 'gap:6px;min-width:0' }, h('span', { class: 'flabel' }, 'Groups'), h('span', { class: 'hint', style: 'margin:0' }, 'Every phone in them, now and later'), groupBoxes),
+    h('div', { class: 'stack', style: 'gap:6px;min-width:0' }, h('span', { class: 'flabel' }, 'Single phones'), h('span', { class: 'hint', style: 'margin:0' }, 'Just these phones'), phoneBoxes));
   const perms = h('div', { class: 'group' }, PERMS.filter(([k]) => k !== 'settings' || f.phones === 'all').map(([k, t, s]) => h('label', { class: 'tg', for: `adc-${k}` },
     h('span', { class: 'grow' }, h('span', { class: 't' }, t), h('span', { class: 's' }, s)),
     h('input', { type: 'checkbox', class: 'sw', id: `adc-${k}`, checked: !!f.can[k], onchange: e => { f.can[k] = e.target.checked; } }))));
@@ -1825,14 +1923,15 @@ function adminScreen() {
   const save = h('button', { type: 'button', class: 'btn p wide', id: 'adSave' }, a ? 'Save changes' : 'Send the invitation');
   save.onclick = async () => {
     const phonesOut = f.phones === 'all' ? 'all' : f.phones;
-    if (phonesOut !== 'all' && !phonesOut.length) return say('Tick at least one phone (or All phones).', true);
+    const groupsOut = phonesOut === 'all' ? [] : (f.groups || []).filter(g => groupDefs()[g]);
+    if (phonesOut !== 'all' && !phonesOut.length && !groupsOut.length) return say('Tick at least one group or phone (or All phones).', true);
     const canOut = { ...f.can }; if (phonesOut !== 'all') canOut.settings = false;
     if (a) {
-      if (await runCommand(save, 'Saving… (up to a minute)', { op: 'update', target: aid, name: f.name, phones: phonesOut, can: canOut }, 'Saved.')) open({ name: 'admins' });
+      if (await runCommand(save, 'Saving… (up to a minute)', { op: 'update', target: aid, name: f.name, phones: phonesOut, groups: groupsOut, can: canOut }, 'Saved.')) open({ name: 'admins' });
     } else {
       const em = (f.email || '').trim();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return say('Type their email address.', true);
-      if (await runCommand(save, 'Sending… (up to a minute)', { op: 'invite', email: em, name: f.name, phones: phonesOut, can: canOut }, `Invitation sent to ${em}.`)) open({ name: 'admins' });
+      if (await runCommand(save, 'Sending… (up to a minute)', { op: 'invite', email: em, name: f.name, phones: phonesOut, groups: groupsOut, can: canOut }, `Invitation sent to ${em}.`)) open({ name: 'admins' });
     }
   };
   const extra = [];
@@ -1862,9 +1961,10 @@ function adminScreen() {
     h('h2', { class: 'sec' }, 'Phones they look after'),
     h('div', { class: 'group' }, h('label', { class: 'tg', for: 'adAll' }, h('span', { class: 'grow' }, h('span', { class: 't' }, 'All phones'),
       h('span', { class: 's' }, 'Including new ones')), allBox)),
-    phoneBoxes,
+    pickers,
     h('h2', { class: 'sec' }, 'What they can do'), perms,
-    h('p', { class: 'hint' }, 'They only ever see the phones ticked here, and what those phones use. GitHub\'s automation checks every change they make.'),
+    h('p', { class: 'hint' }, 'Ads, content filters, the phones\' PIN settings, groups and admin phones stay yours. Public lists they can see but not change. ' +
+      'They only ever see the phones ticked here, and what those phones use; GitHub\'s automation checks every change they make.'),
     save, ...extra);
 }
 
@@ -1875,6 +1975,11 @@ async function hashApprovalPin(pin) {
   const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 150000, hash: 'SHA-256' }, base, 256);
   return { salt: u8b64(salt), hash: u8b64(new Uint8Array(bits)), iter: 150000 };
+}
+async function samePin(pin, rec) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: Uint8Array.from(atob(rec.salt), c => c.charCodeAt(0)), iterations: Number(rec.iter) || 150000, hash: 'SHA-256' }, base, 256);
+  return u8b64(new Uint8Array(bits)) === rec.hash;
 }
 function approvalPinScreen() {
   const sub = S.sub, all = sub.scope === 'all';
@@ -1890,6 +1995,10 @@ function approvalPinScreen() {
     if (!/^\d{4,8}$/.test(a)) return say('The PIN needs 4 to 8 digits.', true);
     if (a !== b) { $('apAgain').value = ''; return say('The two PINs don\'t match. Type it again.', true); }
     saveBtn.disabled = true;
+    // Never the same as a helper admin's own PIN (so each approval says whose PIN it was).
+    for (const x of Object.values(await adminsList())) {
+      if (x.pin && x.pin.salt && await samePin(a, x.pin)) { saveBtn.disabled = false; return say(`That's ${x.name || x.email}'s PIN. Choose a different one.`, true); }
+    }
     const hashed = await hashApprovalPin(a);
     if (all) S.D.approvalPin = hashed; else d.approvalPin = hashed;
     markDevices(); done();
@@ -1902,7 +2011,8 @@ function approvalPinScreen() {
   return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink(all ? 'Settings' : who, done),
     screenTitle(had ? 'Change the approval PIN' : 'Set an approval PIN', `For ${who}`),
     h('p', { class: 'hint' }, 'When you\'re with someone who wants a site, you can type this PIN on their phone to approve their request there and then, ' +
-      'instead of answering it here. It only approves requests: it doesn\'t open this admin page, and it can\'t open sites on the adult, gambling or malware lists (only you can, with Approve anyway). A 6-digit PIN is best.'),
+      'instead of answering it here. It only approves requests: it doesn\'t open this admin page, and it can\'t open sites on the adult, gambling or malware lists (only you can, with Approve anyway). A 6-digit PIN is best. ' +
+    'Helper admins allowed to approve on the phone have their own PINs, which work only on their phones.'),
     field('apNew', 'New PIN'), field('apAgain', 'The same PIN again'), saveBtn,
     had ? h('button', { type: 'button', class: 'btn d', id: 'apRemove', onclick: remove }, 'Remove this PIN') : null,
     h('p', { class: 'hint' }, 'After 5 wrong PINs on a phone, PIN approvals lock on it for 24 hours (unlock it under Phones). Only a scrambled version of the PIN is stored.'));
@@ -1931,6 +2041,7 @@ async function loadInbox() {
     const answered = new Set(S.answeredNumbers || []);
     S.requests = items.filter(i => i.kind === 'request' && marker(i.body) && !answered.has(i.number));
     S.newPhones = items.filter(i => i.kind === 'phone' && (marker(i.body) || {}).type === 'register' && !answered.has(i.number));
+    try { S.answeredList = JSON.parse(await textOf('answered.json') || '[]'); } catch { S.answeredList = []; }
     S.inboxError = null;
   } catch (e) {
     S.requests = []; S.newPhones = [];
@@ -1990,8 +2101,25 @@ function requestsScreen() {
     kids.push(h('div', { class: 'group' }, S.answered.map(a => h('div', { class: 'row' }, h('span', { class: 'ic', style: 'color:var(--accent)' }, icon('check', 20, 2.2)),
       h('span', { class: 'grow' }, h('span', { class: 'name' }, a.title), h('span', { class: 'dom' }, a.label))))));
   }
+  const done = (S.answeredList || []).slice(0, S.answeredMore ? 60 : 8);
+  if (done.length) {
+    kids.push(h('h2', { class: 'sec' }, 'Answered'));
+    kids.push(h('div', { class: 'group', id: 'answeredList' }, done.map(x => {
+      const who = (S.D.devices[x.phone] || (S.D.archived || {})[x.phone] || {}).name || x.phone;
+      const a = x.answer, denied = a.verdict === 'denied';
+      const by = a.how === 'pin' ? `On the phone with ${a.by === ME.name || (isOwner() && a.by === 'the main admin') ? 'your' : possessive(a.by)} PIN`
+        : `${a.how === 'page' ? 'On the admin page' : 'On GitHub'} by ${a.by === (ME.name || ME.email) ? 'you' : a.by}`;
+      return h('div', { class: 'row' }, h('span', { class: 'ic', style: `color:${denied ? 'var(--red-ink,#8A2E1F)' : 'var(--accent)'}` }, icon(denied ? 'ban' : 'check', 20, 2.2)),
+        h('span', { class: 'grow', style: 'min-width:0' }, h('span', { class: 'name' }, describe(x.request).title),
+          h('span', { class: 'dom' }, `${who} · ${new Date(a.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`),
+          h('span', { class: 'dom' }, by)),
+        h('span', { class: 'small', style: `font-weight:700;color:${denied ? 'var(--red-ink,#8A2E1F)' : 'var(--accent)'}` }, denied ? 'Denied' : 'Approved'));
+    })));
+    if (!S.answeredMore && S.answeredList.length > done.length) kids.push(h('button', { type: 'button', class: 'btn s sm', style: 'align-self:center', onclick: () => { S.answeredMore = true; render(); } }, 'Show more'));
+  }
   return h('main', { class: 'stack' }, kids);
 }
+const possessive = n => /^the /.test(n) ? `${n}'s` : `${n}'${/s$/i.test(n) ? '' : 's'}`;
 function requestCard(issue) {
   const req = marker(issue.body);
   const { title, page } = describe(req);
@@ -2675,8 +2803,58 @@ function siteEmbeds(dom, framesOn) {
 // ============================================================================================
 // Phones
 // ============================================================================================
+// ---------- Groups of phones (e.g. everyone from one school): to see them together, and give helper admins ----------
+const groupDefs = () => (S.D && S.D.groups && typeof S.D.groups === 'object') ? S.D.groups : {};
+const groupName = g => (groupDefs()[g] || {}).name || g;
+const groupIds = () => Object.keys(groupDefs()).sort((a, b) => groupName(a).localeCompare(groupName(b)));
+const phonesInGroup = g => Object.entries(S.D.devices).filter(([, d]) => (d.groups || []).includes(g));
+async function newGroup() {
+  const nameIn = h('input', { class: 'inp', id: 'ngName', placeholder: 'e.g. Hillside School' });
+  let id = '';
+  const ok = await uiDialog({ title: 'New group', icon: 'phone', ok: 'Make it', body: [
+    h('div', { class: 'field' }, h('label', { for: 'ngName' }, 'Its name'), nameIn),
+    h('p', { class: 'hint', style: 'margin:0' }, 'Put phones in it from each phone\'s screen. A helper admin given the group looks after every phone in it, including ones added later.')],
+    onOk: () => {
+      const n = nameIn.value.trim();
+      if (!n) { say('Type a name.', true); return false; }
+      if (groupIds().some(g => groupName(g).toLowerCase() === n.toLowerCase())) { say('There\'s a group with that name already.', true); return false; }
+      id = (n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || 'group') + '-' + Math.random().toString(36).slice(2, 6);
+      S.D.groups = { ...groupDefs(), [id]: { name: n.slice(0, 60) } };
+    } });
+  if (!ok) return null;
+  markDevices();
+  return id;
+}
+function groupsScreen() {
+  const ids = groupIds();
+  const rename = async g => {
+    const nameIn = h('input', { class: 'inp', id: 'rgName', value: groupName(g) });
+    const ok = await uiDialog({ title: 'Rename the group', icon: 'phone', ok: 'Rename', body: [h('div', { class: 'field' }, h('label', { for: 'rgName' }, 'Its name'), nameIn)],
+      onOk: () => { if (!nameIn.value.trim()) { say('Type a name.', true); return false; } } });
+    if (!ok) return;
+    S.D.groups = { ...groupDefs(), [g]: { ...groupDefs()[g], name: nameIn.value.trim().slice(0, 60) } };
+    markDevices(); render();
+  };
+  const remove = async g => {
+    if (!(await uiConfirmDanger(`Delete ${groupName(g)}?`, 'The phones stay as they are; they just aren\'t in this group any more. Helper admins given this group no longer look after them.', 'Delete'))) return;
+    const { [g]: _, ...rest } = groupDefs(); S.D.groups = rest;
+    for (const d of [...Object.values(S.D.devices), ...Object.values(S.D.archived || {})]) if (d.groups) { d.groups = d.groups.filter(x => x !== g); if (!d.groups.length) delete d.groups; }
+    markDevices(); render();
+  };
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Phones'),
+    screenTitle('Groups', 'Phones that belong together, like everyone from one school'),
+    ids.length ? h('div', { class: 'group' }, ids.map(g => h('div', { class: 'row' }, h('span', { class: 'ic' }, icon('phone', 20)),
+      h('span', { class: 'grow' }, h('span', { class: 't' }, groupName(g)), h('span', { class: 's' }, plural(phonesInGroup(g).length, 'phone') + (phonesInGroup(g).length ? ': ' + phonesInGroup(g).map(([id, d]) => d.name || id).join(', ') : ''))),
+      h('button', { type: 'button', class: 'btn s sm', onclick: () => rename(g) }, 'Rename'),
+      h('button', { type: 'button', class: 'btn d sm', onclick: () => remove(g) }, 'Delete'))))
+      : h('div', { class: 'card empty' }, h('b', null, 'No groups yet'), 'Make one, then put phones in it from each phone\'s screen.'),
+    h('button', { type: 'button', class: 'btn p wide', id: 'newGroup', onclick: async () => { if (await newGroup()) render(); } }, icon('plus', 18, 2.2), 'New group'),
+    h('p', { class: 'hint' }, 'Give a helper admin a group (Settings → Admins), and they look after every phone in it, including phones added to it later. Tap Save after changes.'));
+}
+
 function phonesScreen() {
-  const entries = Object.entries(S.D.devices)
+  const gf = S.groupFilter && groupDefs()[S.groupFilter] ? S.groupFilter : null;
+  const entries = Object.entries(S.D.devices).filter(([, d]) => !gf || (d.groups || []).includes(gf))
     .sort(([, a], [, b]) => (!!a.name - !!b.name) || (a.name || '').localeCompare(b.name || ''));
   const archived = Object.keys(S.D.archived || {}).length;
   // One compact row per phone: name and ID, its lists, and only the tags that matter.
@@ -2685,8 +2863,9 @@ function phonesScreen() {
     const tags = [d.blocked ? chip('Blocked', 'red', 'ban') : null, !d.name ? chip('Needs a name', 'amber') : null,
       d.pinLockedUntil && Date.parse(d.pinLockedUntil) > Date.now() ? chip('Locked PIN', 'amber') : null,
       off.length ? chip(`${cap(off.join(', '))} off`, 'amber') : null].filter(Boolean);
-    const lists = d.blocked ? 'Blocked: no lists' : (d.lists || []).length
-      ? (d.lists || []).map(l => ID_LIST.test(l) && l === id.toLowerCase() ? 'own list' : listLabel(l)).join(', ') : 'No lists';
+    const lists = (d.blocked ? 'Blocked: no lists' : (d.lists || []).length
+      ? (d.lists || []).map(l => ID_LIST.test(l) && l === id.toLowerCase() ? 'own list' : listLabel(l)).join(', ') : 'No lists') +
+      ((d.groups || []).length ? ' · ' + d.groups.map(groupName).join(', ') : '');
     const find = [d.name, id, d.model, lists].join(' ').toLowerCase();
     const q = (S.phoneQuery || '').trim().toLowerCase();
     return h('button', { type: 'button', class: 'row phonerow phonecard', 'data-id': id, 'data-find': find, hidden: !!q && !find.includes(q), onclick: () => open({ name: 'phone', id }) },
@@ -2731,12 +2910,21 @@ function phonesScreen() {
     if (last) S.D.devices[id].last = last;
     markDevices(); open({ name: 'phone', id });
   };
+  // Groups: tap one to see just its phones.
+  const gchips = groupIds().length ? h('div', { class: 'chips', style: 'gap:8px' },
+    [null, ...groupIds()].map(g => h('button', { type: 'button', class: 'lc pick', 'aria-pressed': String((gf || null) === g),
+      onclick: () => { S.groupFilter = g; render(); } }, g ? groupName(g) : 'All phones'))) : null;
   return h('main', { class: 'stack' },
-    screenTitle('Phones', `${plural(entries.length, 'phone')}${archived ? ` · ${archived} archived` : ''}`),
-    entries.length ? search : null,
+    screenTitle('Phones', `${plural(entries.length, 'phone')}${gf ? ` in ${groupName(gf)}` : ''}${archived && !gf ? ` · ${archived} archived` : ''}`),
+    fullAdmin() || canDo('edit') || canDo('manage') ? null : h('p', { class: 'hint', style: 'margin:0' }, 'You can look at your phones and read what they send. Changing them is up to the main admin.'),
+    gchips,
+    entries.length || gf ? search : null,
     entries.length ? h('div', { class: 'group phones' }, cards) : h('div', { class: 'card empty' }, h('b', null, 'No phones yet'), 'Phones appear here when the app is opened on them.'),
     h('p', { class: 'hint', id: 'phoneNone', hidden: !(S.phoneQuery || '').trim() || cards.some(c => !c.hidden) }, 'No phone matches.'),
     h('div', { class: 'group' },
+      !isOwner() ? null : h('button', { type: 'button', class: 'row', id: 'openGroups', onclick: () => open({ name: 'groups' }) }, h('span', { class: 'ic' }, icon('phone', 20)),
+        h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Groups'), h('span', { class: 'muted small', style: 'display:block' }, 'Phones that belong together, like one school')),
+        h('span', { class: 'count' }, groupIds().length), h('span', { class: 'chev' }, icon('chev', 18))),
       h('button', { type: 'button', class: 'row', id: 'openArchived', onclick: () => open({ name: 'archived' }) }, h('span', { class: 'ic' }, icon('archive', 20)),
         h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'Archived phones')), h('span', { class: 'count' }, archived), h('span', { class: 'chev' }, icon('chev', 18))),
       !fullAdmin() ? null : h('button', { type: 'button', class: 'row', id: 'addPhone', onclick: addPhone }, h('span', { class: 'ic' }, icon('plus', 20)),
@@ -2764,7 +2952,7 @@ function logsSection(id, d) {
   };
   return h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Messages and logs'),
     h('p', { class: 'hint', style: 'margin:0' }, 'Messages from this phone\'s user, and the app\'s log: when you ask, when they send it, or after a crash. Kept 30 days.'),
-    h('button', { type: 'button', class: 'btn s', id: 'pGetLog', onclick: ask }, 'Get log'),
+    fullAdmin() || canDo('manage') ? h('button', { type: 'button', class: 'btn s', id: 'pGetLog', onclick: ask }, 'Get log') : null,
     waiting ? h('p', { class: 'hint', style: 'margin:0' }, `Asked ${new Date(d.logRequested).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: waiting for the phone.`) : null,
     list == null ? h('p', { class: 'hint', style: 'margin:0' }, 'Looking for logs…')
       : list.length ? h('div', { class: 'group' }, list.map(f => {
@@ -2799,14 +2987,16 @@ function phoneScreen() {
   const parts = (d.name || '').trim().split(/\s+/);
   if (d.first === undefined && d.last === undefined && d.name) { d.first = parts[0] || ''; d.last = parts.slice(1).join(' '); }
   const setName = () => { d.name = [d.first, d.last].map(x => (x || '').trim()).filter(Boolean).join(' '); markDevices(); };
-  const first = h('input', { class: 'inp', id: 'pFirst', value: d.first || '', placeholder: 'e.g. Emma', oninput: e => { d.first = e.target.value; setName(); } });
-  const last = h('input', { class: 'inp', id: 'pLast', value: d.last || '', placeholder: 'e.g. Smith', oninput: e => { d.last = e.target.value; setName(); } });
+  // What you can change here: the main admin, everything; a helper, what they're allowed (the rest shows, read-only).
+  const own = isOwner(), M = fullAdmin() || canDo('manage'), E = fullAdmin() || canDo('edit');
+  const first = h('input', { class: 'inp', id: 'pFirst', value: d.first || '', placeholder: 'e.g. Emma', readonly: !M, oninput: e => { d.first = e.target.value; setName(); } });
+  const last = h('input', { class: 'inp', id: 'pLast', value: d.last || '', placeholder: 'e.g. Smith', readonly: !M, oninput: e => { d.last = e.target.value; setName(); } });
   const lists = h('div', { class: 'chips', style: 'gap:8px' }, S.lists.map(l => {
     const on = (d.lists || []).includes(l);
-    return h('button', { type: 'button', class: 'lc pick', 'aria-pressed': String(on), disabled: !!d.blocked, onclick: () => {
+    return h('button', { type: 'button', class: 'lc pick', 'aria-pressed': String(on), disabled: !!d.blocked || !E, onclick: () => {
       d.lists = on ? d.lists.filter(x => x !== l) : [...(d.lists || []), l]; markDevices(); render(); } }, on ? icon('check', 15, 2.4) : null, listLabel(l));
   }));
-  const req = h('select', { class: 'inp', id: 'pReq', onchange: e => { if (e.target.value) d.requestsTo = e.target.value; else delete d.requestsTo; markDevices(); } },
+  const req = h('select', { class: 'inp', id: 'pReq', disabled: !E, onchange: e => { if (e.target.value) d.requestsTo = e.target.value; else delete d.requestsTo; markDevices(); } },
     [['', 'The usual (see Settings)'], ['own', 'Its own list'], ...S.lists.map(n => [n, n === 'public' ? 'The default public list' : `The ${listLabel(n)} list`])].map(([v, t]) => h('option', { value: v }, t)));
   req.value = d.requestsTo === 'own' || S.lists.includes(d.requestsTo) ? d.requestsTo : '';
   const filterRows = [...AD_GROUPS, ...FILTERS].map(([key, title]) => h('div', { class: 'frow' },
@@ -2850,28 +3040,70 @@ function phoneScreen() {
     d.blocked ? h('p', { class: 'warn' }, `Blocked: it can't open any site. Its lists (${(d.blockedLists || []).map(listLabel).join(', ') || 'none'}) come back when you unblock it.`) : null,
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Lists it uses'), lists,
       h('p', { class: 'hint', style: 'margin:0' }, d.blocked ? 'Unblock it to change its lists.' : 'A site opens if any of these allows it, and is blocked if any of them blocks it.')),
+    own ? h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Groups'),
+      h('div', { class: 'chips', style: 'gap:8px' }, groupIds().map(g => {
+        const on = (d.groups || []).includes(g);
+        return h('button', { type: 'button', class: 'lc pick', 'aria-pressed': String(on), onclick: () => {
+          d.groups = on ? (d.groups || []).filter(x => x !== g) : [...(d.groups || []), g];
+          if (!d.groups.length) delete d.groups;
+          markDevices(); render(); } }, on ? icon('check', 15, 2.4) : null, groupName(g));
+      }), h('button', { type: 'button', class: 'lc addtxt', onclick: async () => {
+        const g = await newGroup(); if (g) { d.groups = [...(d.groups || []), g]; markDevices(); render(); } } }, icon('plus', 15, 2.4), 'New group')),
+      h('p', { class: 'hint', style: 'margin:0' }, 'Helper admins given a group look after every phone in it.')) : null,
     h('div', { class: 'field' }, h('label', { for: 'pReq' }, 'When you approve its requests, change'), req),
-    h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Approval PIN'), pinSeg,
+    own ? [    h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Approval PIN'), pinSeg,
       h('p', { class: 'hint', style: 'margin:0' }, pinMode === 'own' ? 'This phone has its own PIN.' : pinMode === 'none' ? 'Requests from this phone can\'t be approved with a PIN.'
         : S.D.approvalPin ? 'Uses the PIN for all phones (Settings).' : 'No PIN for all phones is set (Settings).'),
       pinMode === 'own' ? h('button', { type: 'button', class: 'btn s sm', onclick: () => open({ name: 'approvalpin', scope: id }) }, 'Change its PIN') : null,
+      pinMode === 'none' ? null : pinsHere(id),
       locked ? h('p', { class: 'warn' }, `Locked after 5 wrong PINs, until ${new Date(d.pinLockedUntil).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. `,
         h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlock', onclick: () => { delete d.pinLockedUntil; delete d.pinFails; markDevices(); render(); say('Unlocked. Tap Save to apply it.'); } }, 'Unlock')) : null),
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Ads'), ads),
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Filters'), ...filterRows,
       h('p', { class: 'hint', style: 'margin:0' }, 'Usual follows Settings → Filters.')),
-    !fullAdmin() ? null : h('label', { class: 'tg', for: 'pAdmin' }, h('span', { class: 'grow' }, h('span', { class: 't' }, 'Admin phone'),
+    h('label', { class: 'tg', for: 'pAdmin' }, h('span', { class: 'grow' }, h('span', { class: 't' }, 'Admin phone'),
         h('span', { class: 's' }, 'Gets phone notifications about new requests, logs and crashes (it can switch them off in its Settings)')),
       h('input', { type: 'checkbox', class: 'sw', id: 'pAdmin', checked: d.admin === true, onchange: e => {
-        if (e.target.checked) d.admin = true; else delete d.admin; markDevices(); } })),
+        if (e.target.checked) d.admin = true; else delete d.admin; markDevices(); } }))]
+      : readOnlyPart(d, locked, M),
     canDo('logs') ? logsSection(id, d) : null,
-    h('div', { class: 'stack', style: 'gap:8px;margin-top:8px' },
+    !M ? null : h('div', { class: 'stack', style: 'gap:8px;margin-top:8px' },
       d.blocked ? h('button', { type: 'button', class: 'btn s wide', id: 'pUnblock', onclick: unblock }, 'Unblock this phone')
         : h('button', { type: 'button', class: 'btn dline wide', id: 'pBlock', onclick: block }, 'Block this phone'),
       h('button', { type: 'button', class: 'btn s wide', id: 'pArchive', onclick: () => archiveNow(id) }, 'Archive now'),
       h('p', { class: 'hint' }, 'Block: it stays here but can\'t open any site, for a lost phone or one that shouldn\'t be used. ' +
         'Archive: put it away, with its own list, until it\'s needed again (Phones → Archived phones → Restore). If it\'s still being used, it comes back by itself.')));
 }
+// A helper's view of what only the main admin changes on a phone (and the PIN lock, which managing can unlock).
+function readOnlyPart(d, locked, M) {
+  const usual = (v, on, off) => v === 'on' ? on : v === 'off' ? off : 'Usual';
+  const filters = [...AD_GROUPS, ...FILTERS].filter(([k]) => d[k] === 'on' || d[k] === 'off').map(([k, t]) => `${t.replace(/^(Block|Hide) /, '')} ${d[k]}`);
+  const row = (t, v) => h('div', { class: 'ro' }, h('span', { class: 'grow' }, h('span', { class: 't' }, t), h('span', { class: 's' }, v)), h('span', { class: 'tag' }, 'View only'));
+  return [h('span', { class: 'flabel' }, 'Set by the main admin'),
+    h('div', { class: 'group', style: 'background:var(--bg)' },
+      row('Ads', usual(d.adblock, 'Blocked', 'Allowed')),
+      row('Content filters', filters.length ? filters.join(', ') : 'Usual'),
+      row('Approving with a PIN', d.approvalPin === 'none' ? 'Off on this phone' : canDo('pin') ? 'On: your own PIN works here (Settings → Your account)' : 'On')),
+    locked ? h('p', { class: 'warn' }, `PIN approvals are locked after 5 wrong PINs, until ${new Date(d.pinLockedUntil).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. `,
+      M ? h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlock', onclick: () => { delete d.pinLockedUntil; delete d.pinFails; markDevices(); render(); say('Unlocked. Tap Save to apply it.'); } }, 'Unlock') : null) : null];
+}
+// The main admin: every PIN that works on a phone (yours, and each helper's who looks after it).
+function pinsHere(id) {
+  if (!S.admins) { adminsList().then(() => render()); return null; }
+  const d = S.D.devices[id];
+  const yours = (d.approvalPin && typeof d.approvalPin === 'object') || S.D.approvalPin;
+  const helpers = Object.values(S.admins).filter(a => a.role !== 'owner' && a.status === 'active' && a.can && a.can.pin && looksAfter(a, id));
+  const row = (letter, t, sub, set, me) => h('div', { class: 'row' }, h('span', { class: 'av' + (set ? '' : ' grey') }, letter),
+    h('span', { class: 'grow' }, h('span', { class: 't' }, t), h('span', { class: 's' }, sub)),
+    h('span', { class: 'small', style: `font-weight:700;color:${set ? 'var(--accent)' : 'var(--faint)'}` }, set ? 'Set' : 'Not set yet'));
+  return h('div', { class: 'stack', style: 'gap:6px' }, h('span', { class: 'flabel' }, 'PINs that work here'),
+    h('div', { class: 'group' }, row('Y', 'Yours', (d.approvalPin && typeof d.approvalPin === 'object') ? 'This phone\'s own PIN' : 'Your PIN for all phones', !!yours),
+      ...helpers.map(a => row((a.name || a.email)[0].toUpperCase(), a.name || a.email, `Helper · ${whoText(a).split(':')[0]}`, !!a.pin))),
+    h('p', { class: 'hint', style: 'margin:0' }, 'Each admin has their own PIN; nobody sees anyone else\'s. 5 wrong tries on this phone locks it for everyone\'s PIN until you unlock it.'));
+}
+// Does this (helper) admin look after this phone: every phone, picked, or in one of their groups?
+const looksAfter = (a, id) => a.phones === 'all' || (a.phones || []).includes(id) ||
+  ((S.D.devices[id] || {}).groups || []).some(g => (a.groups || []).includes(g));
 function archivedScreen() {
   const entries = Object.entries(S.D.archived || {});
   const phones = Object.entries(S.D.devices);
@@ -3001,8 +3233,8 @@ function settingsScreen() {
   const status = `https://${C.owner.toLowerCase()}.github.io/${publicRepoName()}/`;
   return h('main', { class: 'stack' },
     screenTitle('Settings', 'For every phone'),
-    section('Filters', h('div', { class: 'group' },
-      h('label', { class: 'tg', for: 'adblock' }, h('span', { class: 'grow' }, h('span', { class: 't' }, 'Block ads'), h('span', { class: 's' }, 'AdGuard\'s ad lists (Base, Mobile Ads, Quick Fixes), updated daily by each phone')),
+    !isOwner() ? h('div', { class: 'card' }, h('p', { class: 'hint', style: 'margin:0' }, 'Ads, filters and the approval PIN are set by the main admin.')) : section('Filters', h('div', { class: 'group' },
+      h('label', { class: 'tg', for: 'adblock' }, h('span', { class: 'grow' }, h('span', { class: 't' }, 'Block ads'), h('span', { class: 's' }, 'AdGuard\'s ad lists (Base and Mobile Ads, plus its DNS list), updated daily by each phone')),
         h('input', { type: 'checkbox', class: 'sw', id: 'adblock', checked: D.adblock !== false, onchange: e => { D.adblock = e.target.checked; markDevices(); } })),
       ...AD_GROUPS.map(([key, title, desc]) => h('label', { class: 'tg', for: key }, h('span', { class: 'grow' }, h('span', { class: 't' }, title), h('span', { class: 's' }, desc)),
         h('input', { type: 'checkbox', class: 'sw', id: key, checked: D[key] !== false, onchange: e => { D[key] = e.target.checked; markDevices(); } }))),
@@ -3025,12 +3257,12 @@ function settingsScreen() {
     section('Phones that stop being used', h('div', { class: 'group' }, h('div', { class: 'tg', style: 'cursor:default' },
       h('span', { class: 'grow' }, h('span', { class: 't' }, 'Archive after'), h('span', { class: 's' }, 'Days without the app being opened')),
       h('div', { class: 'stepper' }, h('button', { type: 'button', 'aria-label': 'Fewer days', onclick: () => step(-1) }, '−'), days, h('button', { type: 'button', 'aria-label': 'More days', onclick: () => step(1) }, '+'))))),
-    section('Approval PIN', h('div', { class: 'group' },
+    !isOwner() ? null : section('Approval PIN', h('div', { class: 'group' },
       h('button', { type: 'button', class: 'row', id: 'openApprovalPin', onclick: () => open({ name: 'approvalpin', scope: 'all' }) }, h('span', { class: 'ic' }, icon('shield', 20)),
         h('span', { class: 'grow' }, h('span', { style: 'font-weight:500' }, 'PIN for all phones'),
           h('span', { class: 'dom' }, D.approvalPin ? 'Set: type it on a phone to approve a request there' : 'Not set')),
         h('span', { class: 'chev' }, icon('chev', 18))))),
-    section('Notifications', h('div', { class: 'group' },
+    !isOwner() ? null : section('Notifications', h('div', { class: 'group' },
       h('a', { class: 'row', id: 'ghEmails', href: 'https://github.com/settings/notifications', target: '_blank', rel: 'noopener' },
         h('span', { class: 'ic' }, icon('bell', 20)),
         h('span', { class: 'grow' }, h('span', { class: 't' }, 'Turn off GitHub emails'),

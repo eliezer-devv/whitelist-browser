@@ -15,7 +15,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Phone notifications for admin phones (admin page: Phones → the phone → Admin phone): new requests, new phones, logs
+ * Phone notifications for admin phones (admin page: Phones → the phone → Admin phone, or an admin turning on "On this
+ * phone" in Settings → Your account, for what that admin may see): new requests, new phones, logs
  * someone sent, and crashes. GitHub's automation seals a short note for each admin phone (only it can read it); the
  * phone looks for new ones every minute while the app is open, and in the background every 15 minutes or so (the
  * least Android allows). Tapping one opens the admin screen (which still needs its PIN).

@@ -158,7 +158,11 @@ object MyRequests {
      */
     /** PIN approvals locked on this phone (5 wrong PINs) until this time, or 0. */
     fun pinLockedUntil(ctx: Context): Long {
-        val here = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("pinLockedUntil", 0L)
+        val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        // The lock noted here from GitHub's answer counts only until the lists have caught up with it (a few minutes):
+        // after that the lists decide, so unlocking it on the admin page works.
+        val noted = p.getLong("pinLockNotedAt", 0L)
+        val here = if (noted > 0L && Whitelist.state.updatedAt > noted + 4 * 60_000L) 0L else p.getLong("pinLockedUntil", 0L)
         return maxOf(here, Whitelist.state.pinLockedUntil).takeIf { it > System.currentTimeMillis() } ?: 0L
     }
 
@@ -185,7 +189,8 @@ object MyRequests {
                         if (o.optBoolean("pinChecking") && answer.third in 1 until o.optLong("pinSentAt") - 60_000L) continue
                         if (answer.second.contains("PIN approvals are now locked")) {
                             ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                                .putLong("pinLockedUntil", System.currentTimeMillis() + 24 * 3_600_000L).apply()
+                                .putLong("pinLockedUntil", System.currentTimeMillis() + 24 * 3_600_000L)
+                                .putLong("pinLockNotedAt", System.currentTimeMillis()).apply()
                         }
                         if (o.optString("message") != answer.second || o.optBoolean("pinChecking")) {
                             // e.g. "Wrong PIN": it can be ticked again in approval mode.

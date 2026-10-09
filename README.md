@@ -1,8 +1,8 @@
 # Whitelist Browser
 
-An Android browser that only opens websites you've approved. You keep the list of approved sites in this
-GitHub repository and can change it from anywhere. Every phone running the app picks up the change within
-a few minutes.
+An Android browser that only opens websites you've approved. You keep the lists of approved sites in a private
+GitHub repository and change them on the admin page, from anywhere. Every phone running the app picks up the change
+within a few minutes.
 
 **Features:**
 - **Lists for different phones:** a public list for everyone, plus lists for individual phones or groups.
@@ -18,29 +18,29 @@ a few minutes.
 - **Messages to you:** users can send you a message (with the app's log, if they choose) from the app.
 - **Self-updating:** the app installs new versions of itself from this repository.
 
-Everything lives in this one repository. You don't need a computer or Android Studio. All the steps below
-work in a phone's web browser.
+Everything lives in two GitHub repositories (one public, one private). You don't need a computer or Android Studio.
+All the steps below work in a phone's web browser.
 
 ---
 
 ## Contents
 
-0. [Checklist: still to do](#checklist-still-to-do)
-1. [One-time setup](#1-one-time-setup)
-2. [Using the app](#2-using-the-app)
-3. [Requests to allow or block a site](#3-requests-to-allow-or-block-a-site)
-3b. [Phones and lists](#3b-phones-and-lists)
-4. [Changing the list yourself](#4-changing-the-list-yourself)
-5. [The admin page](#5-the-admin-page)
-6. [Tokens: what they are and how to make one](#6-tokens-what-they-are-and-how-to-make-one)
-7. [App updates](#7-app-updates)
-8. [App signing](#8-app-signing)
-9. [Settings reference](#9-settings-reference)
-10. [Who can see what](#10-who-can-see-what)
-10b. [More about the app](#10b-more-about-the-app)
-11. [Limits and tips](#11-limits-and-tips)
-12. [Troubleshooting](#12-troubleshooting)
-13. [What's in the two repositories](#13-whats-in-the-two-repositories)
+- **0.** [Checklist: still to do](#checklist-still-to-do)
+- **1.** [One-time setup](#1-one-time-setup)
+- **2.** [Using the app](#2-using-the-app)
+- **3.** [Requests to allow or block a site](#3-requests-to-allow-or-block-a-site)
+- **3b.** [Phones and lists](#3b-phones-and-lists)
+- **4.** [Changing the list yourself](#4-changing-the-list-yourself)
+- **5.** [The admin page](#5-the-admin-page)
+- **6.** [Tokens: what they are and how to make one](#6-tokens-what-they-are-and-how-to-make-one)
+- **7.** [App updates](#7-app-updates)
+- **8.** [App signing](#8-app-signing)
+- **9.** [Settings reference](#9-settings-reference)
+- **10.** [Who can see what](#10-who-can-see-what)
+- **10b.** [More about the app](#10b-more-about-the-app)
+- **11.** [Limits and tips](#11-limits-and-tips)
+- **12.** [Troubleshooting](#12-troubleshooting)
+- **13.** [What's in the two repositories](#13-whats-in-the-two-repositories)
 
 ---
 
@@ -50,7 +50,7 @@ Tick these off as you go (edit this file, and change `[ ]` to `[x]`).
 
 **Before 2027 (important)**
 - [ ] **Register with Google's Android developer verification** (Google's developer console). From 2027, apps from
-      unverified developers won't install on most Android phones. It's free for apps you don't publish on the Play
+      unverified developers need a much longer install process (with a 24-hour wait) on most Android phones. It's free for apps you don't publish on the Play
       Store, but takes some days to be approved, so don't leave it late.
 
 **Try on a real phone, once**
@@ -101,8 +101,8 @@ Tick these off as you go (edit this file, and change `[ ]` to `[x]`).
 ## 1. One-time setup
 
 There are **two repositories**:
-- **`whitelist-browser` (public):** the app, its updates, and what the phones read (the lists, and which lists
-  each phone ID uses, with no names).
+- **`whitelist-browser` (public):** the app, its updates, the admin and status pages, and each phone's lists,
+  sealed so only that phone can read them (nothing readable).
 - **`whitelist-browser-private` (private, only you can see it):** the lists, the requests, every phone's name and
   details, the admin accounts, and the automation that handles it all. Section 10 explains what's visible where.
 
@@ -145,8 +145,8 @@ allows. When one expires, see section 6.
 | **Requests token** | only `whitelist-browser-private` | **Issues: Read and write** | Public repo → secret `REQUESTS_TOKEN` |
 
 The publishing token lets the private repository copy the lists to the public one. The requests token is built
-into the app (and the admin page), and can only create and read issues, which are all sealed. You never need a token
-yourself: the admin page signs you in with your email and a password (Step 9).
+into the app (and the admin page), and can only create and read issues: requests and the admin page's commands are
+sealed, and the daily phone check names no one. You never need a token yourself: the admin page signs you in with your email and a password (Step 9).
 
 ### Step 6: Set up the lists
 In the private repo: **Actions** → **Publish lists** → **Run workflow**. The first time, it makes the **request key
@@ -206,8 +206,7 @@ Setup is done.
 ## 2. Using the app
 
 ```
- ←  →  ⟳  ⌂   Wikipedia                              ⋮
- 12 sites allowed, list checked 2 min ago. Tap to check now.
+ ←  →  ⟳  ⌂   Wikipedia                         ✓≡  ⋮
  ┌──────────────────────────────────────────────────────┐
  │   [W]        [K]        [S]                          │
  │ Wikipedia  Khan Acad.  Scratch                       │
@@ -222,9 +221,11 @@ Setup is done.
 - **← → ⟳ ⌂:** back, forward, reload and home.
 - **No address bar:** the top bar shows the name of the open site, so it looks like an app rather than a web browser.
   Sites are opened from the home page tiles, or from links within them. To get a new site, use **Ask for a new site**.
-- **Status line:** shows how many sites are allowed and when the list was last checked. Tap it to check right now.
-  - *"Offline, using saved list"* means GitHub couldn't be reached, so the last downloaded list is in use.
-  - *"No list loaded"* means the app has never downloaded a list, so everything is blocked.
+- **The list button** (a list with a tick, ✓≡) checks the lists now.
+- **A slim line under the top bar** only appears when there's something to say (time left, photos/videos/sound off,
+  or a problem):
+  - *"Offline: using the saved list. Tap to try again."* means GitHub couldn't be reached, so the last downloaded list is in use.
+  - *"No list loaded yet. Tap to try again."* means the app has never downloaded a list, so everything is blocked.
 - **⋮ menu:** asking about the open page (**Blocked parts**, **Ask for photos/videos/sound** where they're off, **Ask to
   block**), **Desktop site**, **Translate page**, **Ask for a new site**, **My requests** (with how many are waiting) and
   **Settings** (see [The top bar and Settings](#the-top-bar-and-settings)).
@@ -286,23 +287,27 @@ podcasts, sound files, audio players) doesn't play (see below for how videos are
   they've been judged, so no picture shows.
 - **Sound made without a player** (the browser's sound system, used by games and many sites) stays silent when sound
   is off too, and so do players a site makes in code without putting them on the page (as many music players do).
-- **Turning them back on for one phone, or one page:** "off" anywhere wins, so approving them back on adds a **back
+- **A few sites send a video's sound as a separate .m4a or .aac file,** so while videos are allowed, those two formats
+  aren't blocked.
+
+This is off by default. It can be turned on in four ways:
+- **For a whole site:** the **No photos**, **No videos** and **No sound** switches on the site's screen on the admin page.
+- **For single pages** of a site that's otherwise shown normally: admin page → **Sites** → the site → **Pages without
+  photos, videos or sound** (or **List settings** → **Pages without photos, videos or sound (all sites)**), with a box
+  each for pages without photos, videos and sound (a page in all three has them all off).
+- **One photo or video anyway:** on a page where they're off, tapping a blocked one asks for **just that one** (or the
+  page, or the site). Approved ones go in the list's `mediaAllow`. When the one item is an embedded player (YouTube,
+  Vimeo...), its video is let through too, so it plays.
+- **By approving a request** (section 3).
+
+**Turning them back on for one phone, or one page:** "off" anywhere wins, so approving them back on adds a **back
   on** entry to the list it goes into (`photosOn`, `videosOn`, `soundOn`) whenever another of the phone's lists, or the
   whole site, still has them off. A "back on" wins over every "off", for the phones using that list. Switching a
   site's **No photos** (etc.) on in a list removes that list's "back on" for the site. See and edit them on the admin
-  page → **Sites** → the site → **Pages without photos, videos or sound**. (A few sites send a
-video's sound as a separate .m4a or .aac file, so while videos are allowed, those two formats aren't blocked.) This is off by default. It can be turned on
-in three ways:
-- **For a whole site:** the **No photos**, **No videos** and **No sound** switches on the site's screen on the admin page.
-- **For single pages** of a site that's otherwise shown normally: admin page → **Sites** → **No photos or videos on
-  some pages**, which has a box each for pages without photos, videos and sound (a page in all three has them all off).
-- **One photo or video anyway:** on a page where they're off, tapping a blocked one asks for **just that one** (or the
-  page, or the site). Approved ones go in the list's `mediaAllow`, also shown on that admin screen. When the one item
-  is an embedded player (YouTube, Vimeo...), its video is let through too, so it plays.
-- **By approving a request** (section 3).
+  page → **Sites** → the site → **Pages without photos, videos or sound**.
 
 - **On the phone:**
-  - **The status line** says which: *"Photos are off on this page."*, *"Videos are off…"* or *"Photos and videos are off…"*
+  - **The slim line under the top bar** says which: *"Photos are off on this page."*, *"Videos are off…"* or *"Photos and videos are off…"*
   - **Each blocked picture or video becomes a small placeholder,** *🖼️ Photo blocked · tap to ask* or *🎬 Video blocked · tap to ask*,
     so it's clear something is there (and *🔇 Sound blocked* for audio players). Tapping one asks for that kind,
     and offers **Just this one**, **This page** or **Whole site**.
@@ -403,14 +408,14 @@ already keeps phones off every site you haven't allowed.
   - **Never block these (all filters):** if a site breaks because something it needs is filtered, add that address here.
 - **What they can't do:** they filter by site, not by looking at pictures, so they can't catch content on a site's own
   servers, or on sites the lists don't know yet.
-- **Check it on the phone:** **⋮ → About this phone** shows each filter and how much it has blocked since the app opened.
+- **Check it on the phone:** **⋮ → Settings → About this phone** shows each filter and how much it has blocked since the app opened.
 
 ### Embedded content from other sites
 Pages often show things from other sites: an embedded YouTube or Vimeo video, a map, a "Sign in with Google" box.
 Pictures, scripts and styles from other sites always load. **Embedded frames** only show if they're allowed on that
 page; otherwise their space shows *"Blocked: content from vimeo.com"*.
 - **On the phone,** a bar appears under the top bar: *"Parts of this page were blocked (from vimeo.com)"*, with **Ask**
-  and ✕. The blocked part itself also has an **Ask for it** button, which starts with just that part. ✕ hides the bar until the page loads again, and while a page has blocked parts, **⋮** → **Ask for blocked parts**
+  and ✕. The blocked part itself also has an **Ask for it** button, which starts with just that part. ✕ hides the bar until the page loads again, and while a page has blocked parts, **⋮** → **Blocked parts**
   does the same as **Ask**. It opens a short sheet with a tick box for each blocked site, and for each one **Just this
   one** (only that video, map or box; the default) or **Everything from it**, plus an optional note and the approval
   PIN if one is set.
@@ -463,9 +468,9 @@ Every request uses the same single screen:
 - **Show on the home page:** a switch, on to start with, for whether it gets a tile.
 - **Links through other addresses:** each address the link passes through gets its own **This page** / **Whole site**
   choice and **Home page tile** switch (off to start with).
-- **For how long?** (asking to open, or for photos, videos or sound back): **Always** or **Temporary**, with **Only count
-  time while the site is open** under the time wheels. The rest is as before: **Always** (the default), or **Just for a while**,
-  which shows two scroll wheels, like the admin page: **hours** (0 to 24) and **minutes** (0 to 55, in steps of 5).
+- **For how long?** (asking to open, or for photos, videos or sound back): **Always** (the default) or **Temporary**,
+  which shows two scroll wheels, like the admin page: **hours** (0 to 24) and **minutes** (0 to 55, in steps of 5),
+  and **Only count time while the site is open**.
   Flick them up or down to choose. This is what they ask for. You decide the actual time when you answer.
 - **Photos, videos and sound, separately:**
   - When asking to **open**, **Without** has a chip each for **Photos**, **Videos** and **Sound** (any of them).
@@ -521,9 +526,9 @@ so the request then names the address where the link was stopped.
   it opens the admin with that request (after your PIN). See [Phone notifications for you](#phone-notifications-for-you-admin-phones).
 - **From GitHub:** each request is an **issue** in the private repository, labelled **site request**. It's sealed: it
   says only *"🔒 A request from a phone"*, because what was asked, by whom, and the note are locked so only GitHub's
-  automation can read them (see [Who can see what](#10-who-can-see-what)). A moment later a reply appears on it,
-  *"🟢 A new request: answer it on the admin page"*, which GitHub sends you as a notification (email, or the GitHub
-  app), with a link that opens the admin page on that request.
+  automation can read them (see [Who can see what](#10-who-can-see-what)). A moment later the automation adds a short
+  note to it, *"🟢 A new request: answer it on the admin page"*, which GitHub sends you as a notification (email, or
+  the GitHub app), with a link that opens the admin page on that request.
 - **The details are on the admin page** (and under **All the details**, with the whole history).
 
 ### How you answer
@@ -535,15 +540,12 @@ so the request then names the address where the link was stopped.
 - **Temporary** (or **Other time**): the **hours** and **minutes** wheels, and *Only count time while it's open on the phone*.
 - **Deny:** with an optional reason, shown on their phone.
 
-GitHub's automation does it within about a minute, publishes the lists, and the phone is told. **Replies typed on
-GitHub (or by email) don't count:** since anyone who dug the requests token out of the app could post them, only the
-admin page's answers (and the approval PIN, below) change anything. Behind the scenes, the admin page sends the same
-words a reply would (`approve for 30m use`, `approve own year-5`, `deny too distracting`…), and the automation reads
-them the same careful way:
+GitHub's automation does it within about a minute, publishes the lists, and the phone is told.
+- **Only the admin page (and the approval PIN, below) can answer.** Anything typed on the request on GitHub, or sent
+  back to GitHub's emails, changes nothing.
 - **Mobile and www. addresses count as the site itself:** asking from `m.youtube.com` or `www.youtube.com` adds `youtube.com`.
 - **Approving a site that's already on the list without a tile** (e.g. one added as a pass-through) gives it a tile.
-- **Answering a request that's already been answered** changes nothing.
-- **A link that passes through other addresses:** approving also allows just those pass-through addresses (see above).
+- **Answering a request that's already been answered** (on another device, say) changes nothing.
 
 ### Approving on the spot with a PIN
 When you're with the person, you can approve their request on their phone, without the admin page, and without
@@ -551,14 +553,22 @@ signing in to the admin page on their phone.
 - **Set a PIN** on the admin page: **Settings** → **Approval PIN** → **PIN for all phones**, or per phone under
   **Phones** → the phone → **Approval PIN**: **Usual** (the all-phones PIN), **Own PIN**, or **None**. Use 4 to 8
   digits (6 is best).
+- **Helper admins can have their own PIN** (if you turn on **Approve on the phone with their own PIN** for them): they
+  set it themselves under **Settings** → **Your account**, and it works **only on the phones they look after**. Your
+  PIN works on every phone, so on a helper's phones **both yours and theirs work**; with several helpers on one group,
+  **each has their own PIN and all of them work** there. **Phones** → a phone → **PINs that work here** lists them.
+  - **No two admins can have the same PIN** (it's checked when one is set), so every approval says whose PIN it was:
+    *"Approved on the phone with Ms Green's PIN"*, here and under **Requests** → **Answered**.
+  - **None** on a phone turns PIN approvals off there for everyone. **5 wrong tries on a phone lock it** for everyone's
+    PIN, whoever's was being tried.
 - **On the phone, it's hidden:** the person asks as usual, then you open **⋮** → **My requests** and **tap its title
   7 times**. That's **approval mode**: tick one or more waiting requests, tap **Approve** or **Deny**, and type the PIN
   once for all of them: GitHub checks it **once**, answers each, and publishes the lists once for all of them (a wrong
   PIN counts as one wrong try). Requests waiting for their PIN to be checked can't be ticked again; if the PIN was
   wrong, they can. **Exit** (or closing My requests) leaves approval mode.
 - **Approve** gives each request exactly what was asked, including a time limit or "without photos", and the site
-  opens by itself within a minute or two. **Deny** tells the person *"Denied with the approval PIN"*. You still get the
-  notifications, marked *"Approved (or Denied) on the phone with the approval PIN"*.
+  opens by itself within a minute or two. **Deny** tells the person *"Denied with the approval PIN"*. The request's
+  history says *"Approved (or Denied) on the phone with Ms Green's PIN"* (or yours).
 - **It can't open anything on the adult, gambling or malware lists.** Such a request keeps waiting for you, and the
   phone says so. Only you can open those, with **Approve anyway**.
 - **It only approves requests.** It can't open the admin page or change anything else.
@@ -611,8 +621,8 @@ Every request gets an answer on the phone, whether it's approved or not.
   - ✅ *"coolmathgames.com can now be opened."*
   - ✅ *"nasa.gov can now be opened. (The whole site was approved, not just the page.)"*
   - ✅ *"scratch.mit.edu can now be opened, without photos and videos."*
-  - ❌ *"Not approved: too distracting in class."* (the reason is whatever you wrote after `deny`)
-  - ❌ *"Not approved."* (a plain `deny`)
+  - ❌ *"Not approved: too distracting in class."* (the reason is whatever you typed when denying)
+  - ❌ *"Not approved."* (denied without a reason)
   - ✅ *"coolmathgames.com can be opened for 30 minutes, starting now."* / *"…for 1 hour of time spent on it."*
 - **If you approved something different from what was asked,** like the whole site instead of a page, or without photos and videos,
   the answer says so.
@@ -635,9 +645,9 @@ Every request gets an answer on the phone, whether it's approved or not.
 | Open just a page | Adds the page to the site's **Only these pages** (or adds the site with just that page). If the page was on **Always blocked**, it's taken off. |
 | Block a whole site | Removes it from the list. If it's part of a bigger allowed site, it goes on **Always blocked** instead. |
 | Block just a page | Adds the page to **Always blocked**. If the site only allowed a few pages, that page is taken off its list instead. |
-| Open without photos and/or videos | Opens it as above, and adds the site or page to `noMedia` (both), `noPhotos` or `noVideos` |
-| Only block photos and/or videos | Adds the site or page to `noMedia`, `noPhotos` or `noVideos`. It stays open. |
-| Photos and/or videos back | Takes matching entries off. Turning just photos back on for something with both off leaves videos off (it moves to `noVideos`), and the other way round. If another of the phone's lists still turns them off, the bot says which. |
+| Open without photos, videos and/or sound | Opens it as above, and adds the site or page to `noMedia` (all three), `noPhotos`, `noVideos` or `noSound` |
+| Only block photos, videos and/or sound | Adds the site or page to `noMedia`, `noPhotos`, `noVideos` or `noSound`. It stays open. |
+| Photos, videos and/or sound back | Takes matching entries off. Turning just photos back on for something with both off leaves videos off (it moves to `noVideos`), and the other way round. If another of the phone's lists still turns them off, the answer says so. |
 
 Then GitHub publishes the lists, notes *"Done"* on the request and closes it.
 The phone picks up the change within a few minutes, and if the user is on the blocked page for it, it opens by itself.
@@ -671,7 +681,7 @@ It survives restarts. **As soon as the phone is online, the app sends everything
 and fetches the latest lists. It notices the connection coming back by itself, so nobody has to do anything.
 - A request made offline says *"No connection right now. Your request is saved and will be sent automatically."*
   The request records when it was asked, so you can see it was sent later.
-- **⋮ → About this phone** shows how many things are waiting to be sent, if any.
+- **⋮ → Settings → About this phone** shows how many things are waiting to be sent, if any.
 - If GitHub is busy, the phone simply tries again later. Something GitHub refuses for good, like an expired key,
   is dropped so it doesn't hold up the rest.
 - The phone registers as of its **install date**, even if it only came online days later.
@@ -685,7 +695,7 @@ and fetches the latest lists. It notices the connection coming back by itself, s
    shows under **Phones** on the admin page straight away. Its lists are published **sealed** for it (see
    [Who can see what](#10-who-can-see-what)). Until then, which takes a minute or two, it shows *"Setting up this
    phone…"* and opens nothing. You get a notification: *"📱 A phone registered."*
-3. **Without requests,** add the phone by hand. On the phone, open **⋮ → About this phone** (it shows the ID and has a
+3. **Without requests,** add the phone by hand. On the phone, open **⋮ → Settings → About this phone** (it shows the ID and has a
    **Copy ID** button), then use **Add a phone by ID** on the admin page.
 4. **When the ID does change:** after a **factory reset**, in a **different user profile** on the same phone, and of course on a
    **different phone**. Then it registers as a new phone, and you can give it the old one's name and lists (see below).
@@ -703,7 +713,7 @@ listed under **Requests**, with a box to type one.
 A phone registered without a name (for example if requests weren't set up when it was first opened) shows as its model and ID,
 e.g. *samsung SM-A155F K7M4-Q2XP (no name)*, tagged **Needs a name** under **Phones** until it's given one.
 
-**⋮ → About this phone** also shows the phone's name, the lists it uses and the app version. It's handy for checking a phone is set up right.
+**⋮ → Settings → About this phone** also shows the phone's name, the lists it uses and the app version. It's handy for checking a phone is set up right.
 
 ### When a phone stops being used (uninstalled)
 Android doesn't tell an app it's being uninstalled, so this works by **check-ins** instead:
@@ -711,9 +721,10 @@ Android doesn't tell an app it's being uninstalled, so this works by **check-ins
 1. **Every phone checks in** when the app is used, at most every 12 hours. It updates the phone's "New phone" issue
    with the time it was last seen. Editing an issue sends no notifications.
 2. **Once a day, a GitHub job (Daily phone check) looks for phones that haven't checked in** for a number of days
-   (default 14, set under **Archive phones not seen for** in the admin page).
+   (default 14: admin page → **Settings** → **Phones that stop being used** → **Archive after**).
 3. **Those phones are archived, and you get one notification listing them,** e.g.
-   *"📦 Not seen for 14 days: Emma (K7M4-Q2XP), last seen 2026-09-03, private lists archived: emma"*.
+   *"📦 Not seen for 14 days: 1 phone archived. Details on the admin page."* (Which phones, and their lists, are under
+   **Phones** → **Archived phones**.)
    - **Nothing is deleted.** The phone moves to **Archived phones** in the admin page. Its **private** lists
      (used by no other phone) move to `docs/lists/archive/`.
    - **Shared lists stay where they are,** like a `year-5` list other phones use, and so does the public list.
@@ -727,7 +738,7 @@ Android doesn't tell an app it's being uninstalled, so this works by **check-ins
   name, lists and settings, and its lists come back out of the archive.
 - **From the admin page:** under **Archived phones**, each phone has these options:
   - **Restore** brings it back under its old ID.
-  - **Give to phone…** hands its name and lists to another phone (use this after a factory reset or for a replacement phone).
+  - **Give to another phone…** hands its name and lists to another phone (use this after a factory reset or for a replacement phone).
   - **Delete for good** removes it and its archived lists, after asking.
 
 **Things to know:**
@@ -752,6 +763,8 @@ Everything about phones and lists is on the admin page (section 5). The ideas be
   Untick them all to start new phones with nothing allowed until you add sites or approve requests. The app comes
   with a built-in copy of exactly these lists, for before it's first online, taken when it's built: after changing
   the ticks, run **Actions → Build APK** if new installs should start with the new choice.
+- **Groups of phones** (e.g. one school): to see them together on the admin page, and to give a helper admin every
+  phone in a group, now and later (section 5).
 - **Because lists combine,** blocking something another of the phone's lists allows puts it on the target list's
   blocked list, and opening something another of its lists blocks gives a warning (blocks win).
 
@@ -761,7 +774,7 @@ Everything about phones and lists is on the admin page (section 5). The ideas be
 | `docs/whitelist.json` | The public list |
 | `docs/lists/<name>.json` | The other lists |
 | `docs/lists/archive/<name>.json` | Private lists of archived phones, kept until you restore or delete them |
-| `devices.json` (private repo) | The phones (ID, name, model, date registered, their lists, where their approvals go, their ad setting), archived phones, the lists for new phones, where approvals go by default (`"requestsTo": "own"` or `"public"`), the days before archiving (`"inactiveDays"`), and ad blocking (`"adblock"`, `"adblockExceptions"`) |
+| `devices.json` (private repo) | The phones (ID, name, model, date registered, their lists, groups, where their approvals go, their filter settings, approval PIN), archived phones, the groups (`"groups"`), the lists for new phones, where approvals go by default (`"requestsTo": "own"` or `"public"`), the days before archiving (`"inactiveDays"`), and the filters (`"adblock"`, `"adult"`…, `"adblockExceptions"`) |
 
 The private repo's `devices.json` looks like this:
 ```json
@@ -823,7 +836,7 @@ Each site in `sites` has:
 | `subdomains` | `true` also allows every subdomain (`mail.`, `maps.`, `en.` ...). `false` allows only this exact site and its `www.` version. | No (default `true`) |
 | `pages` | Allow **only these pages** of the site, instead of all of it. Each also allows the pages below it. The first one is where the tile opens. | No (default: the whole site) |
 | `frames` | `true`: content embedded from any site (videos, maps, sign-in boxes) works on this site's pages. Leaving the site is still blocked. Only for sites you trust. | `false` |
-| `unfiltered` | `true`: the adult, gambling and malware filters don't apply to this site (set by `approve anyway`, or the site's switch on the admin page). | `false` |
+| `unfiltered` | `true`: the adult, gambling and malware filters don't apply to this site (set by **Approve anyway**, or the site's switch on the admin page). | `false` |
 
 A list can also have an **`embeds`** section: for a site, the sites whose embedded content may show inside its pages,
 e.g. `"embeds": {"bbc.co.uk": ["player.vimeo.com"]}`. It's filled in by approving a request for blocked parts of a page.
@@ -839,7 +852,7 @@ e.g. `"embeds": {"bbc.co.uk": ["player.vimeo.com"]}`. It's filled in by approvin
 | Allow only certain pages of a site | Add `"pages": ["khanacademy.org/math", "khanacademy.org/science"]` to it. |
 | Block part of an allowed site | Add it to `block`, e.g. `"block": ["maps.google.com"]`. |
 | Block a single page | Add the page to `block`, e.g. `"block": ["en.wikipedia.org/wiki/Fortnite"]`. It also blocks the pages below it. |
-| Open a site or page without photos and videos | Add it to `noMedia`, e.g. `"noMedia": ["youtube.com"]`. On the admin page, a site in `noMedia` shows as its card's **No photos or videos** tick box, and pages show in the **specific pages** box. |
+| Open a site or page without photos, videos and sound | Add it to `noMedia`, e.g. `"noMedia": ["youtube.com"]` (or `noPhotos`, `noVideos`, `noSound` for one of them). On the admin page these are the site's **No photos**, **No videos** and **No sound** switches, and pages are under **Pages without photos, videos or sound**. |
 | Use your own start page instead of the tiles | Add `"homepage": "https://www.example.org",` at the top. |
 
 **Formatting rules:**
@@ -847,7 +860,8 @@ e.g. `"embeds": {"bbc.co.uk": ["player.vimeo.com"]}`. It's filled in by approvin
 - Put commas between entries, but **no comma after the last one** in a list.
 
 If you make a mistake, nothing breaks: phones ignore a broken file and keep their last good list.
-To check the file, open the `whitelist.json` link from setup step 2. If it shows an error, fix the commas and quotes.
+To check the file, open the **Publish lists** run in the private repo's **Actions** tab: a broken file makes it fail,
+with the error. Fix the commas and quotes. (The admin page never makes these mistakes.)
 
 ### How matching works
 | On the list | Allowed | Not allowed |
@@ -881,7 +895,7 @@ To check the file, open the `whitelist.json` link from setup step 2. If it shows
 
 ### How fast changes arrive
 1. GitHub publishes the change in about **1 to 2 minutes**: **Publish lists** runs in the private repo's Actions tab, then **Publish list** in the public repo's.
-2. The app checks when it's opened, every `refreshMinutes` while it's open, or right away when the status line is tapped.
+2. The app checks when it's opened, every `refreshMinutes` while it's open, or right away with the list button in the top bar.
 3. **Removing** a site blocks it even if it's open at the time. **Adding** a site opens it automatically if someone is on its blocked page.
 
 ---
@@ -926,9 +940,21 @@ into the app (below). It never needs a GitHub token.
 ### Admins: people who help (for you only)
 **Settings** → **Admins** lists everyone who can open the admin page. **Add an admin** for a teacher, say, who looks
 after some phones:
-- **Their email** and a name, **the phones they look after** (or **All phones**, including new ones), and **what they
-  can do**: **Answer requests**, **Change their phones** (those phones' own lists, names and settings), **Messages and
-  logs**, and, with All phones, **Settings for every phone**.
+- **Their email** and a name, and **the phones they look after**: **All phones** (including new ones), or any
+  **groups** (every phone in the group, including phones put in it later) and/or single phones.
+- **What they can do** (each a switch):
+  - **Answer requests** from those phones (their approvals always go to the phone's own list).
+  - **Approve on the phone with their own PIN:** their personal PIN works in **My requests** on their phones (see
+    [Approving on the spot with a PIN](#approving-on-the-spot-with-a-pin)).
+  - **Edit their lists:** add and remove sites on those phones' own lists, and open things for a while.
+  - **Manage their phones:** rename them, block or unblock them, archive and restore them, ask for a log, and unlock
+    PIN approvals after wrong tries.
+  - **Messages and logs** from those phones.
+  - **Settings for every phone** (only with All phones): the public lists, the lists new phones start with, and where
+    approvals go.
+- **Always yours only:** ads, content filters, the phones' approval PIN settings, groups, admin phones, and adding
+  admins. Helpers see these on a phone's screen marked **View only**. A helper with none of the list or phone switches
+  (and no Messages and logs) has no **Phones** tab.
 - **They get an email** to confirm their address and choose a password. Until they do, they can't sign in (the link
   works for 48 hours: **Send the invitation again** if needed). They sign in like you, with the same email check on
   each new device, and you get an email when they do.
@@ -954,6 +980,8 @@ Open requests from phones, newest first, with a red count on the tab.
   reason shown on their phone.
 - **New phones without a name** are listed below the requests, with a box to type one.
 - **After answering,** the request moves to **Answered just now**. **Check for new requests** loads the newest.
+- **Answered:** requests answered in the last 30 days (newest first), each with **who answered and how**: *On the admin
+  page by Ms Green*, or *On the phone with your PIN*. A helper sees only their phones' requests.
 
 ### Sites
 **Search sites in every list** at the top suggests sites as you type (name, address, and which lists it's in); tap
@@ -973,24 +1001,29 @@ any list marked public), then each phone's own list, and **+** makes a new one (
   - **More options** → where the tile opens; **Open it temporarily instead**; **Remove this site**
 - **Add site** adds one the same way.
 - **The rows at the bottom:**
-  - **Open something for a while:** temporary access with the scroll wheels.
+  - **Open something temporarily:** temporary access with the scroll wheels.
   - **Always blocked:** parts of allowed sites to keep blocked, one per line.
-  - **No photos, videos or sound on some pages:** single pages, one per line, in a box for each. For a whole site,
-    use its switches instead.
-  - **Import from a spreadsheet:** paste cells or choose a `.csv`/`.xlsx` file. The columns are domain, name, home
-    page, tile opens, subdomains, only these pages, no photos, no videos, and only the domain is needed. A header row is
-    optional. **Add to the list** updates sites already on it, and **Replace the list** removes the rest. You can also
-    download the list as a spreadsheet, a template, or **everything**: one file with a tab for each list and a
-    **Phones** tab. That's also at the bottom of **Phones**.
   - **List settings:** **Public list** (on or off), the start page, how often phones check for changes, and **Delete**
-    (not for the default public list).
+    (not for the default public list). Also:
+    - **Import from a spreadsheet:** paste cells or choose a `.csv`/`.xlsx` file. The columns are domain, name, home
+      page, tile opens, subdomains, only these pages, no photos, no videos, and only the domain is needed. A header
+      row is optional. **Add to the list** updates sites already on it, and **Replace the list** removes the rest. You
+      can also download the list as a spreadsheet, a template, or **everything**: one file with a tab for each list
+      and a **Phones** tab (also at the bottom of **Phones**).
+    - **Pages without photos, videos or sound (all sites)** and **Embedded content allowed (all sites)**: every
+      such entry in the list, in one place.
 
 ### Phones
-One compact row per phone: its name, ID and lists, and tags only when something needs attention (*Blocked*, *Needs a
-name*, *Locked PIN*, a filter switched off). **Search phones** filters by name, ID, model or list as you type.
+One compact row per phone: its name, ID, lists and groups, and tags only when something needs attention (*Blocked*,
+*Needs a name*, *Locked PIN*, a filter switched off). **Search phones** filters by name, ID, model or list as you type.
+- **Groups** (e.g. everyone from one school): the chips at the top show just one group's phones. **Groups** (at the
+  bottom) makes, renames and deletes them; put a phone in a group on its screen. A helper admin given a group looks
+  after every phone in it, including phones added later.
 - **Tapping a phone** lets you change its **First name** and **Last name**, the **Lists it uses** (tap to switch each on
-  or off), where its approved requests go, its **Approval PIN** (Usual / Own PIN / None, and **Unlock** after 5 wrong
-  PINs), **Ads** and **Filters** (Usual / On / Off), and **Admin phone** (notifications on that phone). Then:
+  or off), where its approved requests go, its **Groups**, its **Approval PIN** (Usual / Own PIN / None; after 5
+  wrong PINs it shows *Locked* with **Unlock**) with **PINs that work here** (yours, and each helper's who looks after
+  it), **Ads** and **Filters** (Usual / On / Off), and **Admin phone** (every notification on that phone). A helper
+  admin sees only what they're allowed to change; the rest shows under **Set by the main admin**. Then:
   - **Messages and logs:** messages its user sent you, and the app's logs (**Get log** asks the phone for one).
   - **Block this phone:** it stays listed but can't open any site, for a lost phone or one that shouldn't be used.
     Its lists are set aside, and **Unblock this phone** gives exactly those back.
@@ -1010,8 +1043,10 @@ name*, *Locked PIN*, a filter switched off). **Search phones** filters by name, 
 - **Approval PIN:** the PIN for all phones (section 3).
 - **Notifications:** **Turn off GitHub emails** (once your phone gets notifications).
 - **Admin page:** **Your account**, **Admins** (for you only), and the status page.
+- **Your account** (everyone): your approval PIN (yours is the PIN for all phones; a helper's own works on their
+  phones), **Notifications** (below), the devices you're signed in on, your password, and this device's lock.
 - **A helper admin** sees only **Your account** here: the settings for every phone are yours (unless you gave them
-  **Settings for every phone**).
+  **Settings for every phone**, which still leaves ads, filters and the PIN to you).
 
 ### Inside the app (hidden)
 The same admin page is built into the app, so you can manage everything from the phone itself.
@@ -1050,16 +1085,15 @@ This setup uses two (you never need one yourself: the admin page signs you in wi
 1. On github.com, tap your profile picture → **Settings** → at the bottom of the menu, **Developer settings**.
 2. **Personal access tokens** → **Fine-grained tokens** → **Generate new token**.
 3. **Token name:** e.g. `Whitelist requests`. Choose an **Expiration**.
-4. **Repository access:** **Only select repositories** → pick `whitelist-browser`.
+4. **Repository access:** **Only select repositories** → the repository given for that token in the table above.
 5. **Permissions** → **Repository permissions:** set the permission(s) from the table to **Read and write**.
    Leave everything else as it is.
 6. Tap **Generate token** and **copy it right away**. GitHub only shows it once.
 
 ### Keeping them safe and current
 - **The requests token is built into the app, and the published admin page.** Someone who finds it could only create
-  and read issues in your repo, and everything in them is sealed. They can't change anything: once admin sign-in is set
-  up, only signed-in admins' commands (checked by GitHub's automation) change the lists, and replies typed on GitHub
-  don't count. If fake requests appear, delete the token, make a new one, update the secret, and run **Build APK**
+  and read issues in your repo: requests and commands are sealed, and nothing else names a phone or person. They can't change anything: once admin sign-in is set
+  up, only signed-in admins' commands (checked by GitHub's automation) change the lists. If fake requests appear, delete the token, make a new one, update the secret, and run **Build APK**
   and **Publish list**.
 - **Renewing the requests token:** make a new one, then in **Settings** → **Secrets and variables** → **Actions**,
   edit `REQUESTS_TOKEN` and paste it in. Then run **Actions** → **Build APK** → **Run workflow**, and **Publish list**
@@ -1078,12 +1112,12 @@ A new version is built whenever you commit a change to the app code (anything in
 **Actions** → **Build APK** → **Run workflow**. Each build becomes a release named `v1.0.<number>`.
 
 ### How phones get it
-1. The app checks every `UPDATE_CHECK_HOURS` (default 6), or right away from **⋮ → Check for app update**.
+1. The app checks every `UPDATE_CHECK_HOURS` (default 6), or right away from **⋮ → Settings → App update**.
 2. When there's a newer version, a **green banner** appears. Tap it.
 3. **First time only:** Android asks you to allow this app to install apps. Turn it on, go back and tap the banner again.
-4. Android shows **"Do you want to update this app?"**. Tap **Update**. The app restarts on the new version.
-
-Android always asks for that final tap, so updates can't install silently.
+4. It downloads, then installs: on Android 12 and newer by itself (once the app has installed its own version once);
+   otherwise Android asks **"Do you want to update this app?"**: tap **Update**. See
+   [App updates in the background](#app-updates-in-the-background).
 
 **Keep in mind:**
 - **Don't rename or delete the Build APK workflow.** Its run count is the version number, so starting over would make new versions look older.
@@ -1138,7 +1172,7 @@ updated by a version with the same seal. This stops anyone else from pushing a f
 | Secret | Meaning |
 |---|---|
 | `KEYSTORE_PASSWORD` | Unlocks the signing key. Set once, never change. |
-| `REQUESTS_TOKEN` (public repo) | Lets the app send requests to the private repo. After changing it, rebuild the app. |
+| `REQUESTS_TOKEN` (public repo) | Lets the app and the admin page send requests and commands to the private repo. After changing it, run **Build APK** and **Publish list**. |
 | `PUBLIC_REPO_TOKEN` (private repo) | Lets the private repo publish the lists to the public repo. |
 | `MAIL_USER` (private repo) | The Gmail address the admin page's emails come from (section 1, Step 9). |
 | `MAIL_APP_PASSWORD` (private repo) | That Gmail's app password (not its normal password). |
@@ -1152,7 +1186,7 @@ updated by a version with the same seal. This stops anyone else from pushing a f
 | **Lists and phone settings** (readable) | Private repo (`docs`, `devices.json`) | **Only you** |
 | **Each phone's lists, as the phone gets them** | Public repo (`docs/p/`), **sealed** | **Only that phone** can open its file |
 | **Requests, notes and names** | Private repo issues, **sealed**; details in the private `requests` folder | **Only you** (and the automation) |
-| **Bot replies on requests** | Private repo issues | You; they say only what kind of update it is. The full text is in the private record |
+| **The automation's notes on requests** | Private repo issues | You; they say only what kind of update it is. The full text is in the private record |
 | **The admin page's commands and answers** | Private repo issues titled *🔒 Admin* | Sealed: the commands only for GitHub's automation, its answers only for the device that asked |
 | **The request key** | Private half: private repo `keys/`. Public half: `request-key.pem` in the public repo, and in the app | The public half can only lock, not unlock, so it's fine to be seen |
 | The status page and the admin page | Public repo | Anyone can open them, but the admin page does nothing without signing in |
@@ -1160,7 +1194,7 @@ updated by a version with the same seal. This stops anyone else from pushing a f
 | **What the admin page shows** | Public repo `a/`, **encrypted** with each admin's own key | Only that admin's signed-in devices (each gets the key sealed with its own device key). Mini admins only get their phones' part |
 | App code and releases | Public repo | Anyone |
 | Signing key file | Public repo | Anyone, but it's locked by your password |
-| Secrets and tokens | Repo settings | Nobody, not even you |
+| Secrets and tokens | Repo settings | Nobody, not even you (except `REQUESTS_TOKEN`, which is built into the app and the admin page: see section 6) |
 
 **How the sealing works:**
 - **Each phone has its own key pair.** The phone makes it in Android's secure key storage the first time it runs; the
@@ -1195,8 +1229,8 @@ installs its own updates, and can use the camera, microphone and location when a
 here, but together they make Play Protect cautious.
 - **For now:** tap **More details** → **Install anyway**, and accept if it offers to scan the app.
 - **Coming in 2027:** Google is requiring every developer of apps installed outside the Play Store to register with
-  it (the Android Developer Console). It starts in Brazil, Indonesia, Singapore and Thailand from 30 September 2026,
-  and expands worldwide in 2027. Without registering, installing will need a much longer process, including a
+  it (the Android Developer Console). It started in Brazil, Indonesia, Singapore and Thailand on 30 September 2026,
+  and expands worldwide in 2027. Without registering, installing needs a much longer process, including a
   24-hour wait. Registering doesn't change the app. When it applies where you live, register, and add the
   app's package name, `com.appcustom.whitelistbrowser`.
 
@@ -1214,15 +1248,16 @@ People never see it.
   while, photos, videos or sound being off (tap it to ask for them), or the list couldn't be checked (tap it to try
   again). Otherwise it's hidden.
 - **The ⋮ menu** is a compact card, as wide as its items need: asking about this page (**Blocked parts**, with how
-  many; **Ask for photos/videos/sound** where they're off; **Ask to block**), **Ask for a new site**,
+  many; **Ask for photos/videos/sound** where they're off; **Ask to block**; **Desktop site** and **Translate page**),
+  **Ask for a new site**,
   **My requests** (with how many are waiting), and **Settings**. On tiny screens, **Forward**, **Reload** and **Check
   the list** are a row of buttons at its top.
 - **⋮ → Desktop site** (on a site): shows that site's desktop version, remembered for that site until switched off
   (shown **On** in the menu). Other sites stay as phone sites. Like Chrome's, it introduces itself as a desktop
   browser **and** lays the page out at desktop width, opened **zoomed out so the whole page fits** (pinch to zoom in),
   so sites that adapt to the screen's width (most do) show their desktop layout too.
-- **⋮ → Settings** holds **Appearance**, **Phone's browser**, **Cookies and site data**, **Clear cache**, **App update**
-  and **About this phone**.
+- **⋮ → Settings** holds **Appearance**, **Phone notifications** (on admin phones), **Phone's browser**, **Cookies and
+  site data**, **Clear cache**, **App update** and **About this phone**.
 - **Sheets that slide up from the bottom** can be dragged by their handle: down to close, up to fill the screen.
 - **First launch** asks for the person's **first and last name**. **About this phone** shows the phone's own list by
   the person's name.
@@ -1234,6 +1269,15 @@ logs someone sent**, and **crashes**. Tapping one opens the app's admin screen, 
 request, message or log.
 - **Only the admin page decides** which phones are admin phones (it reaches the phone in its sealed lists): using the
   admin screen on someone's phone doesn't make it one.
+- **Each admin can turn on their own** (helpers too): **Settings** → **Your account** → **Notifications**.
+  - **On this phone:** open the admin page **in the app on your own phone** (tap the name at the top 7 times), and
+    switch it on. That phone then gets notes, like an admin phone.
+  - **By email:** the same notes, to your email (from the Gmail set up for sign-in).
+  - **Tell me about:** **New requests** (and new phones, for those who manage every phone), **Messages and logs**, and
+    **Phone problems** (crashes). A helper only hears about **the phones they look after**, and only things they're
+    allowed to do: no requests without **Answer requests**, no messages without **Messages and logs**, no crashes
+    without **Manage their phones** (those switches are greyed out).
+  - **Admin phone** (on a phone's screen) is different: it gets **everything**, about every phone. Only you set it.
 - **How quickly:** within a minute while the app is open; otherwise Android lets the phone check every 15 minutes or
   so (instant notifications would need an outside push service such as Google's).
 - **On the phone:** ⋮ → **Settings** → **Phone notifications** switches them off and on (shown on admin phones only).
@@ -1358,7 +1402,7 @@ the app's deep green, rounded corners, and two fonts, **Figtree** for text and *
 ### Small screens
 The app, its dialogs, the home page, the blocked page and the admin page all work on small phones, down to about
 2.8-inch screens (240 × 320 on Android's size scale).
-- **On tiny screens** (under 300dp wide, e.g. 2.8-inch phones), **Forward** and **Reload** move into the **⋮** menu,
+- **On tiny screens** (under 300dp wide, e.g. 2.8-inch phones), **Forward**, **Reload** and **Check the list** move into the **⋮** menu,
   so the top bar has room for the site's name. Other phones keep all the buttons.
 - **Dialogs scroll** when they don't fit, and their buttons (**Send**, **Cancel**, **OK**) always stay on screen, even with
   the keyboard open. On small screens the dialog's title scrolls with its content, to leave room.
@@ -1390,7 +1434,7 @@ The app, its dialogs, the home page, the blocked page and the admin page all wor
 | **Publish lists** fails (private repo) | Check the `PUBLIC_REPO_TOKEN` secret there: it needs Contents: Read and write on the public repo, and not to have expired (setup step 5). |
 | Any other build failure | Open the failed run, copy the red error text and ask for help with it. |
 | A phone isn't in the **Phones** section | Requests must be set up for phones to register themselves, so check `REQUESTS_TOKEN`. Otherwise add it by ID (⋮ → About this phone). |
-| A phone doesn't get a list's sites | Check its lists under **Phones** (tap the phone) and that you tapped **Save**. On the phone, **⋮ → About this phone** shows the lists it's using. |
+| A phone doesn't get a list's sites | Check its lists under **Phones** (tap the phone) and that you tapped **Save**. On the phone, **⋮ → Settings → About this phone** shows the lists it's using. |
 | An allowed site loads but looks broken, like missing videos, maps or buttons | Two common causes. **Embedded content** (videos, maps, sign-in boxes) from sites that aren't on your lists is blocked: to allow it on this site, turn on **Allow content embedded from other sites** on the site's screen (see [Embedded content](#embedded-content-from-other-sites)). Or a **filter** may be stopping something it needs: try turning **Ads** (or a content filter) off for that phone to confirm, then add the domain to **Never block these** and turn it back on. |
 | A temporary site closed early, or stayed open too long | **From now** runs on the clock. **Only while it's open on the phone** counts on-screen time, in steps of 15 seconds, within 7 days. Check which you chose under **Temporary access**. |
 | Pictures or videos are missing on a page | Photos and/or videos are off there (the status line says which). Take it off in the admin page, or ask from the phone with **⋮ → Ask for photos and videos**. |
@@ -1399,24 +1443,24 @@ The app, its dialogs, the home page, the blocked page and the admin page all wor
 | A site allowed in a phone's list still won't open | Another of the phone's lists blocks it, and blocks win. Check the **Always blocked** section of each of its lists. |
 | A request's **Add it to** ticks the public list | The admin page's **When you approve a request** setting is on **Every phone**, or that phone's own setting is. Untick it (and tick its own list) for this time, or change the setting. |
 | You weren't told about a phone that's gone | Archiving happens after the set number of days without a check-in, and only if requests are set up. Check **Actions** → **Daily phone check** is enabled and running. |
-| A phone in use was archived | It wasn't opened within the set number of days (or can't check in). It returns by itself when opened. Raise **Archive phones not seen for** if that's common. |
+| A phone in use was archived | It wasn't opened within the set number of days (or can't check in). It returns by itself when opened. Raise **Archive after** (Settings) if that's common. |
 | The same phone appears twice | It was factory reset (or used in another user profile), which gives it a new ID. Archive the old one, then **Archived phones** → it → **Give to another phone…** → the new one. A normal reinstall keeps the same ID. |
 | App says *"No list loaded"* | Check that GitHub Pages is on (setup step 2), that **Publish lists** (private repo) and **Publish list** (public repo) ran green, and that `GITHUB_USERNAME` is right. |
-| List changes don't show up | Check that **Publish lists** (private repo) and **Publish list** (public repo) ran green, then tap the status line. If you edited a file by hand, check it for JSON mistakes, and make sure you edited it in the private repo. |
+| List changes don't show up | Check that **Publish lists** (private repo) and **Publish list** (public repo) ran green, then tap the list button (a list with a tick) in the top bar. If you edited a file by hand, check it for JSON mistakes, and make sure you edited it in the private repo. |
 | A subdomain is blocked, like `mail.google.com` | The site has **Include subdomains** turned off, or the subdomain is on the **Always blocked** list. Add the subdomain as its own site, or turn the option back on. |
 | A page on an allowed site is blocked | The site has **Only these pages** filled in. Add the page there, or empty the box to allow the whole site. |
 | A YouTube video won't open although its channel is allowed | Videos have their own address (`youtube.com/watch?v=…`). Add each video, or allow all of YouTube. |
 | A link from an allowed page is stopped, though its destination is allowed | It passes through another address first (a shortener or redirect). Tap **Ask to open**. The request lists the pass-throughs, and approving allows them. |
 | A listed site is still blocked | It probably sends you to another domain, like a sign-in page. The blocked page names it. Add it with `"home": false`. |
 | No request buttons in the app | `REQUESTS_TOKEN` was missing when the app was built. Add it (setup step 5), then run Build APK and update. |
-| *"The request key has expired"* | Renew the requests token (section 6). |
+| *"The request key has expired"* | It means the **requests token** (`REQUESTS_TOKEN`) expired, not the request key pair. Renew the token (section 6). |
 | Requests arrive but you get no notification | Make your phone an **admin phone** (admin page → Phones → your phone), and check ⋮ → Settings → **Phone notifications** on it is on. Or check GitHub's notification settings for **Participating**, and that you're watching the private repo. Requests always show on the admin page. |
 | Someone didn't hear back about a request | Answers arrive within a few minutes while the app is open and online, or as a notification within about 15 minutes when it isn't (if the phone allows the app's notifications). **⋮ → My requests** shows the status. |
-| A request made offline hasn't arrived | It's sent when the phone is next online with the app open. **⋮ → About this phone** shows whether anything is still waiting and why. |
+| A request made offline hasn't arrived | It's sent when the phone is next online with the app open. **⋮ → Settings → About this phone** shows whether anything is still waiting and why. |
 | A phone stays on *"Setting up this phone…"* | It needs to be online and registered first (a minute or two). **⋮ → Settings → About this phone → Setting up** says where it's got to. |
 | *"Could not save for 5 minutes"* | Very many changes arrived at once and this one kept losing the race. Nothing was changed. Answer it again on the admin page. |
 | A phone says *"GitHub is busy"* | GitHub limits how many requests one account can create per minute, which lots of phones at once can reach. Wait a few minutes and send it again. Phones registering themselves retry by themselves. |
-| You replied `approve` on GitHub and nothing happened | Replies typed on GitHub don't count once admin sign-in is set up (the bot says so). Answer on the admin page. |
+| Something typed on a request on GitHub did nothing | Only the admin page answers requests. Answer it there. |
 | Camera, mic or location doesn't work on a site | The site was blocked earlier in this session, or Android permission was refused. Reopen the app, or allow it in Android Settings → Apps → Whitelist Browser → Permissions. |
 | A phone, email or app link does nothing | No app on the phone can open it. Install the app it's meant for. |
 | *"Couldn't check for updates: Set GITHUB_USERNAME"* | Set your username in `Config.kt`. |

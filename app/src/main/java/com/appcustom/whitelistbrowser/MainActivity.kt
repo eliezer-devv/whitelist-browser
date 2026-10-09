@@ -3030,7 +3030,7 @@ class MainActivity : Activity() {
                     taps = 0
                     when {
                         approving -> Unit
-                        !Whitelist.state.pinApproval -> toast("No approval PIN is set for this phone")
+                        !Whitelist.state.pinApproval -> toast("No admin's PIN works on this phone")
                         // Locked after 5 wrong PINs: approval mode doesn't open, just a short message.
                         MyRequests.pinLockedUntil(this) > 0L -> toast(pinLockedText())
                         else -> { d.dismiss(); showMyRequests(approving = true) }
@@ -3210,13 +3210,13 @@ class MainActivity : Activity() {
         // Locked after 5 wrong PINs: no PIN screen at all, just when it unlocks.
         if (MyRequests.pinLockedUntil(this) > 0L) { toast(pinLockedText()); return }   // (locked while approval mode was open)
         val n = items.size
-        val field = Ui.field(this, "Approval PIN",
+        val field = Ui.field(this, "An admin's PIN",
             type = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD)
         Ui.AppDialog(this, sheet = false).apply {
             title(if (approve) "Approve $n request${if (n == 1) "" else "s"}?" else "Deny $n request${if (n == 1) "" else "s"}?",
                 icon = R.drawable.ic_d_pin, iconBg = if (approve) Ui.SOFT else Ui.RED_BG, iconFg = if (approve) Ui.ACCENT_TEXT else Ui.RED_INK)
             add(Ui.text(this@MainActivity, items.joinToString("\n") { "• " + it.summary }, 14.5f, Ui.INK2))
-            add(Ui.label(this@MainActivity, "Approval PIN"))
+            add(Ui.label(this@MainActivity, "An admin's PIN"))
             add(field, 6)
             button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
             button(if (approve) "Approve" else "Deny", if (approve) Ui.Kind.PRIMARY else Ui.Kind.DANGER) { dlg ->
