@@ -135,6 +135,12 @@
   .acts .grow { flex: 1 1 auto; }
 
   .group { background: var(--card); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+  /* Swipe a row (like My requests on the phone): right and left each do one thing, on a coloured trail. */
+  .swipe { position: relative; overflow: hidden; border-bottom: 1px solid var(--line); background: var(--card); }
+  .group > .swipe:last-child { border-bottom: 0; }
+  .swipe > .row { position: relative; z-index: 1; background: var(--card); touch-action: pan-y; border-bottom: 0 !important; will-change: transform; }
+  .swipe > .trail { position: absolute; inset: 0; display: flex; align-items: center; padding: 0 20px; gap: 8px; color: #fff; font-weight: 700; font-size: 14.5px; visibility: hidden; }
+  .swipe.collapsing { transition: height .2s ease, opacity .2s ease; }
   .pickcols { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 12px; align-items: start; }
   .ro { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 16px; border-bottom: 1px solid var(--line); }
   .group > .ro:last-child { border-bottom: 0; }
@@ -404,6 +410,7 @@ const ICONS = {
   ban: '<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>',
   info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/>',
   trash: '<path d="M5 7h14M10 7V5h4v2M7 7l1 13h8l1-13"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   list: '<path d="M8 6h12M8 12h12M8 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
   download: '<path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/>',
@@ -915,23 +922,81 @@ function logScreen() {
     arc ? h('p', { class: 'hint', style: 'margin:0' }, 'Archived: kept until you delete it (other logs go after 30 days).') : null,
     h('pre', { class: 'logtext' }, text == null ? 'Loading…' : text));
 }
+// A row that can be swiped, like My requests on the phone: past a third of the way, it slides off and its space
+// closes, then [act] runs; sooner, it springs back. right/left: { label, icon, color, run }. A tap is still a tap.
+function swipeable(row, { right, left }) {
+  const trail = h('div', { class: 'trail' });
+  const box = h('div', { class: 'swipe' }, trail, row);
+  let x0 = 0, y0 = 0, dx = 0, dragging = false, down = false, moved = false, shown = 0;
+  // The trail: the action's colour, with its icon and word on the side the row is moving away from.
+  const show = d => {
+    const a = d > 0 ? right : d < 0 ? left : null, side = !a || !d ? 0 : d > 0 ? 1 : -1;
+    if (!side) { trail.style.visibility = 'hidden'; shown = 0; return; }
+    trail.style.visibility = 'visible';
+    if (side === shown) return;
+    shown = side;
+    trail.style.background = a.color;
+    trail.style.justifyContent = side > 0 ? 'flex-start' : 'flex-end';
+    const ic = icon(a.icon, 22, 2), w = h('span', null, a.label);
+    trail.replaceChildren(...(side > 0 ? [ic, w] : [w, ic]));
+  };
+  const back = () => { row.style.transition = 'transform .16s ease'; row.style.transform = ''; setTimeout(() => { row.style.transition = ''; show(0); }, 170); };
+  row.addEventListener('pointerdown', e => { down = true; dragging = false; moved = false; x0 = e.clientX; y0 = e.clientY; dx = 0; });
+  row.addEventListener('pointermove', e => {
+    if (!down) return;
+    const mx = e.clientX - x0, my = e.clientY - y0;
+    if (!dragging) {
+      if (Math.abs(mx) < 10 || Math.abs(mx) < Math.abs(my) * 1.5) { if (Math.abs(my) > 10) down = false; return; }   // (only a clearly sideways move)
+      dragging = true; moved = true; try { row.setPointerCapture(e.pointerId); } catch {}
+    }
+    dx = mx;
+    if ((dx > 0 && !right) || (dx < 0 && !left)) dx = dx / 6;     // (no action that way: it barely moves)
+    row.style.transform = `translateX(${dx}px)`; show(dx);
+  });
+  const end = () => {
+    if (!down) return;
+    down = false;
+    if (!dragging) return;
+    dragging = false;
+    const a = dx > 0 ? right : dx < 0 ? left : null, w = box.offsetWidth;
+    if (!a || Math.abs(dx) < w / 3) return back();
+    row.style.transition = 'transform .18s ease'; row.style.transform = `translateX(${dx > 0 ? w : -w}px)`;
+    setTimeout(() => {
+      box.style.height = box.offsetHeight + 'px'; box.classList.add('collapsing');
+      requestAnimationFrame(() => { box.style.height = '0px'; box.style.opacity = '0'; });
+      setTimeout(() => a.run(), 210);
+    }, 180);
+  };
+  row.addEventListener('pointerup', end); row.addEventListener('pointercancel', () => { if (dragging) { down = false; dragging = false; back(); } else down = false; });
+  row.addEventListener('click', e => { if (moved) { e.stopImmediatePropagation(); e.preventDefault(); moved = false; } }, true);
+  return box;
+}
+// A log's row, swiped: right archives it (or, in Archived, restores it), left deletes it. Done straight away.
+function swipeLog(row, id, file, archived) {
+  return swipeable(row, {
+    right: archived ? { label: 'Restore', icon: 'undo', color: 'var(--accent)', run: () => archiveLog(id, file, false, true) }
+      : { label: 'Archive', icon: 'archive', color: 'var(--accent)', run: () => archiveLog(id, file, true, true) },
+    left: { label: 'Delete', icon: 'trash', color: 'var(--red)', run: () => deleteLog(id, archived ? `archive/${file}` : file, true) },
+  });
+}
 // Archive a log or message (kept until deleted: the others go after 30 days), or bring it back.
-async function archiveLog(id, file, toArchive) {
+async function archiveLog(id, file, toArchive, swiped) {
   const from = `logs/${id}/${toArchive ? '' : 'archive/'}${file}`, to = `logs/${id}/${toArchive ? 'archive/' : ''}${file}`;
   if (await moveFile(from, to, `${toArchive ? 'Archive' : 'Restore'} a log of ${id}`)) {
     S.logFiles = null; S.logView = null;
-    open({ name: 'phone', id });
-    say(toArchive ? 'Archived. It\'s under Show archived, and kept until you delete it.' : 'Restored.');
+    if (swiped) render(); else open({ name: 'phone', id });
+    say(toArchive ? (swiped ? 'Archived' : 'Archived. It\'s under Show archived, and kept until you delete it.') : (swiped ? 'Put back' : 'Restored.'));
   }
 }
-async function deleteLog(id, path) {
-  if (!(await uiConfirmDanger('Delete it?', 'It\'s deleted for good.', 'Delete'))) return;
+async function deleteLog(id, path, swiped) {
+  // (Swiped: straight away, like My requests on the phone. From its own screen: asked first.)
+  if (!swiped && !(await uiConfirmDanger('Delete it?', 'It\'s deleted for good.', 'Delete'))) return;
   const full = `logs/${id}/${path}`;
   const f = await getRaw(full);
   await deleteFile(full, f && f.sha, `Delete a log of ${id}`);
   S.logFiles = null; S.logView = null;
-  open({ name: 'phone', id });
-  say('Deleted.');
+  if (swiped) render(); else open({ name: 'phone', id });
+  say(swiped ? 'Deleted' : 'Deleted.');
 }
 // This device was signed out (removed, paused, or the password was reset elsewhere).
 async function signedOutHere(why) {
@@ -3038,7 +3103,8 @@ function logsSection(id, d) {
     render();
   };
   return h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Messages and logs'),
-    h('p', { class: 'hint', style: 'margin:0' }, 'Messages from this phone\'s user, and the app\'s log: when you ask, when they send it, or after a crash. Kept 30 days.'),
+    h('p', { class: 'hint', style: 'margin:0' }, 'Messages from this phone\'s user, and the app\'s log: when you ask, when they send it, or after a crash. Kept 30 days. ' +
+      (canDo('logs') ? 'Swipe one right to archive it (kept until deleted), or left to delete it.' : '')),
     fullAdmin() || canDo('manage') ? h('button', { type: 'button', class: 'btn s', id: 'pGetLog', onclick: ask }, 'Get log') : null,
     waiting ? h('p', { class: 'hint', style: 'margin:0' }, `Asked ${new Date(d.logRequested).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: waiting for the phone.`) : null,
     list == null ? h('p', { class: 'hint', style: 'margin:0' }, 'Looking for logs…')
@@ -3057,11 +3123,13 @@ function logsSection(id, d) {
             }
           }
           const when = logLabel(f.name).split(' · ')[0];
-          return h('button', { type: 'button', class: 'row', onclick: () => open({ name: 'log', id, file: f.name, arc: f.arc }) },
+          const canSwipe = canDo('logs');
+          const wrap = r => canSwipe ? swipeLog(r, id, f.name, false) : r;
+          return wrap(h('button', { type: 'button', class: 'row', onclick: () => open({ name: 'log', id, file: f.name, arc: f.arc }) },
             h('span', { class: 'ic', style: crash ? 'color:var(--red-ink,#8A2E1F)' : '' }, icon(isMsg ? 'send' : crash ? 'warn' : 'list', 20)),
             h('span', { class: 'grow' }, h('span', { class: 't' }, isMsg ? (info ? info.subject : 'Message') : 'Log'),
               h('span', { class: 's' }, isMsg ? `${when} · Message${info && info.withLog ? ', with the log' : ''}` : logLabel(f.name))),
-            h('span', { class: 'chev' }, icon('chev', 18)));
+            h('span', { class: 'chev' }, icon('chev', 18))));
         }))
       : h('p', { class: 'hint', style: 'margin:0' }, S.logFiles.err ? 'Couldn\'t look for logs: ' + S.logFiles.err : 'No logs yet.'),
     // Archived: put away (open one to restore or delete it).
@@ -3069,10 +3137,10 @@ function logsSection(id, d) {
       onclick: () => { S.showArchivedLogs = !S.showArchivedLogs; render(); } }, `${S.showArchivedLogs ? 'Hide' : 'Show'} archived (${archivedLogs.length})`) : null,
     archivedLogs.length && S.showArchivedLogs ? h('div', { class: 'group', id: 'archivedLogs' }, archivedLogs.map(f => {
       const isMsg = /_message\.txt$/.test(f.name);
-      return h('button', { type: 'button', class: 'row', onclick: () => open({ name: 'log', id, file: f.name, arc: true }) },
+      return swipeLog(h('button', { type: 'button', class: 'row', onclick: () => open({ name: 'log', id, file: f.name, arc: true }) },
         h('span', { class: 'ic' }, icon('archive', 20)),
         h('span', { class: 'grow' }, h('span', { class: 't' }, isMsg ? 'Message' : 'Log'), h('span', { class: 's' }, logLabel(f.name))),
-        h('span', { class: 'chev' }, icon('chev', 18)));
+        h('span', { class: 'chev' }, icon('chev', 18))), id, f.name, true);
     })) : null);
 }
 

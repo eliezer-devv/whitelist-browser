@@ -1045,7 +1045,8 @@ One compact row per phone: its name, ID, lists and groups, and tags only when so
   it), **Ads** and **Filters** (Usual / On / Off), and **Admin phone** (every notification on that phone). A helper
   admin sees only what they're allowed to change; the rest shows under **Set by the main admin**. Then:
   - **Messages and logs:** messages its user sent you, and the app's logs (**Get log** asks the phone for one).
-    Open one to **Download**, **Archive** or **Delete** it. Logs and messages go by themselves after 30 days; archived
+    **Swipe one right to archive it, or left to delete it**, like My requests on the phone (in **Show archived**:
+    right puts it back, left deletes it). Or open one to **Download**, **Archive** or **Delete** it. Logs and messages go by themselves after 30 days; archived
     ones are kept until you delete them (**Show archived** under the list; open one to **Restore** or **Delete** it).
     Helpers with **Messages and logs** can do this for their phones.
   - **Block this phone:** it stays listed but can't open any site, for a lost phone or one that shouldn't be used.
