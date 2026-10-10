@@ -217,6 +217,67 @@ object Ui {
             minHeight = dp(ctx, 48)
         }
 
+    /** A label with a small grey tag next to it ("Open  [This phone's default: photos blocked]"). */
+    fun labelWithTag(ctx: Context, s: String, tag: String): LinearLayout = LinearLayout(ctx).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        addView(label(ctx, s))
+        addView(text(ctx, tag, 11.5f, MUTED).apply {
+            background = rounded(SEG, dp(ctx, 8).toFloat())
+            setPadding(dp(ctx, 8), dp(ctx, 2), dp(ctx, 8), dp(ctx, 2))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(ctx, 8) })
+    }
+
+    /**
+     * One kind (Photos, Videos, Sound) as "Open | Blocked": the chosen one filled (green, or red for Blocked), with an
+     * optional line under it ([note]). [onChange] gets true for Blocked.
+     */
+    class OpenBlocked(ctx: Context, title: String, blocked: Boolean, private val onChange: (Boolean) -> Unit) {
+        var blocked = blocked
+            private set
+        val note: TextView = Ui.text(ctx, "", 12f, Ui.MUTED).apply { visibility = View.GONE }
+        private val open = segButton(ctx, "Open")
+        private val block = segButton(ctx, "Blocked")
+        val view: LinearLayout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, Ui.dp(ctx, 8), 0, Ui.dp(ctx, 8))
+            val top = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            top.addView(Ui.text(ctx, title, 15f, Ui.INK, "bold"), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val seg = LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
+                background = Ui.rounded(Ui.SEG, Ui.dp(ctx, 12).toFloat())
+                setPadding(Ui.dp(ctx, 3), Ui.dp(ctx, 3), Ui.dp(ctx, 3), Ui.dp(ctx, 3))
+                addView(open, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(ctx, 40)))
+                addView(block, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(ctx, 40)))
+            }
+            top.addView(seg)
+            addView(top)
+            addView(note)
+        }
+        init {
+            open.setOnClickListener { pick(false) }
+            block.setOnClickListener { pick(true) }
+            paint()
+        }
+        private fun pick(b: Boolean) { if (b == blocked) return; blocked = b; paint(); onChange(b) }
+        private fun paint() {
+            val r = Ui.dp(open.context, 9).toFloat()
+            open.background = if (!blocked) Ui.rounded(Ui.ACCENT, r) else ColorDrawable(Color.TRANSPARENT)
+            open.setTextColor(if (!blocked) Color.WHITE else Ui.INK2)
+            block.background = if (blocked) Ui.rounded(Ui.DANGER, r) else ColorDrawable(Color.TRANSPARENT)
+            block.setTextColor(if (blocked) Color.WHITE else Ui.INK2)
+            open.contentDescription = "Open" + if (!blocked) ", chosen" else ""
+            block.contentDescription = "Blocked" + if (blocked) ", chosen" else ""
+        }
+        private fun segButton(ctx: Context, label: String) = Button(ctx).apply {
+            text = label; isAllCaps = false; typeface = Ui.bold; stateListAnimator = null
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            minWidth = Ui.dp(ctx, 72); minimumWidth = Ui.dp(ctx, 72)
+            minHeight = Ui.dp(ctx, 40); minimumHeight = Ui.dp(ctx, 40)
+            setPadding(Ui.dp(ctx, 12), 0, Ui.dp(ctx, 12), 0)
+        }
+    }
+
     /** A box of text: "warn" (amber), "red", or "info" (neutral). */
     fun box(ctx: Context, s: CharSequence, kind: String = "info"): TextView =
         text(ctx, s, 14f, when (kind) { "red" -> RED_INK; "warn" -> AMBER_INK; else -> INK2 }).apply {

@@ -113,6 +113,27 @@
   .pubtag { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
     background: #E3ECF5; color: #2F5D8A; white-space: nowrap; }
   .kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+  /* Photos, videos and sound: Open / Blocked (and Default) */
+  .seg.ob { flex: none; gap: 2px; padding: 3px; }
+  .seg.ob button { flex: none; padding: 0 14px; min-height: 38px; }
+  .seg.ob button[aria-pressed="true"][data-v="open"] { background: var(--accent); color: #fff; }
+  .seg.ob button[aria-pressed="true"][data-v="blocked"] { background: var(--red); color: #fff; }
+  .seg.ob button:disabled { opacity: .55; }
+  .mrows { display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 2px 14px; }
+  .mrow { display: flex; flex-direction: column; gap: 4px; padding: 9px 0; border-top: 1px solid var(--line2); }
+  .mrow:first-child { border-top: 0; }
+  .mrow .top { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+  .mrow .top > b { flex: 1; font-size: 15px; }
+  .mrow .s { font-size: 12.5px; color: var(--muted); }
+  .mtag { font-size: 11.5px; font-weight: 500; color: var(--muted); background: var(--line2); border-radius: 8px; padding: 2px 8px; }
+  .klabel { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+  .dash { border: 2px dashed var(--mint); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .explain { background: var(--accent-soft); color: var(--accent-dark); border-radius: 12px; padding: 12px 14px; font-size: 13.5px; line-height: 1.45; display: flex; flex-direction: column; gap: 6px; }
+  .fromto { display: flex; align-items: center; gap: 8px; min-height: 46px; border-top: 1px solid var(--line2); font-size: 14px; }
+  .fromto:first-child { border-top: 0; }
+  .fromto b { flex: 1; } .fromto .was { color: var(--muted); } .fromto .now { font-weight: 700; }
+  :root[data-theme="dark"] .mtag { background: #364748; }
+  :root[data-theme="dark"] .explain { background: #22403B; color: #CFE6DF; }
   .title h1 { overflow-wrap: anywhere; }         /* a long address in a title wraps instead of widening the page */
   .kc { flex: 1 1 4.5rem; min-width: 0; min-height: 42px; border-radius: 11px; border: 1px solid var(--line); background: var(--card); color: var(--ink2); font-weight: 700; font-size: 14px; }
   .kc[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -414,6 +435,7 @@ const ICONS = {
   list: '<path d="M8 6h12M8 12h12M8 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
   download: '<path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/>',
+  photo: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M20 16l-5-5-8 8"/>',
   photooff: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3 3l18 18"/>',
   archive: '<rect x="3.5" y="4.5" width="17" height="4.5" rx="1"/><path d="M5 9v9.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
@@ -1028,6 +1050,7 @@ function toModel(data) {
   const sites = (data.sites || []).map(s => ({ domain: s.domain || '', name: s.name || '', url: s.url || '',
     home: s.home !== false, subdomains: s.subdomains !== false, pages: Array.isArray(s.pages) ? [...s.pages] : [],
     passThrough: !!s.passThrough, frames: !!s.frames, unfiltered: !!s.unfiltered, noPhotos: false, noVideos: false, noSound: false,
+    onPhotos: false, onVideos: false, onSound: false,
     filtersOff: Array.isArray(s.filtersOff) ? s.filtersOff.filter(x => ['ads', 'trackers', 'annoyances'].includes(x)) : [] }));
   // "No photos" entries for a whole site show as that site's switch. www./m. don't matter
   // (a request may have been approved as www.example.com for the site example.com).
@@ -1039,6 +1062,9 @@ function toModel(data) {
   const isSiteEntry = e => !hasPath(e) && domains.has(bareOf(e));
   const siteIn = (list, s) => list.some(e => !hasPath(e) && bareOf(e) === bareOf(s.domain));
   sites.forEach(s => { const all = siteIn(nm, s); s.noPhotos = all || siteIn(np, s); s.noVideos = all || siteIn(nv, s); s.noSound = all || siteIn(ns, s); });
+  // Set to Open on a whole site ("photosOn" etc.): that site's own setting (over every phone's default). (Blocked wins.)
+  const onP = (data.photosOn || []).map(String), onV = (data.videosOn || []).map(String), onS = (data.soundOn || []).map(String);
+  sites.forEach(s => { s.onPhotos = !s.noPhotos && siteIn(onP, s); s.onVideos = !s.noVideos && siteIn(onV, s); s.onSound = !s.noSound && siteIn(onS, s); });
   const extra = {}; Object.keys(data).forEach(k => { if (!KNOWN.includes(k)) extra[k] = data[k]; });
   return { sites, block: [...(data.block || [])],
     noPhotoPages: [...new Set([...nm, ...np].filter(e => !isSiteEntry(e)))],
@@ -1046,7 +1072,7 @@ function toModel(data) {
     noSoundPages: [...new Set([...nm, ...ns].filter(e => !isSiteEntry(e)))],
     mediaAllow: [...(data.mediaAllow || [])].map(String),
     // "Back on": turned back on whatever other lists say (and, for a page, over its whole site's "off").
-    photosOn: [...(data.photosOn || [])].map(String), videosOn: [...(data.videosOn || [])].map(String), soundOn: [...(data.soundOn || [])].map(String),
+    photosOn: onP.filter(e => !isSiteEntry(e)), videosOn: onV.filter(e => !isSiteEntry(e)), soundOn: onS.filter(e => !isSiteEntry(e)),
     temporary: Array.isArray(data.temporary) ? data.temporary.map(t => ({ ...t })) : [],
     homepage: data.homepage || '', refreshMinutes: Number(data.refreshMinutes) || 5, extra };
 }
@@ -1106,8 +1132,10 @@ function fromModel(L) {
   if (allowItems.length) data.mediaAllow = allowItems;
   // "Back on" entries; a site switched to "No photos" (etc.) here loses its own "back on", so the switch works.
   for (const [k, field] of [['Photos', 'photosOn'], ['Videos', 'videosOn'], ['Sound', 'soundOn']]) {
-    const offHere = new Set(L.sites.filter(x => x['no' + k]).map(x => (normalize(x.domain) || '').replace(/^www\./, '')));
-    const list = [...new Set((L[field] || []).map(x => hasPath(x) ? blockEntry(x) : (normalize(x) || '').replace(/^www\./, '')).filter(Boolean))]
+    const siteKey = x => (normalize(x.domain) || '').replace(/^(www|m|mobile)\.(?=[^.]+\.[^.]+)/, '');
+    const offHere = new Set(L.sites.filter(x => x['no' + k]).map(siteKey));
+    const onHere = L.sites.filter(x => x['on' + k] && !x['no' + k]).map(siteKey).filter(Boolean);
+    const list = [...new Set([...(L[field] || []).map(x => hasPath(x) ? blockEntry(x) : (normalize(x) || '').replace(/^www\./, '')).filter(Boolean), ...onHere])]
       .filter(x => hasPath(x) || !offHere.has(x));
     if (list.length) data[field] = list;
   }
@@ -2211,7 +2239,30 @@ function mediaWords(k) {
   return list.length === 1 ? list[0] : list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1];
 }
 const capFirst = t => t.charAt(0).toUpperCase() + t.slice(1);
+// ---- Photos, videos and sound: each phone's default (Open or Blocked) ----
+const MKINDS = [['photos', 'Photos'], ['videos', 'Videos'], ['sound', 'Sound']];
+// (devices.json: "mediaDefault": { photos: 'blocked', … }, only the blocked ones; open otherwise.)
+const defBlocks = (d, k) => !!(d && d.mediaDefault && d.mediaDefault[k] === 'blocked');
+const joinWords = l => l.length <= 1 ? (l[0] || '') : l.slice(0, -1).join(', ') + ' and ' + l[l.length - 1];
+const firstName = d => ((d && (d.first || d.name)) || 'This phone').trim().split(/\s+/)[0];
+// Open | Blocked, for one kind (or [opts] with Default too, for a site).
+function obSeg(label, value, set, { disabled = false, opts = [['open', 'Open'], ['blocked', 'Blocked']], id } = {}) {
+  return h('div', { class: 'seg ob', role: 'group', 'aria-label': label, id }, opts.map(([v, t]) =>
+    h('button', { type: 'button', 'data-v': v, 'aria-pressed': String(value === v), disabled, onclick: () => { if (value !== v) set(v); } }, t)));
+}
+// The three kinds as rows of Open | Blocked: [get](k) → 'open' | 'blocked'; [set](k, v).
+function defaultRows(get, set, disabled, prefix) {
+  return h('div', { class: 'mrows' }, MKINDS.map(([k, t]) => h('div', { class: 'mrow' },
+    h('div', { class: 'top' }, h('b', null, t), obSeg(t, get(k), v => set(k, v), { disabled, id: prefix ? prefix + k : null })))));
+}
+function setDefault(d, k, v) {
+  const md = { ...(d.mediaDefault || {}) };
+  if (v === 'blocked') md[k] = 'blocked'; else delete md[k];
+  if (Object.keys(md).length) d.mediaDefault = md; else delete d.mediaDefault;
+}
 function describe(req) {
+  if (req.type === 'mediaDefault') return { title: 'Change this phone\'s default', page: null };
+  if (req.type === 'search') return { title: 'Turn on search', page: null };
   const site = req.domain || '?';
   if (Array.isArray(req.frames) && req.frames.length) return { title: `Embedded content on ${site}`, page: null };
   const page = req.scope === 'page' && req.url ? pageKey(req.url) : null;
@@ -2264,6 +2315,7 @@ function requestsScreen() {
 const possessive = n => /^the /.test(n) ? `${n}'s` : `${n}'${/s$/i.test(n) ? '' : 's'}`;
 function requestCard(issue) {
   const req = marker(issue.body);
+  if (req.type === 'mediaDefault' || req.type === 'search') return settingRequestCard(issue, req);
   const { title, page } = describe(req);
   const phone = field(issue.body, 'Phone').replace(/`/g, '').replace(/\s*\([A-Z0-9-]+\)\s*$/, '') || 'A phone';
   const note = field(issue.body, 'Note');
@@ -2298,15 +2350,22 @@ function requestCard(issue) {
     if (dev && !ticked.some(t => t.word === 'own' || phoneLists.includes(t.name))) words.push('own');
     return ' ' + words.join(' ');
   };
-  // "Block": photos, videos and/or sound (opening a site: as the phone asked, changeable here).
-  const KINDS = [['photos', 'Photos', 'photooff'], ['videos', 'Videos', 'photooff'], ['sound', 'Sound', 'photooff']];
+  // Photos, videos and sound (opening a site): "Block" for kinds this phone opens by default, "Open" for kinds it
+  // blocks by default. As the phone asked, changeable here.
+  const KINDS = MKINDS;
   const askedKinds = req.media === 'off' ? (String(req.mediaKind || '').split(',').filter(k => KINDS.some(x => x[0] === k)).length
     ? String(req.mediaKind).split(',') : ['photos', 'videos', 'sound']) : [];
-  const without = new Set(askedKinds);
-  const kindChips = KINDS.map(([k, t]) => h('button', { type: 'button', class: 'kc', 'aria-pressed': String(without.has(k)),
-    onclick: e => { if (without.has(k)) without.delete(k); else without.add(k); e.currentTarget.setAttribute('aria-pressed', String(without.has(k))); } }, t));
-  const kindWords = () => without.size ? ' no ' + ['photos', 'videos', 'sound'].filter(k => without.has(k)).join(' and ')
-    : askedKinds.length ? ' with media' : '';
+  const askedOpen = String(req.mediaOpen || '').split(',').filter(k => KINDS.some(x => x[0] === k));
+  const openByDef = KINDS.filter(([k]) => !defBlocks(dev, k)), blockedByDef = KINDS.filter(([k]) => defBlocks(dev, k));
+  const without = new Set(askedKinds.filter(k => !defBlocks(dev, k)));
+  const opens = new Set(askedOpen.filter(k => defBlocks(dev, k)));
+  const chipsOf = (list, set) => list.map(([k, t]) => h('button', { type: 'button', class: 'kc', 'data-k': k, 'aria-pressed': String(set.has(k)),
+    onclick: e => { if (set.has(k)) set.delete(k); else set.add(k); e.currentTarget.setAttribute('aria-pressed', String(set.has(k))); } }, t));
+  const kindChips = chipsOf(openByDef, without), openChips = chipsOf(blockedByDef, opens);
+  const whose = possessive(firstName(dev));
+  const defTag = (list, word) => h('span', { class: 'mtag' }, `${whose} default: ${list.length === 3 ? 'all ' + word : joinWords(list.map(([k]) => k)) + ' ' + word}`);
+  const kindWords = () => (without.size ? ' no ' + ['photos', 'videos', 'sound'].filter(k => without.has(k)).join(' and ')
+    : askedKinds.length ? ' with media' : '') + (opens.size ? ' with ' + ['photos', 'videos', 'sound'].filter(k => opens.has(k)).join(' and ') : '');
   const actions = h('div', { class: 'acts' });
   const panels = h('div');
   const send = async (text, label) => {
@@ -2376,6 +2435,7 @@ function requestCard(issue) {
     h('h3', null, title),
     page ? h('p', { class: 'mono muted', style: 'margin:0' }, page) : null,
     allow && req.media === 'off' ? h('p', { class: 'line' }, icon('photooff', 16), `Asked without ${mediaWords(req.mediaKind)}`) : null,
+    allow && req.media !== 'on' && askedOpen.length ? h('p', { class: 'line' }, icon('photo', 16), `Asked for ${mediaWords(askedOpen.join(','))} too`) : null,
     hops.length ? h('p', { class: 'line' }, icon('link', 16), `Goes through ${plural(hops.length, 'other address')} first, allowed too when you approve`) : null,
     frames.length ? h('p', { class: 'line', style: 'align-items:flex-start' }, icon('link', 16),
       h('span', null, 'Content from ', h('b', null, frames.join(', ')), ` (like a video or a map) was blocked on this site. Approving lets it show inside ${req.domain}'s pages only.`)) : null,
@@ -2386,8 +2446,10 @@ function requestCard(issue) {
     targets.length ? h('div', { class: 'flabel', style: 'margin-top:4px' }, 'Add it to') : null,
     targets.length ? h('div', { class: 'targets' }, targets.map(t => h('label', { class: 'check', for: t.box.id }, t.box,
       h('span', { class: 'grow' }, t.label), t.pub ? h('span', { class: 'pubtag' }, icon('globe', 13), 'Public') : null))) : null,
-    allow && req.media !== 'on' && !frames.length ? h('div', { class: 'flabel' }, 'Block') : null,
-    allow && req.media !== 'on' && !frames.length ? h('div', { class: 'kinds' }, kindChips) : null,
+    allow && req.media !== 'on' && !frames.length && blockedByDef.length ? h('div', { class: 'flabel klabel' }, 'Open', defTag(blockedByDef, 'blocked')) : null,
+    allow && req.media !== 'on' && !frames.length && blockedByDef.length ? h('div', { class: 'kinds', 'data-group': 'open' }, openChips) : null,
+    allow && req.media !== 'on' && !frames.length && openByDef.length ? h('div', { class: 'flabel klabel' }, 'Block', defTag(openByDef, 'open')) : null,
+    allow && req.media !== 'on' && !frames.length && openByDef.length ? h('div', { class: 'kinds', 'data-group': 'block' }, kindChips) : null,
     actions, panels,
     h('button', { type: 'button', class: 'btn d details', style: 'align-self:center', onclick: () => open({ name: 'request', number: issue.number }) },
       'All the details', icon('chev', 16))].filter(Boolean)); // skip lines that don't apply
@@ -2405,6 +2467,15 @@ function requestDetailsScreen() {
   const hops = Array.isArray(req.hops) ? req.hops : [];
   const hopText = hops.map(x => typeof x === 'string' ? x : `${x.url} (${x.scope === 'site' ? 'whole site' : 'this page'}${x.tile ? ', with a tile' : ', no tile'})`);
   const when = new Date(issue.created_at);
+  if (req.type === 'mediaDefault' || req.type === 'search') return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Requests'),
+    screenTitle(title, `Request #${issue.number}`),
+    h('section', { class: 'card kvs' },
+      kv('Phone', dev ? `${dev.name || devId} (${devId})${dev.model ? ', ' + dev.model : ''}` : (devId || 'Unknown')),
+      kv('Asked', when.toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })),
+      kv('Note', field(issue.body, 'Note') ? `“${field(issue.body, 'Note')}”` : null),
+      kv('History', (issue._log || []).length ? issue._log.map(e => `${new Date(e.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: ${String(e.text).replace(/\*\*/g, '').replace(/\n+/g, ' ').slice(0, 300)}`).join('\n') : null)),
+    h('div', { class: 'flabel', style: 'margin-top:8px' }, 'Answer it'),
+    requestCard(issue));
   return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Requests'),
     screenTitle(title, `Request #${issue.number}`),
     h('section', { class: 'card kvs' },
@@ -2429,26 +2500,107 @@ function requestDetailsScreen() {
     requestCard(issue));
 }
 
+// A phone asking to change its default for photos, videos and sound, or to turn on search. Answered by someone who
+// manages that phone (never with a PIN).
+function settingRequestCard(issue, req) {
+  const { title } = describe(req);
+  const devId = String(req.device || '').toUpperCase(), dev = S.D.devices[devId];
+  const phone = (dev && dev.name) || req.name || 'A phone';
+  const fname = firstName(dev || { name: phone });
+  const note = field(issue.body, 'Note');
+  const card = h('article', { class: 'card', 'data-n': issue.number, 'data-type': req.type });
+  const actions = h('div', { class: 'acts' }), panels = h('div');
+  const may = fullAdmin() || canDo('manage');
+  let onlyBox = null;
+  const send = async (text, label) => {
+    actions.querySelectorAll('button').forEach(b => b.disabled = true);
+    try {
+      await reply(issue.number, text);
+      S.answeredNumbers = [...(S.answeredNumbers || []), issue.number];
+      S.requests = S.requests.filter(i => i.number !== issue.number);
+      S.answered.unshift({ title, label: `${label} for ${phone}` });
+      render();
+      say(`${label}. GitHub does it within a minute, and ${phone} is told a few minutes after.`);
+    } catch (e) {
+      actions.querySelectorAll('button').forEach(b => b.disabled = false);
+      say(e.message === 'NO_ISSUES' ? NO_ISSUES_MSG : e.message, true);
+    }
+  };
+  let denyPanel = null;
+  const openDeny = () => {
+    if (denyPanel) { denyPanel.hidden = !denyPanel.hidden; return; }
+    const reason = h('input', { class: 'inp reason', type: 'text', placeholder: 'e.g. not for now', 'aria-label': 'Reason' });
+    denyPanel = h('div', { class: 'panel' }, h('div', { class: 'flabel' }, 'Why not? (optional, shown on their phone)'), reason,
+      h('div', { class: 'acts' }, h('button', { type: 'button', class: 'btn dline grow denySend', onclick: () => send(('deny ' + reason.value.trim()).trim(), 'Denied') }, 'Deny')));
+    panels.append(denyPanel); reason.focus();
+  };
+  const body = [];
+  if (req.type === 'mediaDefault') {
+    const want = req.want || {};
+    body.push(h('div', { class: 'mrows', style: 'padding:2px 12px' }, MKINDS.map(([k, t]) => {
+      const was = defBlocks(dev, k) ? 'blocked' : 'open', to = want[k] === 'open' || want[k] === 'blocked' ? want[k] : was;
+      return h('div', { class: 'fromto' }, h('b', null, t), h('span', { class: 'was' }, capFirst(was)), h('span', { class: 'was' }, '→'),
+        h('span', { class: 'now', style: `color:${to === was ? 'var(--muted)' : 'var(--accent)'}` }, capFirst(to) + (to === was ? ' (no change)' : '')));
+    })));
+    body.push(h('p', { class: 'hint', style: 'margin:0' }, `Approving changes it on every site on ${possessive(fname)} phone that's on Default.`));
+  } else {
+    body.push(h('p', { class: 'hint', style: 'margin:0' }, `A search box on ${possessive(fname)} phone: words only, safe search on, nothing the filters block. Opening a result follows ${dev && dev.first ? 'their' : 'its'} lists as usual.`));
+    // (Kept while the page redraws, e.g. after another answer.)
+    const draft = (S.cardDrafts = S.cardDrafts || {})[issue.number] = (S.cardDrafts || {})[issue.number] || { only: req.approvedOnly === true };
+    onlyBox = h('input', { type: 'checkbox', class: 'onlyApproved', id: `oa${issue.number}`, checked: draft.only, onchange: e => { draft.only = e.target.checked; } });
+    body.push(h('div', { class: 'stack', style: 'gap:2px' }, h('label', { class: 'check', for: onlyBox.id }, onlyBox, h('span', { class: 'grow' }, 'Only show results already approved')),
+      h('span', { class: 'small muted' }, `As ${fname} asked: ${req.approvedOnly ? 'on (only approved pages)' : 'off (new sites too)'}. ${req.approvedOnly ? 'Untick' : 'Tick'} it to change that.`)));
+  }
+  if (may) {
+    actions.append(h('button', { type: 'button', class: 'btn p grow approve', onclick: () => send(req.type === 'search' ? (onlyBox.checked ? 'approve approved-only' : 'approve all-results') : 'approve',
+      req.type === 'search' ? 'Search turned on' : 'Default changed') }, 'Approve'));
+    actions.append(h('button', { type: 'button', class: 'btn d deny', onclick: openDeny }, 'Deny'));
+  }
+  card.append(...[
+    h('div', { class: 'who' }, h('span', null, h('span', { class: 'av' }, phone[0].toUpperCase()), h('b', null, phone), h('span', { class: 'muted small' }, '· ' + ago(issue.created_at)))),
+    h('h3', null, title),
+    note ? h('p', { class: 'quote' }, `“${note}”`) : null,
+    ...body,
+    may ? null : h('p', { class: 'hint', style: 'margin:0' }, `Only someone who manages ${possessive(fname)} phone can answer this.`),
+    may ? actions : null, panels,
+    req.type === 'search' ? h('p', { class: 'hint', style: 'margin:0' }, `You can turn it off again any time: Phones → ${phone} → Text search.`) : null].filter(Boolean));
+  return card;
+}
+
 function newPhoneCard(issue) {
   const r = marker(issue.body);
-  const name = h('input', { class: 'inp', type: 'text', placeholder: 'Their name, e.g. Leo', 'aria-label': 'Name' });
-  const save = h('button', { type: 'button', class: 'btn p' }, 'Save');
+  const name = h('input', { class: 'inp', type: 'text', placeholder: 'Their name, e.g. Leo', 'aria-label': 'Name', id: `npName${issue.number}` });
+  const save = h('button', { type: 'button', class: 'btn p wide npSave' }, 'Save');
+  // This phone's default for photos, videos and sound: what Settings → New phones says, changeable here.
+  const pid = String(r.id || '').toUpperCase();
+  // (Kept while the page redraws, e.g. after another answer.)
+  const draft = (S.cardDrafts = S.cardDrafts || {})[issue.number] = (S.cardDrafts || {})[issue.number] ||
+    { name: '', md: { ...(((S.D.devices[pid] || {}).mediaDefault) || (S.D.newPhoneMedia || {})) } };
+  const md = { mediaDefault: draft.md };
+  const mdBox = () => h('div', { class: 'dash' },
+    h('div', { class: 'klabel' }, h('span', { class: 'flabel' }, 'This phone\'s default'), h('span', { class: 'mtag' }, 'From Settings → New phones')),
+    defaultRows(k => defBlocks(md, k) ? 'blocked' : 'open', (k, v) => { setDefault(md, k, v); draft.md = md.mediaDefault || {}; md.mediaDefault = draft.md; render(); }, false, `np${issue.number}_`),
+    h('span', { class: 'small muted' }, `You can change these any time: Phones → ${name.value.trim() || 'the phone'}.`));
   save.onclick = async () => {
     const n = name.value.trim();
     if (!n) return say('Type a name first.', true);
     save.disabled = true;
     try {
-      await reply(issue.number, `name ${n}`);
+      const blocked = MKINDS.map(([k]) => k).filter(k => defBlocks(md, k));
+      await reply(issue.number, `name ${n} | blocked: ${blocked.join(',')}`);
       S.answeredNumbers = [...(S.answeredNumbers || []), issue.number];
       S.newPhones = S.newPhones.filter(i => i.number !== issue.number);
       S.answered.unshift({ title: `${r.model || 'Phone'} (${r.id})`, label: `Named ${n}` });
       render(); say(`Named ${n}. It shows under Phones in a minute or two.`);
     } catch (e) { save.disabled = false; say(e.message === 'NO_ISSUES' ? NO_ISSUES_MSG : e.message, true); }
   };
-  return h('article', { class: 'card' },
+  if (draft.name) name.value = draft.name;
+  name.addEventListener('input', () => { draft.name = name.value; });
+  return h('article', { class: 'card', 'data-newphone': issue.number },
     h('div', { class: 'who' }, h('span', null, h('span', { class: 'av grey' }, icon('phone', 18)),
       h('span', { style: 'display:flex;flex-direction:column' }, h('b', null, r.model || 'Phone'), h('span', { class: 'muted small' }, `Registered ${ago(issue.created_at)}, no name yet`)))),
-    h('div', { class: 'inrow' }, name, save));
+    h('div', { class: 'field' }, h('label', { for: name.id }, 'Name'), name),
+    mdBox(), save);
 }
 
 // ============================================================================================
@@ -2460,7 +2612,9 @@ function siteChips(s) {
   if (s.pages.length) c.push(chip(s.pages.length === 1 ? '1 page only' : `${s.pages.length} pages only`));
   if (!s.subdomains) c.push(chip('Exact address'));
   const offK = ['photos', 'videos', 'sound'].filter(k => s['no' + capFirst(k)]);
-  if (offK.length) c.push(chip(offK.length === 3 ? 'No photos, videos or sound' : 'No ' + offK.join(' or '), '', 'photooff'));
+  if (offK.length) c.push(chip(offK.length === 3 ? 'Photos, videos and sound blocked' : capFirst(joinWords(offK)) + ' blocked', '', 'photooff'));
+  const onK = ['photos', 'videos', 'sound'].filter(k => s['on' + capFirst(k)]);
+  if (onK.length) c.push(chip(onK.length === 3 ? 'Photos, videos and sound open' : capFirst(joinWords(onK)) + ' open', 'teal', 'photo'));
   if (s.passThrough) c.push(chip('Added automatically', '', 'link'));
   if (s.frames) c.push(chip('Embeds from anywhere', 'amber'));
   if (s.unfiltered) c.push(chip('Not filtered', 'red'));
@@ -2563,7 +2717,7 @@ function siteScreen() {
   const sub = S.sub;
   const isNew = sub.index < 0;
   if (!sub.draft) {
-    const s = isNew ? { domain: '', name: '', url: '', home: true, subdomains: true, pages: [], noPhotos: false, noVideos: false, noSound: false, passThrough: false, frames: false, unfiltered: false, filtersOff: [] } : S.L.sites[sub.index];
+    const s = isNew ? { domain: '', name: '', url: '', home: true, subdomains: true, pages: [], noPhotos: false, noVideos: false, noSound: false, onPhotos: false, onVideos: false, onSound: false, passThrough: false, frames: false, unfiltered: false, filtersOff: [] } : S.L.sites[sub.index];
     sub.draft = { ...s, pages: [...s.pages], only: s.pages.length > 0, filtersOff: [...(s.filtersOff || [])] };
   }
   const d = sub.draft;
@@ -2596,7 +2750,8 @@ function siteScreen() {
     if (S.L.sites.some((s, i) => i !== sub.index && (normalize(s.domain) || '').replace(/^(www|m|mobile)\.(?=[^.]+\.[^.]+)/, '') === dom)) return say(`${dom} is already on this list.`, true);
     for (const p of d.pages) if (!pageOnSite(p, dom, d.subdomains)) return say(`The page ${p} isn't on ${dom}.`, true);
     const site = { domain: dom, name: d.name.trim(), url: d.url.trim(), home: d.home, subdomains: d.subdomains,
-      pages: d.only ? [...d.pages] : [], noPhotos: d.noPhotos, noVideos: d.noVideos, noSound: d.noSound, passThrough: d.passThrough, frames: d.frames, unfiltered: d.unfiltered,
+      pages: d.only ? [...d.pages] : [], noPhotos: d.noPhotos, noVideos: d.noVideos, noSound: d.noSound,
+      onPhotos: !!d.onPhotos && !d.noPhotos, onVideos: !!d.onVideos && !d.noVideos, onSound: !!d.onSound && !d.noSound, passThrough: d.passThrough, frames: d.frames, unfiltered: d.unfiltered,
       filtersOff: [...d.filtersOff] };
     if (isNew) S.L.sites.push(site); else S.L.sites[sub.index] = site;
     markList(); back();
@@ -2619,11 +2774,9 @@ function siteScreen() {
     h('div', { class: 'group' },
       toggle('sHome', 'Show on the home page', 'Gives it a tile', 'home'),
       toggle('sSubs', 'Include subdomains', `Also m.${bare}, and other addresses ending in ${bare}`, 'subdomains'),
-      toggle('sNoPhotos', 'No photos', 'The pages open, pictures don\'t', 'noPhotos'),
-      toggle('sNoVideos', 'No videos', 'No moving pictures: a video\'s sound still plays if sound is allowed', 'noVideos'),
-      toggle('sNoSound', 'No sound', 'No sound at all: music and podcasts are blocked, videos play muted', 'noSound'),
       toggle('sOnly', 'Only some pages', 'Everything else on the site stays blocked', 'only')),
     pages,
+    siteMedia(d),
     h('div', { class: 'group' },
       toggle('sFrames', 'Allow content embedded from other sites', 'Embedded videos, maps and sign-in boxes work, from any site. Leaving this site is still blocked, and the ad and adult filters still apply.', 'frames')),
     d.frames ? h('p', { class: 'warn' }, 'Only for sites you trust: whatever this site chooses to embed will show, even from sites that aren\'t on your lists.') : null,
@@ -2648,6 +2801,30 @@ function siteScreen() {
       icon('clock', 20), h('span', { class: 'grow' }, 'Open it temporarily instead'), icon('chev', 18)) : null,
     h('button', { type: 'button', class: 'btn p wide', id: 'sDone', onclick: done }, isNew ? 'Add site' : 'Done'),
     !isNew ? h('button', { type: 'button', class: 'btn d', id: 'sRemove', onclick: remove }, 'Remove this site') : null);
+}
+
+// A site's photos, videos and sound: Default (each phone's own default), Open or Blocked (for every phone using this list).
+function siteMedia(d) {
+  const users = Object.entries(S.D.devices).filter(([, x]) => (x.lists || []).includes(S.current)).map(([, x]) => x);
+  const DESC = { photos: 'Pictures on the pages', videos: 'Moving pictures: a video\'s sound still plays if sound is open', sound: 'Music, podcasts, and videos\' sound' };
+  const sub = (k, v) => {
+    if (v === 'open') return 'Open on every phone using this list';
+    if (v === 'blocked') return 'Blocked on every phone using this list';
+    if (!users.length) return 'Each phone\'s own default';
+    const open = users.filter(x => !defBlocks(x, k)).map(firstName), blocked = users.filter(x => defBlocks(x, k)).map(firstName);
+    return 'Default now: ' + [open.length ? `open for ${joinWords(open)}` : '', blocked.length ? `blocked for ${joinWords(blocked)}` : ''].filter(Boolean).join(', ');
+  };
+  return h('div', { class: 'stack', style: 'gap:8px' },
+    h('span', { class: 'flabel', style: 'margin-top:4px' }, 'Photos, videos and sound on this site'),
+    h('div', { class: 'mrows' }, MKINDS.map(([k, t]) => {
+      const K = capFirst(k), v = d['no' + K] ? 'blocked' : d['on' + K] ? 'open' : 'default';
+      return h('div', { class: 'mrow' }, h('div', { class: 'top' }, h('span', { class: 'grow', style: 'display:flex;flex-direction:column' }, h('b', null, t), h('span', { class: 's' }, DESC[k])),
+        obSeg(t, v, nv => { d['no' + K] = nv === 'blocked'; d['on' + K] = nv === 'open'; render(); }, { opts: [['default', 'Default'], ['open', 'Open'], ['blocked', 'Blocked']], id: 'sMedia_' + k })),
+        h('span', { class: 's', 'data-sub': k }, sub(k, v)));
+    })),
+    h('div', { class: 'explain' },
+      h('span', null, h('b', null, 'Default'), ': each phone\'s own default. Change a phone\'s default, and this site changes with it.'),
+      h('span', null, h('b', null, 'Open'), ' or ', h('b', null, 'Blocked'), ': stays like this for every phone using this list, whatever their default.')));
 }
 
 // ---------- open something for a while ----------
@@ -3219,6 +3396,7 @@ function phoneScreen() {
       }), h('button', { type: 'button', class: 'lc addtxt', onclick: async () => {
         const g = await newGroup(); if (g) { d.groups = [...(d.groups || []), g]; markDevices(); render(); } } }, icon('plus', 15, 2.4), 'New group')),
       h('p', { class: 'hint', style: 'margin:0' }, 'Helper admins given a group look after every phone in it.')) : null,
+    phoneMediaAndSearch(d, M),
     h('div', { class: 'field' }, h('label', { for: 'pReq' }, 'When you approve its requests, change'), req),
     own ? [    h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Approval PIN'), pinSeg,
       h('p', { class: 'hint', style: 'margin:0' }, pinMode === 'own' ? 'This phone has its own PIN.' : pinMode === 'none' ? 'Requests from this phone can\'t be approved with a PIN.'
@@ -3243,6 +3421,29 @@ function phoneScreen() {
       h('button', { type: 'button', class: 'btn s wide', id: 'pArchive', onclick: () => archiveNow(id) }, 'Archive now'),
       h('p', { class: 'hint' }, 'Block: it stays here but can\'t open any site, for a lost phone or one that shouldn\'t be used. ' +
         'Archive: put it away, with its own list, until it\'s needed again (Phones → Archived phones → Restore). If it\'s still being used, it comes back by itself.')));
+}
+// A phone's default for photos, videos and sound, and its text search. Changed by those who manage the phone.
+function phoneMediaAndSearch(d, M) {
+  const fname = firstName(d), who = possessive(fname);
+  const sw = (id, on, change, disabled) => h('input', { type: 'checkbox', class: 'sw', id, checked: on, disabled, onchange: e => change(e.target.checked) });
+  return h('div', { class: 'stack', style: 'gap:12px' },
+    h('div', { class: 'stack', style: 'gap:8px' },
+      h('div', { class: 'stack', style: 'gap:2px' }, h('span', { class: 'flabel' }, 'Photos, videos and sound: this phone\'s default'),
+        h('span', { class: 'hint', style: 'margin:0' }, 'On every site this phone opens, unless that site is set to Open or Blocked on its own.')),
+      defaultRows(k => defBlocks(d, k) ? 'blocked' : 'open', (k, v) => { setDefault(d, k, v); markDevices(); render(); }, !M, 'pMedia_'),
+      h('div', { class: 'warn', style: 'margin:0' }, `Changing this changes every site on ${who} phone that's on Default, straight away. Sites set to Open or Blocked stay as they are.`)),
+    h('div', { class: 'stack', style: 'gap:8px' },
+      h('div', { class: 'stack', style: 'gap:2px' }, h('span', { class: 'flabel' }, 'Text search'),
+        h('span', { class: 'hint', style: 'margin:0' }, 'A search box on this phone. Results are words only (no pictures, videos or sound), safe search on, and nothing the filters block. Opening a result follows this phone\'s lists as usual.')),
+      h('div', { class: 'mrows' },
+        h('div', { class: 'mrow' }, h('div', { class: 'top' }, h('b', null, 'Text search'),
+          obSeg('Text search', d.search === true ? 'open' : 'blocked', v => { if (v === 'open') d.search = true; else { delete d.search; delete d.searchApprovedOnly; } markDevices(); render(); },
+            { disabled: !M, opts: [['open', 'On'], ['blocked', 'Off']], id: 'pSearch' }))),
+        h('label', { class: 'mrow', for: 'pSearchOnly', style: d.search === true ? '' : 'opacity:.55' }, h('div', { class: 'top' },
+          h('span', { class: 'grow', style: 'display:flex;flex-direction:column' }, h('b', null, 'Only show results already approved'),
+            h('span', { class: 's' }, d.searchApprovedOnly ? 'On: only pages this phone can open' : 'Off: new sites show too, to ask for')),
+          sw('pSearchOnly', d.searchApprovedOnly === true, on => { if (on) d.searchApprovedOnly = true; else delete d.searchApprovedOnly; markDevices(); render(); }, !M || d.search !== true)))),
+      h('p', { class: 'hint', style: 'margin:0' }, d.search === true ? '' : 'Off to start with. The phone can ask for it, or you turn it on here.')));
 }
 // PIN approvals locked on a phone (5 wrong PINs): unlocked, and saved, straight away.
 const pinLocked = d => !!(d && d.pinLockedUntil && Date.parse(d.pinLockedUntil) > Date.now());
@@ -3421,6 +3622,12 @@ function settingsScreen() {
       ...FILTERS.map(([key, title, desc]) => h('label', { class: 'tg', for: key }, h('span', { class: 'grow' }, h('span', { class: 't' }, title), h('span', { class: 's' }, desc)),
         h('input', { type: 'checkbox', class: 'sw', id: key, checked: D[key] !== false, onchange: e => { D[key] = e.target.checked; markDevices(); } }))),
       row('shield', 'Never block these addresses', (D.adblockExceptions || []).length || 'None', () => open({ name: 'neverblock' }), 'openNever'))),
+    section('New phones start with', h('div', { class: 'group' }, [['photos', 'Open photos', 'Pictures on the pages'], ['videos', 'Open videos', 'Video players, and moving pictures'], ['sound', 'Open sound', 'Anything that plays sound']].map(([k, t, sub]) =>
+      h('label', { class: 'tg', for: 'np_' + k }, h('span', { class: 'grow' }, h('span', { class: 't' }, t), h('span', { class: 's' }, sub)),
+        h('input', { type: 'checkbox', class: 'sw', id: 'np_' + k, checked: !defBlocks({ mediaDefault: D.newPhoneMedia }, k), onchange: e => {
+          const m = { mediaDefault: D.newPhoneMedia }; setDefault(m, k, e.target.checked ? 'open' : 'blocked');
+          if (m.mediaDefault) D.newPhoneMedia = m.mediaDefault; else delete D.newPhoneMedia; markDevices(); } })))),
+      h('p', { class: 'hint', style: 'margin:0' }, 'A new phone\'s default for photos, videos and sound. After that, each phone has its own (Phones → the phone), and changing these doesn\'t change phones you already have.')),
     section('New phones', h('div', { class: 'card', style: 'gap:8px' },
       h('span', { style: 'font-weight:600' }, 'Start with these lists'),
       h('div', { class: 'chips', style: 'gap:8px' }, S.lists.map(l => {

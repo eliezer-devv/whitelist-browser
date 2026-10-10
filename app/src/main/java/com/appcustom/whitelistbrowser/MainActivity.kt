@@ -631,7 +631,7 @@ class MainActivity : Activity() {
                 }
                 if (url.startsWith("wlb:")) {
                     val here = view?.url
-                    if (request.isForMainFrame && (HomePage.isHome(here) || here?.startsWith(BLOCKED_PAGE) == true)) {
+                    if (request.isForMainFrame && (HomePage.isHome(here) || SearchPage.isSearch(here) || here?.startsWith(BLOCKED_PAGE) == true)) {
                         handleAppLink(Uri.parse(url))
                     }
                     return true
@@ -687,6 +687,8 @@ class MainActivity : Activity() {
             // so whitelisted sites keep working.
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                 if (request != null && request.url.host == HomePage.HOST) {
+                    // Text search: its results page, made here (searching happens on this thread, not the main one).
+                    if (request.url.path.orEmpty().startsWith("/search")) return SearchPage.respond(this@MainActivity, request.url)
                     return HomePage.respond(this@MainActivity, request.url.path ?: "")
                 }
                 // "No photos or videos" pages: media files and players get an empty answer.
@@ -773,7 +775,7 @@ class MainActivity : Activity() {
                 frameNoteClosedFor = null      // closing the bar only lasts until the page loads again
                 hideFrameNote()
                 setMediaMode(url)
-                if (url != null && !url.startsWith(BLOCKED_PAGE) && !HomePage.isHome(url) && trail.lastOrNull() != url) trail += url
+                if (url != null && !url.startsWith(BLOCKED_PAGE) && !HomePage.isOwn(url) && trail.lastOrNull() != url) trail += url
                 if (url != null && !Whitelist.isAllowed(url)) {
                     view?.stopLoading()
                     showBlocked(url)
@@ -1379,6 +1381,7 @@ class MainActivity : Activity() {
         // The top bar shows the open site's name (no address bar: sites open from the home page).
         pageTitle.text = when {
             cur == null || cur == "about:blank" || HomePage.isHome(cur) -> "Home"
+            SearchPage.isSearch(cur) -> "Search"
             target != null -> target.takeIf { it.isNotEmpty() }?.let { Uri.parse(it).host?.removePrefix("www.") } ?: "Not on the list"
             else -> web.title?.takeIf { it.isNotBlank() && !it.startsWith("http") } ?: Uri.parse(cur).host?.removePrefix("www.") ?: ""
         }
@@ -1403,7 +1406,7 @@ class MainActivity : Activity() {
     /** A small bubble under the top bar with the open site's full name (the page's title, and its site). */
     private fun showFullTitle() {
         val cur = web.url ?: return
-        if (HomePage.isHome(cur) || cur.startsWith(BLOCKED_PAGE)) return
+        if (HomePage.isOwn(cur) || cur.startsWith(BLOCKED_PAGE)) return
         val full = web.title?.takeIf { it.isNotBlank() && !it.startsWith("http") } ?: return
         val host = Uri.parse(cur).host?.removePrefix("www.") ?: ""
         val box = LinearLayout(this).apply {
@@ -1442,7 +1445,7 @@ class MainActivity : Activity() {
      */
     private fun showMenu(anchor: View) {
         val cur = web.url
-        val onRealSite = cur != null && !HomePage.isHome(cur) && blockedTarget(cur) == null &&
+        val onRealSite = cur != null && !HomePage.isOwn(cur) && blockedTarget(cur) == null &&
             (cur.startsWith("https://") || cur.startsWith("http://"))
         val compact = tinyBar
         fun dp(v: Int) = Ui.dp(this, v)
@@ -1532,6 +1535,8 @@ class MainActivity : Activity() {
         if (asked) divider()
         // New sites, and requests (with how many are waiting for an answer).
         item(R.drawable.ic_d_plus, "Ask for a new site") { showRequestDialog(Requests.Action.ALLOW, null) }
+        // Text search, while it's off for this phone: asked for like any request.
+        if (!Whitelist.state.search && Whitelist.state.registered && Requests.isSetUp()) item(R.drawable.ic_d_search, "Ask for search") { showAskSearch() }
         val waiting = MyRequests.all(this).count { it.status == "waiting" && !it.archived } + Outbox.waitingRequests(this).size
         item(R.drawable.ic_d_inbox, "My requests", if (waiting > 0) waiting.toString() else null) { showMyRequests() }
         divider()
@@ -2016,6 +2021,12 @@ class MainActivity : Activity() {
     /** wlb://request?action=allow&url=... and wlb://back, from the home page or blocked page. */
     private fun handleAppLink(uri: Uri) {
         if (uri.host == "back") { goBackSkippingBlocked(); return }
+        // The search results page: DuckDuckGo wants to check a person is searching. Once answered, search again.
+        if (uri.host == "search-check") {
+            val u = uri.getQueryParameter("u")?.takeIf { Discovery.checkMayOpen(it) } ?: return
+            showSearchCheck(u) { ok -> if (ok && SearchPage.isSearch(web.url)) web.reload() }
+            return
+        }
         if (uri.host != "request") return
         val action = if (uri.getQueryParameter("action") == "block") Requests.Action.BLOCK else Requests.Action.ALLOW
         val url = uri.getQueryParameter("url")?.takeIf { it.isNotBlank() }
@@ -2248,12 +2259,26 @@ class MainActivity : Activity() {
         val kindIcons = listOf(R.drawable.ic_d_photo, R.drawable.ic_d_video, R.drawable.ic_d_sound)
         val kindLabels = listOf("Photos", "Videos", "Sound")
         var chips: Ui.Chips? = null
+        var openChips: Ui.Chips? = null
         var blockSome = false
         val offHere = Requests.kindList(mediaKind)
+        // Opening: "Block" for the kinds this phone opens by default, "Open" for the ones it blocks by default (each with
+        // a small tag saying the phone's default). With everything open by default: just "Block", as before.
+        val openByDefault = kindNames.filter { !Whitelist.defaultBlocks(it) }
+        val blockedByDefault = kindNames.filter { Whitelist.defaultBlocks(it) }
         if (!mediaBack) {
             if (action == Requests.Action.ALLOW) {
-                d.add(Ui.label(this, "Block"))
-                chips = Ui.Chips(this, kindLabels, kindIcons, emptySet(), tinyBar).also { d.add(it.view, 6) }
+                fun words(l: List<String>) = if (l.size == 3) "all" else Requests.mediaWords(l.joinToString(","))
+                if (blockedByDefault.isNotEmpty()) {
+                    d.add(Ui.labelWithTag(this, "Open", "This phone's default: ${words(blockedByDefault)} blocked"))
+                    openChips = Ui.Chips(this, blockedByDefault.map { kindLabels[kindNames.indexOf(it)] }, blockedByDefault.map { kindIcons[kindNames.indexOf(it)] },
+                        emptySet(), tinyBar).also { d.add(it.view, 6) }
+                }
+                if (openByDefault.isNotEmpty()) {
+                    d.add(if (blockedByDefault.isEmpty()) Ui.label(this, "Block") else Ui.labelWithTag(this, "Block", "This phone's default: ${words(openByDefault)} open"))
+                    chips = Ui.Chips(this, openByDefault.map { kindLabels[kindNames.indexOf(it)] }, openByDefault.map { kindIcons[kindNames.indexOf(it)] },
+                        emptySet(), tinyBar).also { d.add(it.view, 6) }
+                }
             } else {
                 d.add(Ui.label(this, "Block"))
                 val c = Ui.Chips(this, kindLabels, kindIcons, setOf(0, 1, 2), tinyBar)
@@ -2297,7 +2322,9 @@ class MainActivity : Activity() {
             val subject = if (scope == Requests.Scope.PAGE) pageKey!! else domain
             // Which of photos, videos and sound: the chips that are on.
             val picked = chips?.let { c -> c.selected.sorted().map { i ->
-                if (mediaBack) offHere[i] else kindNames[i] } } ?: emptyList()
+                if (mediaBack) offHere[i] else if (action == Requests.Action.ALLOW) openByDefault[i] else kindNames[i] } } ?: emptyList()
+            // Opening: the kinds asked for Open on it (ones this phone blocks by default).
+            val opened = openChips?.selected?.sorted()?.map { blockedByDefault[it] }?.joinToString(",") ?: ""
             val media = when {
                 mediaBack -> Requests.Media.ON
                 action == Requests.Action.ALLOW && picked.isNotEmpty() -> Requests.Media.OFF
@@ -2331,12 +2358,12 @@ class MainActivity : Activity() {
             // "Send anyway" after the site couldn't be found: send it, marked as not found.
             if (siteDomain == null && sendAnyway == domain) {
                 d.dismiss()
-                sendRequest(action, scope, media, domain, null, note, hops, minutes, unverified = true, mediaKind = kind, tile = tile, timeMode = timeMode, item = item)
+                sendRequest(action, scope, media, domain, null, note, hops, minutes, unverified = true, mediaKind = kind, tile = tile, timeMode = timeMode, item = item, mediaOpen = opened)
                 return@button
             }
             if (siteDomain != null) {
                 d.dismiss()
-                sendRequest(action, scope, media, domain, pageUrl, note, hops, minutes, mediaKind = kind, tile = tile, timeMode = timeMode, item = item)
+                sendRequest(action, scope, media, domain, pageUrl, note, hops, minutes, mediaKind = kind, tile = tile, timeMode = timeMode, item = item, mediaOpen = opened)
                 return@button
             }
             // A typed site on a content filter's list: say which, and ask them to confirm first.
@@ -2368,7 +2395,7 @@ class MainActivity : Activity() {
                     } else {
                         // Found, or no internet to check with: the request is sent (or saved until online).
                         d.dismiss()
-                        sendRequest(action, scope, media, domain, null, note, hops, minutes, mediaKind = kind, tile = tile, timeMode = timeMode, item = item)
+                        sendRequest(action, scope, media, domain, null, note, hops, minutes, mediaKind = kind, tile = tile, timeMode = timeMode, item = item, mediaOpen = opened)
                     }
                 }
             }
@@ -2397,7 +2424,7 @@ class MainActivity : Activity() {
                             domain: String, pageUrl: String?, note: String, hops: List<Requests.Hop> = emptyList(),
                             minutes: Int = 0, unverified: Boolean = false,
                             frames: List<String> = emptyList(), mediaKind: String = "both", tile: Boolean = true,
-                            timeMode: String? = null, item: String? = null) {
+                            timeMode: String? = null, item: String? = null, mediaOpen: String = "") {
         // Already asked (whichever way this one came: the request sheet, embedded parts, …): not sent again.
         val subject = (if (scope == Requests.Scope.PAGE) pageUrl?.let { Whitelist.pageKey(it) } else null) ?: domain
         if (Requests.alreadyAsked(this, Requests.fullKey(action, subject, media, mediaKind, frames))) {
@@ -2410,7 +2437,7 @@ class MainActivity : Activity() {
                 // Which content filters list it (so you see that before approving).
                 val filtered = if (action == Requests.Action.ALLOW) Whitelist.filteredAs(domain) else emptyList()
                 val id = Requests.queue(applicationContext, action, scope, media, domain, pageUrl, note, hops, minutes, unverified,
-                    if (frames.isEmpty()) filtered else emptyList(), frames, mediaKind, tile, timeMode, item)
+                    if (frames.isEmpty()) filtered else emptyList(), frames, mediaKind, tile, timeMode, item, mediaOpen)
                 val r = Outbox.flush(applicationContext)
                 when {
                     id in r.sent -> null
@@ -2469,6 +2496,13 @@ class MainActivity : Activity() {
      */
     private fun changeArrived(item: MyRequests.Item): Boolean {
         val r = item.request ?: return true                    // asked by an older app: nothing to check
+        when (r.optString("type")) {
+            "search" -> return Whitelist.state.search
+            "mediaDefault" -> {
+                val w = r.optJSONObject("want") ?: return true
+                return Whitelist.MEDIA_KINDS.all { k -> w.optString(k).let { v -> v.isEmpty() || (v == "blocked") == Whitelist.defaultBlocks(k) } }
+            }
+        }
         val at = requestAddress(r) ?: return true
         val kinds = Requests.kindList(r.optString("mediaKind"))
         fun kindOff(kind: String) = when (kind) {
@@ -2505,7 +2539,7 @@ class MainActivity : Activity() {
 
     /** The technical details at this moment (put at the top of a shared log, rather than shown in About this phone). */
     private fun snapshot(): String {
-        val pageHost = web.url?.takeUnless { HomePage.isHome(it) || it.startsWith(BLOCKED_PAGE) }?.let { Uri.parse(it).host }
+        val pageHost = web.url?.takeUnless { HomePage.isOwn(it) || it.startsWith(BLOCKED_PAGE) }?.let { Uri.parse(it).host }
         return listOf(
             "Setting up: ${Requests.setupStatus(this)}",
             "Ad blocking: ${AdRules.status}",
@@ -2695,7 +2729,7 @@ class MainActivity : Activity() {
      * set to "Always translate", already downloaded) it's translated at once.
      */
     private fun checkLanguage(url: String?) {
-        if (url == null || !url.startsWith("http") || HomePage.isHome(url) || url.startsWith(BLOCKED_PAGE) ||
+        if (url == null || !url.startsWith("http") || HomePage.isOwn(url) || url.startsWith(BLOCKED_PAGE) ||
             translatedFrom != null || url == langCheckedFor) return
         langCheckedFor = url
         pageLanguage { from ->
@@ -3001,7 +3035,7 @@ class MainActivity : Activity() {
     private fun aboutThisPage(item: MyRequests.Item): Boolean {
         val r = item.request ?: return false
         val cur = web.url ?: return false
-        if (HomePage.isHome(cur) || cur.startsWith(BLOCKED_PAGE)) return false
+        if (HomePage.isOwn(cur) || cur.startsWith(BLOCKED_PAGE)) return false
         val at = requestAddress(r) ?: return false
         return if (r.optString("scope") == "page") Whitelist.pageKey(cur) == Whitelist.pageKey(at)
         else siteScope(cur) != null && siteScope(cur) == siteScope(at)
@@ -3154,7 +3188,9 @@ class MainActivity : Activity() {
                 sent.forEach { item ->
                     val row = requestRow(item.status, item.summary, item.message, whenText(item), card = true)
                     // Answered, or a PIN already sent for it (it comes back if the PIN was wrong): shown faded, not tickable.
-                    if (item.status != "waiting" || item.pinChecking) { row.alpha = 0.5f; list.addView(row, LinearLayout.LayoutParams(gap)); return@forEach }
+                    // (Asking to change this phone's default, or for search: answered on the admin page only, never with a PIN.)
+                    val noPin = item.request?.optString("type") in setOf("mediaDefault", "search")
+                    if (item.status != "waiting" || item.pinChecking || noPin) { row.alpha = 0.5f; list.addView(row, LinearLayout.LayoutParams(gap)); return@forEach }
                     val wrap = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
                     val box = android.widget.CheckBox(this).apply {
                         buttonTintList = android.content.res.ColorStateList.valueOf(Ui.ACCENT)
@@ -3174,7 +3210,7 @@ class MainActivity : Activity() {
                 }
                 d.add(list, 8)
                 // Nothing that can be ticked (e.g. all waiting for their PIN to be checked): no Approve or Deny.
-                if (sent.none { it.status == "waiting" && !it.pinChecking }) {
+                if (sent.none { it.status == "waiting" && !it.pinChecking && it.request?.optString("type") !in setOf("mediaDefault", "search") }) {
                     if (sent.any { it.pinChecking }) d.add(Ui.text(this, "Waiting for these to be answered.", 13.5f, Ui.MUTED), 8)
                     d.show()
                     return
@@ -3474,7 +3510,7 @@ class MainActivity : Activity() {
      * page's own host if that site doesn't include subdomains. Null on the home and blocked pages.
      */
     private fun siteScope(url: String?): String? {
-        if (url == null || HomePage.isHome(url) || blockedTarget(url) != null) return null
+        if (url == null || HomePage.isOwn(url) || blockedTarget(url) != null) return null
         if (!url.startsWith("https://") && !url.startsWith("http://")) return null
         val host = Uri.parse(url).host?.lowercase() ?: return null
         val site = Whitelist.state.sites.firstOrNull { it.matches(host) }
@@ -3603,7 +3639,7 @@ class MainActivity : Activity() {
     private fun showFrameNote() {
         val top = web.url
         val note = findViewById<View>(R.id.frameNote)
-        if (top == null || HomePage.isHome(top) || top.startsWith(BLOCKED_PAGE) || blockedFrames.isEmpty() || top == frameNoteClosedFor) return
+        if (top == null || HomePage.isOwn(top) || top.startsWith(BLOCKED_PAGE) || blockedFrames.isEmpty() || top == frameNoteClosedFor) return
         val sites = synchronized(blockedFrames) { blockedFrames.keys.toList() }
         findViewById<TextView>(R.id.frameNoteText).text = "Parts of this page were blocked (from ${sites.first()}" +
             (if (sites.size > 1) " and ${sites.size - 1} more)" else ")")
@@ -3712,6 +3748,8 @@ class MainActivity : Activity() {
         val name = Device.name(this) ?: "Not registered yet"
         val rows = listOf(
             row(R.drawable.ic_d_theme, "Appearance", look) { showAppearance() },
+            row(R.drawable.ic_d_photo, "This phone's default", Whitelist.MEDIA_KINDS.joinToString(", ") { k ->
+                "${k.replaceFirstChar { it.uppercase() }} ${if (Whitelist.defaultBlocks(k)) "blocked" else "open"}" }) { showPhoneDefault() },
             *(if (AdminAlerts.isAdminPhone()) arrayOf(row(R.drawable.ic_d_inbox, "Phone notifications",
                 when {
                     !AdminAlerts.wanted(this@MainActivity) -> "Off"
@@ -3749,6 +3787,138 @@ class MainActivity : Activity() {
         })
         d.button("Close", Ui.Kind.PRIMARY) { it.dismiss() }
         d.show()
+    }
+
+    // ---------- this phone's default for photos, videos and sound, and asking for search ----------
+
+    private val kindTitles = mapOf("photos" to "Photos", "videos" to "Videos", "sound" to "Sound")
+
+    /** ⋮ → Settings → This phone's default: view only. "Ask to change it" lets them choose, then sends a request. */
+    private fun showPhoneDefault() {
+        val d = Ui.AppDialog(this, sheet = true)
+        d.title("This phone's default")
+        d.add(Ui.text(this, "Photos, videos and sound on every site, unless a site is set otherwise.", 14.5f, Ui.MUTED), 6)
+        d.add(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.rounded(Ui.PAPER, Ui.dp(this@MainActivity, 16).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
+            setPadding(Ui.dp(this@MainActivity, 14), Ui.dp(this@MainActivity, 2), Ui.dp(this@MainActivity, 14), Ui.dp(this@MainActivity, 2))
+            Whitelist.MEDIA_KINDS.forEachIndexed { i, k ->
+                if (i > 0) addView(View(this@MainActivity).apply { setBackgroundColor(Ui.LINE2) }, LinearLayout.LayoutParams(-1, Ui.dp(this@MainActivity, 1)))
+                val blocked = Whitelist.defaultBlocks(k)
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
+                    minimumHeight = Ui.dp(this@MainActivity, 50)
+                    addView(Ui.text(this@MainActivity, kindTitles.getValue(k), 15f, Ui.INK, "bold"), LinearLayout.LayoutParams(0, -2, 1f))
+                    addView(Ui.text(this@MainActivity, if (blocked) "Blocked" else "Open", 14.5f, if (blocked) Ui.DANGER else Ui.ACCENT_TEXT, "bold"))
+                })
+            }
+        })
+        if (Requests.isSetUp()) {
+            d.add(Ui.text(this, "Only the people who manage this browser can change it. Tapping \"Ask to change it\" lets you choose, then sends a request.", 12.5f, Ui.MUTED), 10)
+            d.button("Close", Ui.Kind.GHOST) { it.dismiss() }
+            d.button("Ask to change it", Ui.Kind.SECONDARY) {
+                if (Requests.alreadyAsked(this, "phone|mediaDefault")) {
+                    toast("You already asked to change it. Wait for an answer, or cancel it in My requests to ask again.")
+                    return@button
+                }
+                it.dismiss(); showAskDefault()
+            }
+        } else d.button("Close", Ui.Kind.PRIMARY) { it.dismiss() }
+        d.show()
+    }
+
+    /** Choosing a new default (Open or Blocked for each), then sending it as a request. Nothing changes until it's approved. */
+    private fun showAskDefault() {
+        val d = Ui.AppDialog(this, sheet = true)
+        d.title("Ask to change this phone's default")
+        d.add(Ui.text(this, "Choose what you'd like. Nothing changes until it's approved.", 14.5f, Ui.MUTED), 6)
+        val want = Whitelist.MEDIA_KINDS.associateWith { Whitelist.defaultBlocks(it) }.toMutableMap()
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 16).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
+            setPadding(Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 2), Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 2))
+        }
+        Whitelist.MEDIA_KINDS.forEachIndexed { i, k ->
+            val now = Whitelist.defaultBlocks(k)
+            lateinit var row: Ui.OpenBlocked
+            fun note() {
+                val changed = row.blocked != now
+                row.note.text = "Now: ${if (now) "blocked" else "open"} · " + if (changed) "asking to ${if (row.blocked) "block" else "open"}" else "no change"
+                row.note.setTextColor(if (changed) Ui.ACCENT_TEXT else Ui.MUTED)
+                row.note.visibility = View.VISIBLE
+            }
+            row = Ui.OpenBlocked(this, kindTitles.getValue(k), now) { b -> want[k] = b; note() }
+            note()
+            if (i > 0) card.addView(View(this).apply { setBackgroundColor(Ui.LINE2) }, LinearLayout.LayoutParams(-1, Ui.dp(this, 1)))
+            card.addView(row.view)
+        }
+        d.add(card, 8)
+        val why = Ui.field(this, "e.g. most of my school sites need pictures",
+            type = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
+        d.add(Ui.label(this, "Why? (optional)"))
+        d.add(why, 6)
+        d.add(Ui.text(this, "It shows in My requests like any other, and the answer comes back the same way.", 12.5f, Ui.MUTED), 8)
+        d.button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
+        d.button("Send request", Ui.Kind.PRIMARY) {
+            val changes = Whitelist.MEDIA_KINDS.filter { k -> want[k] != Whitelist.defaultBlocks(k) }
+            if (changes.isEmpty()) { toast("Choose a change first"); return@button }
+            it.dismiss()
+            val wantJson = org.json.JSONObject().apply { Whitelist.MEDIA_KINDS.forEach { k -> put(k, if (want[k] == true) "blocked" else "open") } }
+            val summary = "Change this phone's default: " + changes.joinToString(", ") { k -> "$k ${if (want[k] == true) "blocked" else "open"}" }
+            sendPhoneRequest("mediaDefault", org.json.JSONObject().put("want", wantJson), why.text.toString().trim(), summary)
+        }
+        d.show()
+    }
+
+    /** ⋮ → Ask for search (while it's off): with "Only show results already approved", and why. */
+    private fun showAskSearch() {
+        if (Requests.alreadyAsked(this, "phone|search")) {
+            toast("You already asked for search. Wait for an answer, or cancel it in My requests to ask again.")
+            return
+        }
+        val d = Ui.AppDialog(this, sheet = true)
+        d.title("Ask for search")
+        d.add(Ui.text(this, "A search box on this phone, to find pages and new sites. Your request goes to whoever manages this browser.", 14.5f, Ui.MUTED), 6)
+        val (onlyRow, onlySwitch) = Ui.switchRow(this, "Only show results already approved", "Off: new sites show too, to ask for", false)
+        d.add(onlyRow, 10)
+        val why = Ui.field(this, "e.g. to find sites for my homework",
+            type = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
+        d.add(Ui.label(this, "Why? (optional)"))
+        d.add(why, 6)
+        d.add(Ui.text(this, "It shows in My requests like any other. Once it's turned on, this menu item goes away and the search box appears on the home page.", 12.5f, Ui.MUTED), 8)
+        d.button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
+        d.button("Send", Ui.Kind.PRIMARY) {
+            it.dismiss()
+            val only = onlySwitch.isChecked
+            sendPhoneRequest("search", org.json.JSONObject().put("approvedOnly", only), why.text.toString().trim(),
+                "Turn on search" + if (only) " (only results already approved)" else "")
+        }
+        d.show()
+    }
+
+    /** Saves a request about this phone itself in the outbox, and sends it now if there's internet. */
+    private fun sendPhoneRequest(type: String, extra: org.json.JSONObject, note: String, summary: String) {
+        if (Requests.alreadyAsked(this, "phone|$type")) {
+            toast("You already asked about this. Wait for an answer, or cancel it in My requests to ask again.")
+            return
+        }
+        toast("Sending request")
+        updateIo.execute {
+            val outcome = runCatching {
+                val id = Requests.queuePhone(applicationContext, type, extra, note, summary)
+                val r = Outbox.flush(applicationContext)
+                when {
+                    id in r.sent -> null
+                    id in r.refused -> "Couldn't send the request: ${r.refused[id]}"
+                    else -> "No connection right now. Your request is saved and will be sent automatically."
+                }
+            }
+            main.post {
+                fastChecks(10)
+                if (isDestroyed) return@post
+                toast(outcome.getOrElse { "Couldn't send the request: ${it.message}" } ?: "Request sent. You'll see the answer in My requests.")
+            }
+        }
     }
 
     // ---------- light or dark ----------
@@ -3812,7 +3982,7 @@ class MainActivity : Activity() {
         Whitelist.endingSoon(cur)?.let { t ->
             if (warned.add(t.id)) toast("Only a few minutes left" + if (t.mode == "use") " of your time on this site." else " on this site.")
         }
-        if ((cur.startsWith("https://") || cur.startsWith("http://")) && !HomePage.isHome(cur)) {
+        if ((cur.startsWith("https://") || cur.startsWith("http://")) && !HomePage.isOwn(cur)) {
             if (!Whitelist.isAllowed(cur)) {
                 toast("Time's up for ${Uri.parse(cur).host?.removePrefix("www.") ?: "this site"}")
                 showBlocked(cur)

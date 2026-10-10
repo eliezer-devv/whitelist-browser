@@ -65,6 +65,13 @@
     .empty { padding: 1.5rem .5rem .5rem; }
     .ask { margin-top: 1.4rem; padding: .7rem 1.1rem; font-size: .9rem; }
   }
+  /* Text search (when it's on for this phone): words only, safe search on. */
+  .search { display: flex; align-items: center; gap: .6rem; min-height: 52px; border-radius: 26px; background: var(--tile);
+    border: 1px solid var(--edge); padding: 0 1.1rem; margin: 0 0 1.4rem; }
+  .search svg { flex: none; color: var(--muted); }
+  .search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: 16px Figtree, system-ui, sans-serif; min-height: 48px; }
+  .search input::placeholder { color: var(--muted); }
+  .search:focus-within { border-color: var(--accent); }
   a.tile.opening { opacity: .6; transform: scale(.96); transition: opacity .15s, transform .15s; position: relative; }
   a.tile.opening::after { content: ""; position: absolute; top: 6px; right: 6px; width: 14px; height: 14px; border-radius: 50%;
     border: 2px solid var(--accent, #1F5F55); border-right-color: transparent; animation: wlb-spin .7s linear infinite; }
@@ -74,6 +81,10 @@
 </head>
 <body>
 <main>
+  <form class="search" id="search" action="/search/" method="get" role="search" hidden>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+    <input type="search" name="q" placeholder="Search" aria-label="Search" autocomplete="off" enterkeyhint="search">
+  </form>
   <h1 class="hello" id="hello">Your sites</h1>
   <div class="grid" id="grid"></div>
   <div class="empty" id="empty" hidden><h1 id="emptyTitle"></h1><p id="emptyText"></p></div>
@@ -135,6 +146,7 @@
     const empty = document.getElementById('empty');
     empty.hidden = d.tiles.length > 0;
     document.getElementById('hello').hidden = !d.tiles.length;
+    document.getElementById('search').hidden = !d.search;        // text search: only when it's on for this phone
     if (!d.tiles.length) {
       document.getElementById('emptyTitle').textContent = d.settingUp ? 'Setting up this phone…'
         : !d.loaded ? 'Loading the list of sites' : d.siteCount ? 'No sites on the home page' : 'No sites are allowed yet';

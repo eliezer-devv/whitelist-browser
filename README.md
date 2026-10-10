@@ -268,6 +268,20 @@ You can keep something blocked but open it **for a while**: a whole site, a sing
   - **When time runs out,** the page is replaced by **"Time's up"**, with **Ask to open** to ask for more.
 - **Expired entries are removed from the lists** by the daily check.
 
+### Text search
+Off for every phone to start with. A phone asks for it with ⋮ → **Ask for search** (with **Only show results already
+approved**, and why); it's answered on the admin page like any request (the admin can tick or untick that option).
+It can also be turned on or off on the admin page → **Phones** → the phone → **Text search** (by those who manage it).
+- **On the phone:** a **Search** box at the top of the home page. Results come from DuckDuckGo (Safe Search strict),
+  shown on a page the app makes itself: **words only** (no pictures, videos, sound or ads), each result a page (several
+  from one site is fine) with its site's icon, where it is (`site › path`), its title, a snippet, and **Opens on this
+  phone** or **Ask to open this page**. **More results** at the bottom.
+- **Left out altogether:** results on the adult, gambling or malware lists (unless approved anyway) and on the phone's
+  always-blocked list. With **Only show results already approved**, only pages the phone can open.
+- **Opening a result** follows the phone's lists as usual; one that isn't allowed shows the blocked page, with **Ask**.
+- If DuckDuckGo asks whether a person is searching, **Answer the check** shows its check, then searches again.
+- `devices.json`: `"search": true`, `"searchApprovedOnly": true`.
+
 ### No photos, no videos, no sound
 Sites or pages can be set to open **without photos**, **without videos**, **without sound**, or any mix of them. The
 text, links and buttons work as usual, but pictures don't load, videos don't play, and/or sound on its own (music,
@@ -290,8 +304,23 @@ podcasts, sound files, audio players) doesn't play (see below for how videos are
 - **A few sites send a video's sound as a separate .m4a or .aac file,** so while videos are allowed, those two formats
   aren't blocked.
 
-This is off by default. It can be turned on in four ways:
-- **For a whole site:** the **No photos**, **No videos** and **No sound** switches on the site's screen on the admin page.
+**Each phone's default.** Every phone has a default for photos, videos and sound, each **Open** or **Blocked**
+(admin page → **Phones** → the phone). It applies on every site the phone opens, except sites set to Open or Blocked
+on their own. Changing it changes every site on that phone that's on Default, straight away.
+- **New phones** start with **Settings → New phones start with** (all open unless you change it), and the new phone
+  card in **Requests** lets you change it as you name the phone. Changing Settings doesn't change phones you already have.
+- **The phone can ask to change it:** ⋮ → **Settings** → **This phone's default** (view only) → **Ask to change it**.
+  It's a normal request (no PIN), answered on the admin page by someone who manages that phone.
+- **Asking for a site** shows **Block** chips for kinds the phone opens by default and **Open** chips for kinds it
+  blocks by default, each with a small tag saying the default. The admin page's request card does the same.
+- `devices.json`: `"mediaDefault": { "photos": "blocked" }` (only the blocked ones); `"newPhoneMedia"` at the top.
+
+**A site's own setting:** on the site's screen, **Photos**, **Videos** and **Sound** are each **Default** (the
+phone's own default), **Open** (`photosOn` etc.: open for every phone using this list, whatever its default) or
+**Blocked** (`noPhotos` etc.). Sites that had "No photos" before are Blocked; everything else starts on Default.
+
+Ways to set it:
+- **For a whole site:** Default / Open / Blocked on the site's screen on the admin page.
 - **For single pages** of a site that's otherwise shown normally: admin page → **Sites** → the site → **Pages without
   photos, videos or sound** (or **List settings** → **Pages without photos, videos or sound (all sites)**), with a box
   each for pages without photos, videos and sound (a page in all three has them all off).

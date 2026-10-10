@@ -13,6 +13,8 @@ object HomePage {
     const val URL = "https://$HOST/home/"
 
     fun isHome(url: String?) = url != null && url.startsWith(URL)
+    /** One of the app's own pages (the home page, or search results): not a website. */
+    fun isOwn(url: String?) = url != null && url.startsWith("https://$HOST/")
 
     fun respond(ctx: Context, path: String): WebResourceResponse {
         val headers = mapOf("Cache-Control" to "no-store")

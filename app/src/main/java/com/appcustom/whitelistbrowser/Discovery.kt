@@ -11,6 +11,8 @@ import java.net.URLEncoder
  */
 object Discovery {
     data class Site(val domain: String, val name: String, val description: String)
+    /** One search result (text search): a page, with its title and snippet. Several can be on the same site. */
+    data class Page(val url: String, val domain: String, val title: String, val snippet: String)
 
     /**
      * DuckDuckGo wants to check a person is searching (too many searches from this internet connection). The app never
@@ -32,6 +34,52 @@ object Discovery {
         val key = "${q.lowercase()}|$page"
         synchronized(cache) { cache[key]?.takeIf { System.currentTimeMillis() - it.first < 15 * 60_000L }?.let { return it.second } }
         return pageFresh(q, page).also { list -> if (list.isNotEmpty()) synchronized(cache) { cache[key] = System.currentTimeMillis() to list } }
+    }
+
+    /**
+     * Text search: one page of results for [query] ([page] 0, 1, 2…), as pages (several from one site is fine), in
+     * DuckDuckGo's order, ads left out, Safe Search strict. Blocking; throws [Challenge] or when it can't be reached.
+     */
+    fun searchPages(query: String, page: Int): List<Page> {
+        val q = query.trim().take(200)
+        if (q.isEmpty()) return emptyList()
+        val key = "${q.lowercase()}|$page"
+        synchronized(pageCache) { pageCache[key]?.takeIf { System.currentTimeMillis() - it.first < 15 * 60_000L }?.let { return it.second } }
+        val got = runCatching { pagesOf(q, page) }
+            .recoverCatching { if (it is Challenge) throw it
+                AppLog.w("Search", "DuckDuckGo didn't answer (${it.message}); trying again"); Thread.sleep(800); pagesOf(q, page) }
+            .onFailure { if (it !is Challenge) AppLog.w("Search", "DuckDuckGo didn't answer again (${it.message})") }
+            .getOrThrow()
+        if (got.isNotEmpty()) synchronized(pageCache) { pageCache[key] = System.currentTimeMillis() to got }
+        return got
+    }
+    private fun pagesOf(q: String, page: Int): List<Page> {
+        val url = searchUrl(q, page)
+        val html = get(url, accept = "text/html", agent = BROWSER_AGENT, cookies = true)
+        if (isChallenge(html)) throw Challenge(url)
+        return parsePages(html)
+    }
+    private val pageCache = object : LinkedHashMap<String, Pair<Long, List<Page>>>(16, 0.75f, true) {
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<String, Pair<Long, List<Page>>>?) = size > 30
+    }
+
+    /** Reads DuckDuckGo's results page as pages: each result's address, title and snippet, in order (ads left out). */
+    fun parsePages(html: String): List<Page> {
+        val out = LinkedHashMap<String, Page>()
+        val blocks = html.split(Regex("<div[^>]+class=\"[^\"]*?\\bresult\\b")).drop(1)
+        for (b in blocks) {
+            val head = b.substringBefore('>')
+            if (head.contains("result--ad")) continue
+            val a = Regex("<a[^>]+class=\"result__a\"[^>]+href=\"([^\"]+)\"[^>]*>(.*?)</a>", RegexOption.DOT_MATCHES_ALL).find(b)
+                ?: Regex("<a[^>]+href=\"([^\"]+)\"[^>]+class=\"result__a\"[^>]*>(.*?)</a>", RegexOption.DOT_MATCHES_ALL).find(b) ?: continue
+            val url = realUrl(unescape(a.groupValues[1])) ?: continue
+            val domain = domainOf(url) ?: continue
+            if (domain == "duckduckgo.com" || url in out) continue
+            val title = plain(a.groupValues[2])
+            val snippet = Regex("class=\"result__snippet\"[^>]*>(.*?)</(?:a|div|td)>", RegexOption.DOT_MATCHES_ALL).find(b)?.groupValues?.get(1)?.let { plain(it) }.orEmpty()
+            out[url] = Page(url, domain, title.ifBlank { domain }, snippet)
+        }
+        return out.values.toList()
     }
 
     private val cache = object : LinkedHashMap<String, Pair<Long, List<Site>>>(16, 0.75f, true) {

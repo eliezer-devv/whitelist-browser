@@ -112,7 +112,8 @@ object Requests {
     fun queue(ctx: Context, action: Action, scope: Scope, media: Media, domain: String, pageUrl: String?, note: String,
               hops: List<Hop> = emptyList(), minutes: Int = 0, unverified: Boolean = false,
               filtered: List<String> = emptyList(), frames: List<String> = emptyList(),
-              mediaKind: String = "both", tile: Boolean = true, timeMode: String? = null, item: String? = null): String {
+              mediaKind: String = "both", tile: Boolean = true, timeMode: String? = null, item: String? = null,
+              mediaOpen: String = ""): String {
         if (!isSetUp()) throw IOException("Requests aren't set up for this app yet")
 
         val page = if (scope == Scope.PAGE) pageUrl?.let { Whitelist.pageKey(it) } else null
@@ -134,6 +135,7 @@ object Requests {
             .apply { Device.first(ctx)?.let { put("first", it) }; Device.last(ctx)?.let { put("last", it) } }
             .apply { if (media != Media.UNCHANGED) put("media", media.word) }
             .apply { if (media != Media.UNCHANGED && kindList(mediaKind).size < 3) put("mediaKind", kindList(mediaKind).joinToString(",")) } // not all of them
+            .apply { if (action == Action.ALLOW && media != Media.ON && mediaOpen.isNotBlank()) put("mediaOpen", mediaOpen) } // asked for Open on it
             .apply { if (minutes > 0) put("minutes", minutes) }
             .apply { if (unverified) put("unverified", true) } // the phone couldn't find this site
             .apply { if (filtered.isNotEmpty()) put("filtered", JSONArray(filtered)) } // on a content filter's list
@@ -158,6 +160,26 @@ object Requests {
         return Outbox.add(ctx, "issue", payload,
             summary = if (frames.isNotEmpty()) "Embedded content on $domain (from ${frames.joinToString(", ")})" else "$headline: $subject",
             request = JSONObject(marker.toString()).put("sentKey", fullKey(action, subject, media, mediaKind, frames)))   // (kept on the phone)
+    }
+
+    /**
+     * Asking about this phone itself (not a site): [type] "mediaDefault" (its default for photos, videos and sound:
+     * [extra] has "want") or "search" (text search on: [extra] has "approvedOnly"). Answered on the admin page by
+     * someone who manages this phone, never with a PIN. Shows in My requests like any other.
+     */
+    fun queuePhone(ctx: Context, type: String, extra: JSONObject, note: String, summary: String): String {
+        if (!isSetUp()) throw IOException("Requests aren't set up for this app yet")
+        val marker = JSONObject(extra.toString()).put("type", type).put("device", Device.id(ctx)).put("model", Device.model())
+            .apply { Device.name(ctx)?.let { put("name", it) } }
+            .apply { Device.first(ctx)?.let { put("first", it) }; Device.last(ctx)?.let { put("last", it) } }
+            .apply { if (note.isNotBlank()) put("note", note.take(500)) }
+        val payload = JSONObject()
+            .put("title", "Request from a phone")
+            .put("body", "🔒 A request from a phone. Answer it on the admin page.\n\n${Seal.hiddenPart(marker)}")
+            .put("labels", JSONArray().put("site request"))
+        val key = "phone|$type"
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(key, System.currentTimeMillis()).apply()
+        return Outbox.add(ctx, "issue", payload, summary = summary, request = JSONObject(marker.toString()).put("sentKey", key))
     }
 
     /** Sends a saved request and returns its issue number. Called by [Outbox.flush]. */

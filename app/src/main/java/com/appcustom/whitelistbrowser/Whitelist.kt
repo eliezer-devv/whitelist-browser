@@ -94,7 +94,12 @@ object Whitelist {
         val videosOn: List<String> = emptyList(),
         val videosOnPages: List<String> = emptyList(),
         val soundOn: List<String> = emptyList(),
-        val soundOnPages: List<String> = emptyList()
+        val soundOnPages: List<String> = emptyList(),
+        // This phone's default for photos, videos and sound: the kinds it blocks on every site that isn't set to
+        // Open or Blocked on its own (set on the admin page; empty = all open, as before).
+        val mediaDefault: Set<String> = emptySet(),
+        val search: Boolean = false,                       // text search is on for this phone
+        val searchApprovedOnly: Boolean = false            // …showing only results this phone can open
     ) {
         val allow: List<String> get() = sites.map { it.domain }
         fun sameContent(o: State) = sites == o.sites && block == o.block && blockPages == o.blockPages &&
@@ -102,7 +107,8 @@ object Whitelist {
             noPhotos == o.noPhotos && noPhotosPages == o.noPhotosPages && noVideos == o.noVideos && noVideosPages == o.noVideosPages &&
             noSound == o.noSound && noSoundPages == o.noSoundPages && mediaAllow == o.mediaAllow &&
             photosOn == o.photosOn && photosOnPages == o.photosOnPages && videosOn == o.videosOn && videosOnPages == o.videosOnPages &&
-            soundOn == o.soundOn && soundOnPages == o.soundOnPages
+            soundOn == o.soundOn && soundOnPages == o.soundOnPages && mediaDefault == o.mediaDefault && search == o.search &&
+            searchApprovedOnly == o.searchApprovedOnly
     }
 
     @Volatile var state = State()
@@ -306,6 +312,9 @@ object Whitelist {
                 runCatching { java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
                     .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.parse(t.take(19))!!.time }.getOrNull() } ?: 0L,
             annoyances = b.optBoolean("annoyances", true),
+            mediaDefault = device?.optJSONObject("media")?.let { m -> MEDIA_KINDS.filter { m.optString(it) == "blocked" }.toSet() } ?: emptySet(),
+            search = device?.optBoolean("search", false) ?: false,
+            searchApprovedOnly = device?.optBoolean("searchApprovedOnly", false) ?: false,
             adblockExceptions = b.optJSONArray("adblockExceptions")?.let { a ->
                 (0 until a.length()).mapNotNull { normalize(a.optString(it)) } } ?: emptyList(),
             // From each site's settings in this phone's lists (a site in several lists: all of them together).
@@ -636,9 +645,15 @@ object Whitelist {
     /** The addresses of the photos and videos allowed one by one (for the page script). */
     fun mediaAllowList(): List<String> = state.mediaAllow
 
+    val MEDIA_KINDS = listOf("photos", "videos", "sound")
+
+    /** Does this phone block [kind] by default (on sites not set to Open or Blocked on their own)? */
+    fun defaultBlocks(kind: String) = kind in state.mediaDefault
+
     private fun kindBlocked(url: String?, kind: String): Boolean {
         if (url.isNullOrEmpty() || !(url.startsWith("http://") || url.startsWith("https://"))) return false
         val host = Uri.parse(url).host?.lowercase()?.trimEnd('.') ?: return false
+        if (host == HomePage.HOST) return false                              // the app's own pages (home, search)
         if (tempsFor(url, host, "media", kind).isNotEmpty()) return false  // on for a while (all, or this one)
         return kindBlockedForGood(url, host, kind)
     }
@@ -654,9 +669,23 @@ object Whitelist {
         if (here != null && onPages.any { pageMatches(here, it) }) return false
         val sites = s.noMedia + when (kind) { "photos" -> s.noPhotos; "videos" -> s.noVideos; else -> s.noSound }
         if (covers(sites, host)) return true
-        val key = pageKey(url) ?: return false
+        val key = pageKey(url)
         val pages = s.noMediaPages + when (kind) { "photos" -> s.noPhotosPages; "videos" -> s.noVideosPages; else -> s.noSoundPages }
-        return pages.any { pageMatches(key, it) }
+        if (key != null && pages.any { pageMatches(key, it) }) return true
+        // Not set on this site or page: this phone's default.
+        return kind in s.mediaDefault
+    }
+
+    /**
+     * Left out of search results altogether: on a content filter's list (adult, gambling, malware) and not approved
+     * anyway, or on this phone's always-blocked list.
+     */
+    fun hiddenFromSearch(url: String): Boolean {
+        val host = hostOf(url) ?: return true
+        if (filteredAs(host).isNotEmpty() && !isUnfiltered(host)) return true
+        if (covers(state.block, host)) return true
+        val key = pageKey(url) ?: return false
+        return state.blockPages.any { pageMatches(key, it) }
     }
 
     /** Active temporary access of these kinds that covers [url]. */
@@ -751,6 +780,7 @@ object Whitelist {
             .put("settingUp", !s.registered && Requests.isSetUp())
             .put("loaded", s.updatedAt != 0L || s.sites.isNotEmpty())
             .put("canRequest", Requests.isSetUp())
+            .put("search", s.search && s.registered)
             .toString()
     }
 }
