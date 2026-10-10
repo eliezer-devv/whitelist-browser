@@ -2497,7 +2497,8 @@ class MainActivity : Activity() {
     private fun changeArrived(item: MyRequests.Item): Boolean {
         val r = item.request ?: return true                    // asked by an older app: nothing to check
         when (r.optString("type")) {
-            "search" -> return Whitelist.state.search
+            "search" -> return if (r.optBoolean("off")) !Whitelist.state.search
+                else Whitelist.state.search && Whitelist.state.searchApprovedOnly == r.optBoolean("approvedOnly")
             "mediaDefault" -> {
                 val w = r.optJSONObject("want") ?: return true
                 return Whitelist.MEDIA_KINDS.all { k -> w.optString(k).let { v -> v.isEmpty() || (v == "blocked") == Whitelist.defaultBlocks(k) } }
@@ -3188,9 +3189,7 @@ class MainActivity : Activity() {
                 sent.forEach { item ->
                     val row = requestRow(item.status, item.summary, item.message, whenText(item), card = true)
                     // Answered, or a PIN already sent for it (it comes back if the PIN was wrong): shown faded, not tickable.
-                    // (Asking to change this phone's default, or for search: answered on the admin page only, never with a PIN.)
-                    val noPin = item.request?.optString("type") in setOf("mediaDefault", "search")
-                    if (item.status != "waiting" || item.pinChecking || noPin) { row.alpha = 0.5f; list.addView(row, LinearLayout.LayoutParams(gap)); return@forEach }
+                    if (item.status != "waiting" || item.pinChecking) { row.alpha = 0.5f; list.addView(row, LinearLayout.LayoutParams(gap)); return@forEach }
                     val wrap = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
                     val box = android.widget.CheckBox(this).apply {
                         buttonTintList = android.content.res.ColorStateList.valueOf(Ui.ACCENT)
@@ -3210,7 +3209,7 @@ class MainActivity : Activity() {
                 }
                 d.add(list, 8)
                 // Nothing that can be ticked (e.g. all waiting for their PIN to be checked): no Approve or Deny.
-                if (sent.none { it.status == "waiting" && !it.pinChecking && it.request?.optString("type") !in setOf("mediaDefault", "search") }) {
+                if (sent.none { it.status == "waiting" && !it.pinChecking }) {
                     if (sent.any { it.pinChecking }) d.add(Ui.text(this, "Waiting for these to be answered.", 13.5f, Ui.MUTED), 8)
                     d.show()
                     return
@@ -3750,6 +3749,7 @@ class MainActivity : Activity() {
             row(R.drawable.ic_d_theme, "Appearance", look) { showAppearance() },
             row(R.drawable.ic_d_photo, "This phone's default", Whitelist.MEDIA_KINDS.joinToString(", ") { k ->
                 "${k.replaceFirstChar { it.uppercase() }} ${if (Whitelist.defaultBlocks(k)) "blocked" else "open"}" }) { showPhoneDefault() },
+            row(R.drawable.ic_d_search, "Search", searchNow()) { showSearchSettings() },
             *(if (AdminAlerts.isAdminPhone()) arrayOf(row(R.drawable.ic_d_inbox, "Phone notifications",
                 when {
                     !AdminAlerts.wanted(this@MainActivity) -> "Off"
@@ -3870,7 +3870,70 @@ class MainActivity : Activity() {
         d.show()
     }
 
-    /** ⋮ → Ask for search (while it's off): with "Only show results already approved", and why. */
+    /** "Off", "On: all results" or "On: only approved results". */
+    private fun searchNow() = if (!Whitelist.state.search) "Off" else if (Whitelist.state.searchApprovedOnly) "On: only approved results" else "On: all results"
+
+    /**
+     * ⋮ → Settings → Search. Off: asking for it. On: what it shows (view only), and "Ask to change it": only approved
+     * results, all results, or turning search off. A normal request, like any other.
+     */
+    private fun showSearchSettings() {
+        if (!Whitelist.state.search) { showAskSearch(); return }
+        val d = Ui.AppDialog(this, sheet = true)
+        d.title("Search")
+        d.add(Ui.text(this, "The search box on this phone's home page.", 14.5f, Ui.MUTED), 6)
+        d.add(Ui.box(this, if (Whitelist.state.searchApprovedOnly) "On. It shows only results this phone can already open."
+            else "On. It shows every result, including new sites to ask for."), 8)
+        if (Requests.isSetUp()) {
+            d.add(Ui.text(this, "Only the people who manage this browser can change it. Tapping \"Ask to change it\" lets you choose, then sends a request.", 12.5f, Ui.MUTED), 10)
+            d.button("Close", Ui.Kind.GHOST) { it.dismiss() }
+            d.button("Ask to change it", Ui.Kind.SECONDARY) {
+                if (Requests.alreadyAsked(this, "phone|search")) {
+                    toast("You already asked about search. Wait for an answer, or cancel it in My requests to ask again.")
+                    return@button
+                }
+                it.dismiss(); showAskSearchChange()
+            }
+        } else d.button("Close", Ui.Kind.PRIMARY) { it.dismiss() }
+        d.show()
+    }
+
+    /** While search is on: ask for only approved results, all results, or no search at all. */
+    private fun showAskSearchChange() {
+        val now = if (Whitelist.state.searchApprovedOnly) 1 else 0
+        var pick = now
+        val d = Ui.AppDialog(this, sheet = true)
+        d.title("Ask to change search")
+        d.add(Ui.text(this, "Choose what you'd like. Nothing changes until it's approved.", 14.5f, Ui.MUTED), 6)
+        val explain = Ui.text(this, "", 13f, Ui.MUTED)
+        fun explainNow() {
+            explain.text = (if (pick == now) "No change. " else "") + when (pick) {
+                0 -> "Every result, including new sites: tap one that isn't approved to ask for it."
+                1 -> "Only pages this phone can already open."
+                else -> "The search box goes from the home page."
+            }
+        }
+        explainNow()
+        d.add(Ui.Segmented(this, listOf("All results", "Only approved results", "Turn off search"), now, true) { pick = it; explainNow() }.view, 8)
+        d.add(explain, 6)
+        val why = Ui.field(this, "e.g. it's too distracting",
+            type = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
+        d.add(Ui.label(this, "Why? (optional)"))
+        d.add(why, 6)
+        d.add(Ui.text(this, "It shows in My requests like any other, and the answer comes back the same way.", 12.5f, Ui.MUTED), 8)
+        d.button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
+        d.button("Send request", Ui.Kind.PRIMARY) {
+            if (pick == now) { toast("Choose a change first"); return@button }
+            it.dismiss()
+            val extra = if (pick == 2) org.json.JSONObject().put("off", true)
+                else org.json.JSONObject().put("approvedOnly", pick == 1).put("wasOn", true)
+            sendPhoneRequest("search", extra, why.text.toString().trim(),
+                when (pick) { 0 -> "Search: show all results"; 1 -> "Search: only approved results"; else -> "Turn off search" })
+        }
+        d.show()
+    }
+
+    /** ⋮ → Ask for search (while it's off): which results it shows, and why. */
     private fun showAskSearch() {
         if (Requests.alreadyAsked(this, "phone|search")) {
             toast("You already asked for search. Wait for an answer, or cancel it in My requests to ask again.")
@@ -3878,9 +3941,16 @@ class MainActivity : Activity() {
         }
         val d = Ui.AppDialog(this, sheet = true)
         d.title("Ask for search")
-        d.add(Ui.text(this, "A search box on this phone, to find pages and new sites. Your request goes to whoever manages this browser.", 14.5f, Ui.MUTED), 6)
-        val (onlyRow, onlySwitch) = Ui.switchRow(this, "Only show results already approved", "Off: new sites show too, to ask for", false)
-        d.add(onlyRow, 10)
+        d.add(Ui.text(this, "A search box on this phone's home page. Your request goes to whoever manages this browser.", 14.5f, Ui.MUTED), 6)
+        // Which search: both are search; the choice is only which results it shows.
+        var only = false
+        val explain = Ui.text(this, "", 13f, Ui.MUTED)
+        fun explainNow() { explain.text = if (only) "Only pages this phone can already open."
+            else "Every result, including new sites: tap one that isn't approved to ask for it." }
+        explainNow()
+        d.add(Ui.label(this, "Which results should it show?"), 10)
+        d.add(Ui.Segmented(this, listOf("All results", "Only approved results"), 0, true) { only = it == 1; explainNow() }.view, 6)
+        d.add(explain, 6)
         val why = Ui.field(this, "e.g. to find sites for my homework",
             type = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
         d.add(Ui.label(this, "Why? (optional)"))
@@ -3889,7 +3959,6 @@ class MainActivity : Activity() {
         d.button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
         d.button("Send", Ui.Kind.PRIMARY) {
             it.dismiss()
-            val only = onlySwitch.isChecked
             sendPhoneRequest("search", org.json.JSONObject().put("approvedOnly", only), why.text.toString().trim(),
                 "Turn on search" + if (only) " (only results already approved)" else "")
         }

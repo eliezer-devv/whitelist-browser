@@ -72,6 +72,7 @@
   .search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: 16px Figtree, system-ui, sans-serif; min-height: 48px; }
   .search input::placeholder { color: var(--muted); }
   .search:focus-within { border-color: var(--accent); }
+  .search[hidden] { display: none; }
   a.tile.opening { opacity: .6; transform: scale(.96); transition: opacity .15s, transform .15s; position: relative; }
   a.tile.opening::after { content: ""; position: absolute; top: 6px; right: 6px; width: 14px; height: 14px; border-radius: 50%;
     border: 2px solid var(--accent, #1F5F55); border-right-color: transparent; animation: wlb-spin .7s linear infinite; }

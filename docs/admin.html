@@ -2262,7 +2262,7 @@ function setDefault(d, k, v) {
 }
 function describe(req) {
   if (req.type === 'mediaDefault') return { title: 'Change this phone\'s default', page: null };
-  if (req.type === 'search') return { title: 'Turn on search', page: null };
+  if (req.type === 'search') return { title: req.off === true ? 'Turn off search' : req.wasOn === true ? 'Change search' : 'Turn on search', page: null };
   const site = req.domain || '?';
   if (Array.isArray(req.frames) && req.frames.length) return { title: `Embedded content on ${site}`, page: null };
   const page = req.scope === 'page' && req.url ? pageKey(req.url) : null;
@@ -2501,7 +2501,7 @@ function requestDetailsScreen() {
 }
 
 // A phone asking to change its default for photos, videos and sound, or to turn on search. Answered by someone who
-// manages that phone (never with a PIN).
+// manages that phone (or with an approval PIN on the phone, like any request).
 function settingRequestCard(issue, req) {
   const { title } = describe(req);
   const devId = String(req.device || '').toUpperCase(), dev = S.D.devices[devId];
@@ -2543,17 +2543,19 @@ function settingRequestCard(issue, req) {
         h('span', { class: 'now', style: `color:${to === was ? 'var(--muted)' : 'var(--accent)'}` }, capFirst(to) + (to === was ? ' (no change)' : '')));
     })));
     body.push(h('p', { class: 'hint', style: 'margin:0' }, `Approving changes it on every site on ${possessive(fname)} phone that's on Default.`));
+  } else if (req.off === true) {
+    body.push(h('p', { class: 'hint', style: 'margin:0' }, `Approving takes the search box off ${possessive(fname)} phone. You can turn it on again any time: Phones → ${phone} → Text search.`));
   } else {
     body.push(h('p', { class: 'hint', style: 'margin:0' }, `A search box on ${possessive(fname)} phone: words only, safe search on, nothing the filters block. Opening a result follows ${dev && dev.first ? 'their' : 'its'} lists as usual.`));
     // (Kept while the page redraws, e.g. after another answer.)
     const draft = (S.cardDrafts = S.cardDrafts || {})[issue.number] = (S.cardDrafts || {})[issue.number] || { only: req.approvedOnly === true };
     onlyBox = h('input', { type: 'checkbox', class: 'onlyApproved', id: `oa${issue.number}`, checked: draft.only, onchange: e => { draft.only = e.target.checked; } });
     body.push(h('div', { class: 'stack', style: 'gap:2px' }, h('label', { class: 'check', for: onlyBox.id }, onlyBox, h('span', { class: 'grow' }, 'Only show results already approved')),
-      h('span', { class: 'small muted' }, `As ${fname} asked: ${req.approvedOnly ? 'on (only approved pages)' : 'off (new sites too)'}. ${req.approvedOnly ? 'Untick' : 'Tick'} it to change that.`)));
+      h('span', { class: 'small muted' }, `As ${fname} asked: ${req.approvedOnly ? 'only approved results' : 'all results (new sites too)'}. ${req.approvedOnly ? 'Untick' : 'Tick'} it to change that.`)));
   }
   if (may) {
-    actions.append(h('button', { type: 'button', class: 'btn p grow approve', onclick: () => send(req.type === 'search' ? (onlyBox.checked ? 'approve approved-only' : 'approve all-results') : 'approve',
-      req.type === 'search' ? 'Search turned on' : 'Default changed') }, 'Approve'));
+    actions.append(h('button', { type: 'button', class: 'btn p grow approve', onclick: () => send(req.type === 'search' && onlyBox ? (onlyBox.checked ? 'approve approved-only' : 'approve all-results') : 'approve',
+      req.type === 'search' ? (req.off === true ? 'Search turned off' : 'Search changed') : 'Default changed') }, 'Approve'));
     actions.append(h('button', { type: 'button', class: 'btn d deny', onclick: openDeny }, 'Deny'));
   }
   card.append(...[
@@ -2563,7 +2565,7 @@ function settingRequestCard(issue, req) {
     ...body,
     may ? null : h('p', { class: 'hint', style: 'margin:0' }, `Only someone who manages ${possessive(fname)} phone can answer this.`),
     may ? actions : null, panels,
-    req.type === 'search' ? h('p', { class: 'hint', style: 'margin:0' }, `You can turn it off again any time: Phones → ${phone} → Text search.`) : null].filter(Boolean));
+    req.type === 'search' && req.off !== true ? h('p', { class: 'hint', style: 'margin:0' }, `You can turn it off again any time: Phones → ${phone} → Text search.`) : null].filter(Boolean));
   return card;
 }
 

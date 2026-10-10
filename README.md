@@ -269,9 +269,12 @@ You can keep something blocked but open it **for a while**: a whole site, a sing
 - **Expired entries are removed from the lists** by the daily check.
 
 ### Text search
-Off for every phone to start with. A phone asks for it with ⋮ → **Ask for search** (with **Only show results already
-approved**, and why); it's answered on the admin page like any request (the admin can tick or untick that option).
+Off for every phone to start with (no search box until it's on). A phone asks for it with ⋮ → **Ask for search**,
+choosing **All results** or **Only approved results**, and why; it's answered like any request, on the admin page (the
+admin can change that choice) or with an approval PIN in **My requests**.
 It can also be turned on or off on the admin page → **Phones** → the phone → **Text search** (by those who manage it).
+- **Changing it from the phone:** ⋮ → **Settings** → **Search** shows what it's set to, and **Ask to change it**:
+  **All results**, **Only approved results** or **Turn off search**, sent as a request like any other.
 - **On the phone:** a **Search** box at the top of the home page. Results come from DuckDuckGo (Safe Search strict),
   shown on a page the app makes itself: **words only** (no pictures, videos, sound or ads), each result a page (several
   from one site is fine) with its site's icon, where it is (`site › path`), its title, a snippet, and **Opens on this
@@ -310,7 +313,8 @@ on their own. Changing it changes every site on that phone that's on Default, st
 - **New phones** start with **Settings → New phones start with** (all open unless you change it), and the new phone
   card in **Requests** lets you change it as you name the phone. Changing Settings doesn't change phones you already have.
 - **The phone can ask to change it:** ⋮ → **Settings** → **This phone's default** (view only) → **Ask to change it**.
-  It's a normal request (no PIN), answered on the admin page by someone who manages that phone.
+  It's a normal request: answered on the admin page by someone who manages that phone, or with an approval PIN in
+  **My requests**, like any other.
 - **Asking for a site** shows **Block** chips for kinds the phone opens by default and **Open** chips for kinds it
   blocks by default, each with a small tag saying the default. The admin page's request card does the same.
 - `devices.json`: `"mediaDefault": { "photos": "blocked" }` (only the blocked ones); `"newPhoneMedia"` at the top.
