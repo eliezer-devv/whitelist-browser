@@ -1335,6 +1335,10 @@ class MainActivity : Activity() {
             }
             if (error != null) AppLog.w("Lists", "Checking for changes failed: $error")
             if (error == null) AdminAlerts.schedule(applicationContext)        // admin phones: the background check
+            // Other browsers (supervised protection): list them for the admin page, ask about new ones, and — as
+            // device owner — keep blocked apps switched off. The cover (accessibility) works on its own.
+            runCatching { BrowserGuard.report(applicationContext) }.logged("Browsers", "Checking for other browsers")
+            runCatching { DeviceOwner.apply(applicationContext) }.logged("Browsers", "Keeping blocked apps off")
             // The admin page asked for this phone's log: sent once per request.
             val asked = Whitelist.state.logRequested
             val logPrefs = getSharedPreferences("log", Context.MODE_PRIVATE)
@@ -3902,7 +3906,82 @@ class MainActivity : Activity() {
             Triple(R.drawable.ic_d_search, "Search" to searchNow()) { showSearchSettings() },
             Triple(R.drawable.ic_d_clock, "My activity" to "Time on each site, for you only") { showMyActivity() },
             Triple(R.drawable.ic_d_globe, "Phone's browser" to (if (isPhonesBrowser()) "This is the phone's browser: links from other apps open here"
-                else "Make it the phone's browser, so links from other apps open here")) { becomePhonesBrowser() }))
+                else "Make it the phone's browser, so links from other apps open here")) { becomePhonesBrowser() },
+            Triple(R.drawable.ic_d_shield, "Other browsers" to otherBrowsersStatus()) { showOtherBrowsers() }))
+    }
+
+    // ---------- Other browsers: turning the protection on, on this phone (supervised setup) ----------
+
+    private fun otherBrowsersStatus(): String = when {
+        DeviceOwner.isOwner(this) -> "Device owner: blocked apps are off"
+        GuardService.running && DeviceOwner.isAdminActive(this) -> "Screen cover and uninstall protection are on"
+        GuardService.running -> "Screen cover is on"
+        DeviceOwner.isAdminActive(this) -> "Uninstall protection is on"
+        else -> "Not set up"
+    }
+
+    /**
+     * The on-phone setup for keeping this managed browser in place. Shown plainly to whoever uses the phone — nothing
+     * here is hidden. Each button opens Android's own switch; what's blocked is decided on the admin page.
+     */
+    private fun showOtherBrowsers() {
+        val owner = DeviceOwner.isOwner(this)
+        val admin = DeviceOwner.isAdminActive(this)
+        val cover = GuardService.running
+        val d = Ui.AppDialog(this, sheet = true)
+        d.add(Ui.text(this, "‹ This phone", 15f, Ui.ACCENT_TEXT, "bold").apply {
+            minHeight = Ui.dp(this@MainActivity, 36); gravity = android.view.Gravity.CENTER_VERTICAL
+            setOnClickListener { d.dismiss(); showThisPhone() }
+        }, 0)
+        d.title("Other browsers")
+        d.add(Ui.text(this, "Whoever manages this browser can keep it the only way to the web on this phone. You can see everything that's on, and it can be switched off from the admin page.", 14f, Ui.MUTED), 6)
+        if (owner) {
+            d.add(Ui.box(this, "This phone is a device owner. Blocked apps are switched off, this app can't be uninstalled, and the clock is kept honest. To undo it, use the admin page.", "teal"), 8)
+        } else {
+            // Screen cover (accessibility).
+            d.add(statusRow("Screen cover", if (cover) "On" else "Off",
+                "Covers a blocked app, and the settings that could switch this off.", cover) {
+                d.dismiss(); openSettingsScreen(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS, "Find Whitelist Browser and turn it on.")
+            })
+            // Uninstall protection (device admin).
+            d.add(statusRow("Uninstall protection", if (admin) "On" else "Off",
+                "Android won't uninstall the app until this is switched off (that screen is covered).", admin) {
+                if (admin) { toast("To turn this off, use the admin page, or Settings → Security → Device admin apps."); return@statusRow }
+                d.dismiss(); runCatching { startActivity(DeviceOwner.addAdminIntent(this)) }.logged("Browsers", "Opening device admin")
+            })
+            d.add(Ui.text(this, "Strongest of all is device owner (blocked apps switched off, no uninstall at all), set up once from a computer — see the admin page.", 12.5f, Ui.MUTED), 8)
+        }
+        d.button("Done", Ui.Kind.PRIMARY) { it.dismiss() }
+        d.show()
+    }
+
+    private fun statusRow(title: String, state: String, sub: String, on: Boolean, onTap: () -> Unit): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = Ui.dp(this@MainActivity, 14)
+            setPadding(pad, Ui.dp(this@MainActivity, 12), pad, Ui.dp(this@MainActivity, 12))
+            background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 14).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
+                addView(Ui.text(this@MainActivity, title, 15.5f, Ui.INK, "bold"), LinearLayout.LayoutParams(0, -2, 1f))
+                addView(Ui.text(this@MainActivity, state, 13.5f, if (on) Ui.ACCENT_TEXT else Ui.DANGER, "bold"))
+            })
+            addView(Ui.text(this@MainActivity, sub, 12.5f, Ui.MUTED).apply { setPadding(0, Ui.dp(this@MainActivity, 4), 0, Ui.dp(this@MainActivity, 8)) })
+            addView(android.widget.Button(this@MainActivity).apply {
+                text = if (on) "Change" else "Turn it on"; isAllCaps = false
+                setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f)
+                setTextColor(Ui.ACCENT_TEXT)
+                minHeight = Ui.dp(this@MainActivity, 42); minimumHeight = Ui.dp(this@MainActivity, 42)
+                background = Ui.rounded(0, 0f, Ui.OUTLINE, Ui.dp(this@MainActivity, 1))
+                val px = Ui.dp(this@MainActivity, 16); setPadding(px, 0, px, 0)
+                setOnClickListener { onTap() }
+            }, LinearLayout.LayoutParams(-2, -2))
+        }.also { it.layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dp(this@MainActivity, 8) } }
+    }
+
+    private fun openSettingsScreen(action: String, hint: String) {
+        runCatching { startActivity(android.content.Intent(action).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)); toast(hint) }
+            .logged("Browsers", "Opening a settings screen")
     }
 
     /** Settings → Cookies and cache: signing out of sites, and clearing the cache. */

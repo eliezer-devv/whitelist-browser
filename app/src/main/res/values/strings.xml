@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Whitelist Browser</string>
+    <string name="cover_description">Covers blocked apps and the settings that could switch this protection off, so the managed browser stays in place. Only reads which app is open, never its content. Set up and removable by whoever manages this phone.</string>
     <string name="checking">Checking the list on GitHub</string>
 </resources>

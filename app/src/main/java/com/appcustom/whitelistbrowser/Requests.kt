@@ -279,6 +279,7 @@ object Requests {
             .put("version", BuildConfig.VERSION_NAME)
             .apply { runCatching { put("clock", TrustedTime.report(ctx)) }.onFailure { AppLog.w("Clock", "Couldn't add the clock to the record: ${it.message}") } }
             .put("tz", java.util.TimeZone.getDefault().id)
+            .apply { runCatching { val (apps, state) = BrowserGuard.recordExtras(ctx); if (apps.length() > 0) put("apps", apps); put("protectState", state) }.onFailure { AppLog.w("Browsers", "Couldn't add the app list: ${it.message}") } }
         return (if (register) "🔒 A phone registered." else "🔒 A phone's record.") + "\n\n" + Seal.hiddenPart(marker)
     }
 

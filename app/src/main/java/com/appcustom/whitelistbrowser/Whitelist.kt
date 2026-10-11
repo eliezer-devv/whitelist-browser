@@ -107,7 +107,9 @@ object Whitelist {
         val answerChanges: String = "",
         // Timers set on the admin page, and the lists they open or count time on (by name).
         val timers: List<Timers.Timer> = emptyList(),
-        val timerLists: Map<String, State> = emptyMap()
+        val timerLists: Map<String, State> = emptyMap(),
+        // Other browsers: how the managed browser is kept in place, and which other apps are blocked.
+        val protect: BrowserGuard.Protect? = null
     ) {
         val allow: List<String> get() = sites.map { it.domain }
         fun sameContent(o: State) = sites == o.sites && block == o.block && blockPages == o.blockPages &&
@@ -326,6 +328,7 @@ object Whitelist {
             searchApprovedOnly = device?.optBoolean("searchApprovedOnly", false) ?: false,
             answerChanges = device?.optJSONArray("answerChanges")?.toString() ?: "",
             timers = Timers.parse(device?.optJSONArray("timers")),
+            protect = BrowserGuard.parse(device?.optJSONObject("protect")),
             timerLists = b.optJSONArray("timerLists")?.let { a -> (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.let { o ->
                 runCatching { o.getString("name") to parse(o.getString("json"), fetchedAt) }.getOrNull() } }.toMap() } ?: emptyMap(),
             adblockExceptions = b.optJSONArray("adblockExceptions")?.let { a ->

@@ -880,6 +880,39 @@ The private repo's `devices.json` looks like this:
 }
 ```
 
+## 3c. Other browsers (supervised protection)
+
+On a supervised phone (a child's, say), this keeps the managed browser the only way to the web. It's set up by
+whoever manages the phone, with physical access, and it's deliberately **visible**: a blocked app shows a plain
+screen saying the browser is managed and by whom, nothing is hidden, and you can switch it all off from the admin
+page at any time. It never touches apps Android itself needs (Phone, Settings, the system).
+
+### What the phone does
+- **Finds other browsers:** every few minutes, and whenever an app is installed, the phone lists the apps that can
+  open a website and sends their **names** (only) to the admin page.
+- **Asks about a new one:** with **Block new browsers straight away** on (the default), a newly installed browser is
+  blocked at once and raised as a request (a notification), which you **Allow** or **keep blocked**.
+- **Reports its state:** the Phones screen shows what protection is actually set up on the phone (device owner,
+  screen cover, uninstall protection), so you can see it took.
+
+### Two ways to keep it in place (Phones → a phone → Other browsers)
+- **Screen cover** (no computer): an accessibility service covers a blocked app the moment it opens — in split
+  screen and pop-up windows too — and covers the few settings screens where the protection could be switched off
+  (Accessibility, this app's App info, and the device-admin screen). With **uninstall protection** (a device admin)
+  Android won't uninstall the app until it's switched off there, and that screen is covered. It's the weaker option:
+  someone who knows Android could still get round it (for example in safe mode), and you'd be told.
+- **Device owner** (set up once, with a computer): the strongest. Blocked apps are **switched off** so they won't
+  open at all, the app **can't be uninstalled**, and automatic date and time is **kept on** (so timers can't be
+  dodged). Optionally, **new apps need your OK**. Set up from a computer with Chrome and the phone's cable; the setup
+  page handles the accounts for you (it switches the account apps off for a moment and back on, so you don't sign
+  out), and also shows the by-hand `adb` commands. Undo it any time from the admin page — the phone goes back to
+  normal, nothing is wiped.
+
+### Per app
+Each app that can open websites has **Allow** or **Block**. **Add an app** lets you block one the phone didn't flag
+as a browser (a game with its own web window, say), picked from the phone's app list. **Turn the cover off** from the
+admin page without removing the setup, for when you need it off for a while.
+
 ## 4. Changing the list yourself
 
 The list is the file **`docs/whitelist.json`** in the **private** repository (other lists are in `docs/lists/`).
@@ -1153,6 +1186,12 @@ says if its clock was changed by hand. **Search phones** filters by name, ID, mo
 
 ### Timers
 Every timer, by who it's for, with **On now / Later / Paused**, and **New timer**. See [Timers](#timers).
+
+### Other browsers (a phone's screen)
+Lists the apps that can open websites, each with **Allow** or **Block**; sets how the managed browser is kept in
+place (**Device owner** / **Screen cover** / **Off**), the **screen cover** on/off, **Block new browsers straight
+away**, and — as device owner — keeping the clock honest and whether new apps need your OK. See
+[Other browsers](#3c-other-browsers-supervised-protection).
 
 ### Settings
 - **Filters:** **Block ads**, **Block trackers**, **Hide annoyances**, **Block adult content**, **Block gambling**,

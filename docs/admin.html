@@ -1604,7 +1604,7 @@ function render() {
   else if (S.sub) node = ({ site: siteScreen, temp: tempScreen, block: blockScreen, nomedia: noMediaScreen, import: importScreen,
     listsettings: listSettingsScreen, phone: phoneScreen, archived: archivedScreen, neverblock: neverBlockScreen, pin: pinScreen,
     log: logScreen, account: accountScreen, admins: adminsScreen, admin: adminScreen, groups: groupsScreen,
-    approvalpin: approvalPinScreen, embeds: embedsScreen, request: requestDetailsScreen, answered: answeredDetailsScreen, timer: timerScreen })[S.sub.name]();
+    approvalpin: approvalPinScreen, embeds: embedsScreen, request: requestDetailsScreen, answered: answeredDetailsScreen, timer: timerScreen, browsers: browsersScreen })[S.sub.name]();
   else node = ({ requests: requestsScreen, sites: sitesScreen, phones: phonesScreen, timers: timersScreen, settings: settingsScreen })[S.tab]();
   view.replaceChildren(node);
   const key = S.connected ? (S.sub ? 'sub:' + S.sub.name : 'tab:' + S.tab) : 'connect';
@@ -2342,6 +2342,7 @@ function setDefault(d, k, v) {
   if (Object.keys(md).length) d.mediaDefault = md; else delete d.mediaDefault;
 }
 function describe(req) {
+  if (req.type === 'browser') return { title: `A new browser: ${req.label || req.pkg || 'an app'}`, page: null };
   if (req.type === 'timer') { const tn = (timerDefs()[req.timer] || {}).name || req.timerName || 'a timer', m = Number(req.minutes) || 30;
     return { title: req.ask === 'more' ? `${fmtMin(m)} more of ${tn} today` : `${fmtMin(m)} off ${tn}`, page: null }; }
   if (req.type === 'mediaDefault') return { title: 'Change this phone\'s default', page: null };
@@ -2402,6 +2403,7 @@ function requestCard(issue) {
   const req = marker(issue.body);
   if (req.type === 'mediaDefault' || req.type === 'search') return settingRequestCard(issue, req);
   if (req.type === 'timer') return timerRequestCard(issue, req);
+  if (req.type === 'browser') return browserRequestCard(issue, req);
   const { title, page } = describe(req);
   const phone = field(issue.body, 'Phone').replace(/`/g, '').replace(/\s*\([A-Z0-9-]+\)\s*$/, '') || 'A phone';
   const note = field(issue.body, 'Note');
@@ -2564,7 +2566,7 @@ function answeredDetailsScreen() {
   const kv = (k, v) => v == null || v === '' ? null : h('div', { class: 'kv' }, h('span', { class: 'k' }, k), h('span', { class: 'v' }, v));
   const denied = a.verdict === 'denied';
   const isSet = req.type === 'mediaDefault' || req.type === 'search';
-  const noSite = isSet || req.type === 'timer';
+  const noSite = isSet || req.type === 'timer' || req.type === 'browser';
   const asked = Number(req.minutes) || 0;
   const changed = (a.changed || []).map(c => `${c.text}${c.list ? ` (${c.list === x.phone.toLowerCase() ? (dev && dev.name ? dev.name + '\'s own list' : 'own list') : /^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(c.list) ? 'phone' : listLabel(c.list)})` : ''}`);
   const status = a.undone ? 'Approval undone' : denied ? 'Denied' : 'Approved';
@@ -2620,6 +2622,42 @@ async function undoApproval(x, changed) {
   say(`Undone. ${who}'s phone is told within a few minutes.`);
 }
 // "Ask for time": time off a timer, or more of a daily allowance today. Approve (as asked, or another time) or deny.
+// A newly found browser on a phone: Allow it, or keep it blocked.
+function browserRequestCard(issue, req) {
+  const phone = field(issue.body, 'Phone').replace(/`/g, '').replace(/\s*\([A-Z0-9-]+\)\s*$/, '') || 'A phone';
+  const label = req.label || req.pkg || 'an app';
+  const blocked = req.blocked !== false;
+  const card = h('article', { class: 'card', 'data-n': issue.number });
+  const actions = h('div', { class: 'acts' });
+  const send = async (text, labelTxt) => {
+    actions.querySelectorAll('button').forEach(b => b.disabled = true);
+    try {
+      await reply(issue.number, text, issue._again);
+      if (issue._again) { const x = (S.answeredList || []).find(i => i.number === issue.number);
+        if (x) x.answer = { ...x.answer, verdict: text.startsWith('allow') ? 'approved' : 'denied', at: new Date().toISOString(), by: ME.name || ME.email, how: 'page', message: '', undoable: false, changed: [] };
+        render(); return say(`${labelTxt}. ${phone}'s phone is told within a few minutes.`); }
+      S.answeredNumbers = [...(S.answeredNumbers || []), issue.number];
+      S.requests = S.requests.filter(i => i.number !== issue.number);
+      S.answered.unshift({ title: `A new browser: ${label}`, label: `${labelTxt} for ${phone}` });
+      render();
+      say(`${labelTxt}. GitHub does it within a minute, and ${phone} is told a few minutes after.`);
+    } catch (e) { actions.querySelectorAll('button').forEach(b => b.disabled = false); say(e.message === 'NO_ISSUES' ? NO_ISSUES_MSG : e.message, true); }
+  };
+  actions.append(
+    h('button', { type: 'button', class: 'btn p grow approve', onclick: () => send('allow', 'Allowed') }, 'Allow it'),
+    h('button', { type: 'button', class: 'btn d deny', onclick: () => send('block keep it blocked', 'Kept blocked') }, 'Keep it blocked'));
+  card.append(...[
+    h('div', { class: 'who' }, h('span', null, h('span', { class: 'av' }, phone[0].toUpperCase()), h('b', null, phone), h('span', { class: 'muted small' }, '· ' + ago(issue.created_at))),
+      chip(blocked ? 'Blocked' : 'Found', blocked ? 'red' : 'teal', 'globe')),
+    h('h3', null, `A new browser: ${label}`),
+    req.pkg ? h('p', { class: 'mono muted', style: 'margin:0' }, req.pkg) : null,
+    h('p', { class: 'hint', style: 'margin:0' }, blocked
+      ? `It was blocked straight away. Allow it to let ${phone} use it, or keep it blocked.`
+      : `Not blocked yet. Block it, or allow it.`),
+    actions].filter(Boolean));
+  return card;
+}
+
 function timerRequestCard(issue, req) {
   const { title } = describe(req);
   const phone = field(issue.body, 'Phone').replace(/`/g, '').replace(/\s*\([A-Z0-9-]+\)\s*$/, '') || 'A phone';
@@ -3672,6 +3710,7 @@ function phoneScreen() {
       h('p', { class: 'hint', style: 'margin:0' }, 'Helper admins given a group look after every phone in it.')) : null,
     phoneMediaAndSearch(d, M),
     phoneTimers(id),
+    phoneBrowsers(id, d, M),
     h('div', { class: 'field' }, h('label', { for: 'pReq' }, 'When you approve its requests, change'), req),
     own ? [    h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Approval PIN'), pinSeg,
       h('p', { class: 'hint', style: 'margin:0' }, pinMode === 'own' ? 'This phone has its own PIN.' : pinMode === 'none' ? 'Requests from this phone can\'t be approved with a PIN.'
@@ -4044,6 +4083,114 @@ function timerRow(id, t) {
       if (e.target.checked) delete t.paused; else t.paused = true; markDevices(); render(); } }));
 }
 // The Timers tab: every timer, by who it's for.
+// ============================================================================================
+// Other browsers: keeping the managed browser in place (supervised protection, set by the admin)
+// ============================================================================================
+// Each phone can have a "protect" block in devices.json: mode (owner/cover/off), the screen cover on/off,
+// "block new browsers", and a per-app allow/block map. The phone reports which apps can open websites (seen.json).
+const protectOf = d => (d.protect && typeof d.protect === 'object') ? d.protect : null;
+function ensureProtect(d) { if (!d.protect || typeof d.protect !== 'object') d.protect = { mode: 'off', apps: {} }; if (!d.protect.apps) d.protect.apps = {}; return d.protect; }
+const seenApps = id => { const p = S.seen && S.seen.phones && S.seen.phones[id]; return (p && Array.isArray(p.apps)) ? p.apps : []; };
+const seenProtect = id => { const p = S.seen && S.seen.phones && S.seen.phones[id]; return (p && p.protect) || null; };
+// What's set up on the phone right now (from its check-in), in words.
+function protectState(id) {
+  const s = seenProtect(id);
+  if (!s) return null;
+  if (s.owner) return { label: 'Device owner', tone: 'teal' };
+  if (s.admin && s.cover) return { label: 'Screen cover + uninstall protection', tone: 'teal' };
+  if (s.cover) return { label: 'Screen cover', tone: 'teal' };
+  if (s.admin) return { label: 'Uninstall protection only', tone: 'amber' };
+  return { label: 'Not set up on the phone yet', tone: 'amber' };
+}
+// How an app stands: explicit allow/block, or (a found browser) blocked by "block new".
+function appDecision(d, app) {
+  const p = protectOf(d);
+  if (p && p.apps && p.apps[app.pkg]) return p.apps[app.pkg];
+  if ((app.kind === 'browser') && p && p.blockNew !== false && p.mode !== 'off') return 'block';
+  return 'allow';
+}
+// A short line for the phone screen's row.
+function browsersSummary(id, d) {
+  const p = protectOf(d);
+  const apps = seenApps(id);
+  const blocked = apps.filter(a => appDecision(d, a) === 'block').length;
+  if (!p || p.mode === 'off') return apps.length ? `${plural(apps.length, 'app')} found · not blocking` : 'Not set up';
+  return `${p.mode === 'owner' ? 'Device owner' : 'Screen cover'} · ${blocked ? plural(blocked, 'app') + ' blocked' : 'nothing blocked yet'}`;
+}
+function phoneBrowsers(id, d, M) {
+  return h('div', { class: 'field', id: 'pBrowsers' },
+    h('button', { type: 'button', class: 'row tap', style: 'width:100%;text-align:left', onclick: () => open({ name: 'browsers', id }) },
+      h('span', { class: 'ic' }, icon('globe', 20)),
+      h('span', { class: 'grow', style: 'min-width:0' }, h('span', { class: 'name' }, 'Other browsers'),
+        h('span', { class: 'dom' }, browsersSummary(id, d))),
+      icon('chev', 16)));
+}
+// The Other browsers screen for one phone.
+function browsersScreen() {
+  const id = S.sub.id, d = S.D.devices[id];
+  if (!d) { S.sub = null; return phoneScreen(); }
+  const M = fullAdmin() || canDo('manage');
+  const p = protectOf(d) || { mode: 'off', apps: {}, blockNew: true };
+  const st = protectState(id);
+  const apps = seenApps(id).slice().sort((a, b) => (a.kind === 'browser' ? 0 : 1) - (b.kind === 'browser' ? 0 : 1) || (a.label || '').localeCompare(b.label || ''));
+  const browsers = apps.filter(a => a.kind === 'browser' || a.kind === 'system' || a.kind === 'added');
+  const name = firstName(d);
+  const setMode = v => { const pr = ensureProtect(d); pr.mode = v; markDevices(); render(); };
+  const appRow = a => {
+    const dec = appDecision(d, a);
+    return h('div', { class: 'row', style: 'align-items:center;gap:10px' },
+      h('span', { class: 'av', style: 'background:var(--chipoff);color:var(--ink2)' }, (a.label || '?')[0].toUpperCase()),
+      h('span', { class: 'grow', style: 'min-width:0' }, h('span', { class: 'name' }, a.label || a.pkg),
+        h('span', { class: 'dom mono', style: 'font-size:11px' }, a.pkg)),
+      h('div', { class: 'seg', role: 'group', 'aria-label': `${a.label}: allow or block`, style: 'flex:none;width:9.5rem' },
+        [['allow', 'Allow'], ['block', 'Block']].map(([v, t]) => h('button', { type: 'button', class: v === 'block' ? 'strict' : '', 'aria-pressed': String(dec === v),
+          disabled: !M, onclick: () => { const pr = ensureProtect(d); pr.apps[a.pkg] = v; markDevices(); render(); } }, t))));
+  };
+  // Add an app the phone didn't flag as a browser (one with its own web view).
+  const addApp = async () => {
+    const others = seenApps(id).filter(a => a.kind === 'app' && !(p.apps && p.apps[a.pkg]));
+    if (!others.length) { say('No other apps reported yet. The phone sends its app list every few minutes.', true); return; }
+    const pick = h('select', { class: 'inp', id: 'addAppSel' }, [h('option', { value: '' }, 'Choose an app…'),
+      ...others.sort((a, b) => (a.label || '').localeCompare(b.label || '')).map(a => h('option', { value: a.pkg }, a.label || a.pkg))]);
+    const ok = await uiDialog({ title: 'Add an app', icon: 'globe', ok: 'Block it', body: [
+      h('p', { class: 'hint', style: 'margin:0 0 8px' }, `An app that lets ${name} browse (say, a game with its own web window), to block it the same way.`), pick] });
+    if (!ok || !pick.value) return;
+    const pr = ensureProtect(d); pr.apps[pick.value] = 'block'; markDevices(); render();
+  };
+  const sw = (label, sub, on, change, disabled) => h('label', { class: 'tg', style: disabled ? 'opacity:.55' : '' },
+    h('span', { class: 'grow' }, h('span', { class: 't' }, label), h('span', { class: 's' }, sub)),
+    h('input', { type: 'checkbox', class: 'sw', checked: on, disabled: !!disabled, onchange: e => { change(e.target.checked); markDevices(); render(); } }));
+  const isOwner = seenProtect(id) && seenProtect(id).owner;
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink(d.name || id, () => open({ name: 'phone', id })),
+    screenTitle('Other browsers', `Apps on ${possessive(name)} phone that can open websites`),
+    // What's set up on the phone now.
+    h('div', { class: 'card', style: 'gap:8px' },
+      h('div', { style: 'display:flex;align-items:center;gap:8px' }, h('b', { style: 'flex:1' }, 'Protection on the phone'),
+        st ? h('span', { class: `chip ${st.tone}`, style: 'flex:none' }, st.label) : h('span', { class: 'chip', style: 'flex:none' }, 'No report yet')),
+      h('p', { class: 'hint', style: 'margin:0' }, 'Set up on the phone (or a computer, for device owner). The steps are on the phone under ⋮ → Settings → This phone → Other browsers.')),
+    // How to keep it in place: which mode the admin wants.
+    M ? h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Keep the managed browser in place'),
+      h('div', { class: 'group' }, [
+        ['owner', 'Device owner', 'Strongest: blocked apps are switched off, the app can\'t be uninstalled, the clock is kept honest. Needs the one-time computer setup.'],
+        ['cover', 'Screen cover', 'A blocked app is covered the moment it opens; uninstall needs a step that\'s covered. Set up on the phone, no computer.'],
+        ['off', 'Off', 'Other browsers are found and listed, but nothing is blocked.'],
+      ].map(([v, t, s]) => h('label', { class: 'radio' },
+        h('input', { type: 'radio', name: 'pmode', value: v, checked: (p.mode || 'off') === v, onchange: () => setMode(v) }),
+        h('span', { class: 'grow' }, h('b', null, t), h('span', { class: 'small muted', style: 'display:block' }, s))))),
+      p.mode === 'cover' ? sw('Screen cover', 'Turn the cover off from here if you need to (the phone picks it up within a minute).', p.overlay !== false, v => { ensureProtect(d).overlay = v; }) : null,
+      p.mode === 'owner' && !isOwner ? h('p', { class: 'warn', style: 'margin:0' }, 'This phone isn\'t a device owner yet. Follow the one-time setup, with a computer, first.') : null,
+      p.mode === 'owner' ? sw('Keep the clock honest', 'Keeps automatic date and time on, so timers can\'t be dodged.', p.lockClock !== false, v => { ensureProtect(d).lockClock = v; }) : null,
+      p.mode === 'owner' ? sw('New apps need your OK', 'Nothing new can be installed without you (device owner only).', p.blockInstalls === true, v => { ensureProtect(d).blockInstalls = v; }) : null) : null,
+    // The apps.
+    h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Apps that can open websites'),
+      browsers.length ? h('div', { class: 'group' }, browsers.map(appRow))
+        : h('p', { class: 'hint', style: 'margin:0' }, 'None reported yet. The phone sends its list every few minutes once it\'s online.'),
+      M ? h('div', { style: 'display:flex;gap:8px;margin-top:8px' },
+        h('button', { type: 'button', class: 'btn s sm', onclick: addApp }, icon('plus', 15, 2.4), 'Add an app')) : null),
+    M ? sw('Block new browsers straight away', 'A newly installed browser is blocked at once; you\'re asked, and can allow it.', p.blockNew !== false, v => { ensureProtect(d).blockNew = v; }) : null,
+    h('p', { class: 'hint' }, 'This protection is visible on the phone: a blocked app shows a plain screen saying the browser is managed, and who by. You can switch it all off here at any time.'));
+}
+
 function timersScreen() {
   const all = Object.entries(timerDefs());
   const on = all.filter(([, t]) => timerOn(t) && !t.paused).length;
