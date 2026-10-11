@@ -37,9 +37,11 @@ object Whitelist {
         private val isPage get() = '/' in entry
         val end: Long get() = from + (if (mode == "use") 7L * 24 * 60 else minutes.toLong()) * 60_000L
         /** Milliseconds left: of clock time, or of use. */
-        fun left(now: Long = System.currentTimeMillis()): Long =
+        // (GitHub's time, not the phone's clock; when not sure of it, the stricter reading.)
+        fun left(now: Long = TrustedTime.stricterNow()): Long =
             if (now >= end) 0L
-            else if (mode == "use") maxOf(0L, minutes * 60_000L - TempTime.used(id))
+            else if (mode == "use" && TrustedTime.countsUse(from)) maxOf(0L, minutes * 60_000L - TempTime.used(id))
+            else if (mode == "use") maxOf(0L, from + minutes * 60_000L - now)   // given before a reinstall: clock time
             else end - now
         fun active() = left() > 0L
         fun covers(host: String, key: String?): Boolean {
@@ -73,6 +75,7 @@ object Whitelist {
         val annoyances: Boolean = true,                    // AdGuard's annoyance lists (cookie notices, pop-ups, widgets, social)
         val sitesFiltersOff: Map<String, Set<String>> = emptyMap(), // site -> groups switched off on its pages
         val logRequested: Long = 0L,                       // the admin page asked for this phone's log (when)
+        val updateRequested: Long = 0L,                    // …asked it to update the app (when)
         val adminPhone: Boolean = false,                   // an admin phone (phone notifications; set on the admin page)
         val pinLockedUntil: Long = 0L,                     // PIN approvals locked until (5 wrong PINs)
         val pinUnlocks: Int = 0,                           // times an admin pressed Unlock for this phone (clears its own lock too)
@@ -99,7 +102,12 @@ object Whitelist {
         // Open or Blocked on its own (set on the admin page; empty = all open, as before).
         val mediaDefault: Set<String> = emptySet(),
         val search: Boolean = false,                       // text search is on for this phone
-        val searchApprovedOnly: Boolean = false            // …showing only results this phone can open
+        val searchApprovedOnly: Boolean = false,           // …showing only results this phone can open
+        // Answers changed after this phone had them (undone, or approved after all): [{n, o, m, at}], as published.
+        val answerChanges: String = "",
+        // Timers set on the admin page, and the lists they open or count time on (by name).
+        val timers: List<Timers.Timer> = emptyList(),
+        val timerLists: Map<String, State> = emptyMap()
     ) {
         val allow: List<String> get() = sites.map { it.domain }
         fun sameContent(o: State) = sites == o.sites && block == o.block && blockPages == o.blockPages &&
@@ -306,6 +314,7 @@ object Whitelist {
             malware = b.optBoolean("malware", true),
             trackers = b.optBoolean("trackers", true),
             logRequested = device?.optLong("logRequested", 0L) ?: 0L,
+            updateRequested = device?.optLong("updateRequested", 0L) ?: 0L,
             adminPhone = device?.optBoolean("admin", false) ?: false,
             pinUnlocks = device?.optInt("pinUnlocks", 0) ?: 0,
             pinLockedUntil = device?.optString("pinLockedUntil")?.takeIf { it.isNotBlank() }?.let { t ->
@@ -315,6 +324,10 @@ object Whitelist {
             mediaDefault = device?.optJSONObject("media")?.let { m -> MEDIA_KINDS.filter { m.optString(it) == "blocked" }.toSet() } ?: emptySet(),
             search = device?.optBoolean("search", false) ?: false,
             searchApprovedOnly = device?.optBoolean("searchApprovedOnly", false) ?: false,
+            answerChanges = device?.optJSONArray("answerChanges")?.toString() ?: "",
+            timers = Timers.parse(device?.optJSONArray("timers")),
+            timerLists = b.optJSONArray("timerLists")?.let { a -> (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.let { o ->
+                runCatching { o.getString("name") to parse(o.getString("json"), fetchedAt) }.getOrNull() } }.toMap() } ?: emptyMap(),
             adblockExceptions = b.optJSONArray("adblockExceptions")?.let { a ->
                 (0 until a.length()).mapNotNull { normalize(a.optString(it)) } } ?: emptyList(),
             // From each site's settings in this phone's lists (a site in several lists: all of them together).
@@ -327,7 +340,7 @@ object Whitelist {
     fun loadCache(ctx: Context) {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val bundle = p.getString("bundle", null) ?: return
-        runCatching { state = parseBundle(bundle, p.getLong("fetchedAt", 0L)) }
+        runCatching { state = parseBundle(bundle, p.getLong("fetchedAt", 0L)) }.logged("Lists", "Opening the saved lists")
     }
 
     /** GET a file from GitHub Pages. Null if it doesn't exist (404). Throws on other failures. */
@@ -339,7 +352,9 @@ object Whitelist {
             conn.readTimeout = 10_000
             conn.useCaches = false
             conn.setRequestProperty("Cache-Control", "no-cache")
-            if (conn.responseCode == 404) return null
+            val code0 = conn.responseCode
+            TrustedTime.fromResponse(conn)                     // (GitHub's time, for timers)
+            if (code0 == 404) return null
             if (conn.responseCode != 200) throw IOException("List fetch failed: HTTP ${conn.responseCode}")
             return conn.inputStream.bufferedReader().use { it.readText() }
         } finally {
@@ -402,6 +417,7 @@ object Whitelist {
             val known = p.getString("quickSha", null)
             if (etag != null && known != null) conn.setRequestProperty("If-None-Match", etag)
             val code = conn.responseCode
+            TrustedTime.fromResponse(conn)
             val left = conn.getHeaderField("X-RateLimit-Remaining")?.toIntOrNull()
             return when {
                 code == 304 && known != null -> {
@@ -435,7 +451,9 @@ object Whitelist {
         val conn = URL("https://raw.githubusercontent.com/${Config.GITHUB_REPO}/$sha/docs/$path").openConnection() as HttpURLConnection
         try {
             conn.connectTimeout = 10_000; conn.readTimeout = 10_000
-            if (conn.responseCode != 200) throw IOException("List fetch failed: HTTP ${conn.responseCode}")
+            val code0 = conn.responseCode
+            TrustedTime.fromResponse(conn)
+            if (code0 != 200) throw IOException("List fetch failed: HTTP $code0")
             return conn.inputStream.bufferedReader().use { it.readText() }
         } finally { conn.disconnect() }
     }
@@ -498,6 +516,14 @@ object Whitelist {
             val json = listData.optJSONObject(name)?.toString() ?: continue // a deleted list is simply skipped
             lists.put(JSONObject().put("name", name).put("json", json))
         }
+        // The lists this phone's timers open or count time on (only while they're on; not its own lists otherwise).
+        val timerLists = JSONArray()
+        val tArr = device?.optJSONArray("timers")
+        val tNames = (0 until (tArr?.length() ?: 0)).flatMap { i -> tArr!!.optJSONObject(i)?.let { t ->
+            listOf(t.optJSONObject("during")?.optJSONArray("lists"), t.optJSONObject("on")?.optJSONArray("lists"))
+                .flatMap { a -> (0 until (a?.length() ?: 0)).map { a!!.optString(it) } } } ?: emptyList() }.filter { LIST_NAME.matches(it) }.distinct()
+        for (name in tNames) listData.optJSONObject(name)?.let { timerLists.put(JSONObject().put("name", name).put("json", it.toString())) }
+        runCatching { TrustedTime.noteFirstFetch(sealed != null) }.logged("Clock", "Noting the first download")
         // Ad blocking: on for all phones unless the admin page says otherwise; a phone's own
         // setting ("on"/"off") overrides that.
         val adblock = when (device?.optString("adblock")) {
@@ -511,7 +537,7 @@ object Whitelist {
             "off" -> false
             else -> devices?.optBoolean(name, true) ?: true
         }
-        val bundle = JSONObject().put("device", device ?: JSONObject.NULL).put("lists", lists)
+        val bundle = JSONObject().put("device", device ?: JSONObject.NULL).put("lists", lists).put("timerLists", timerLists)
             .put("adblock", adblock).put("adult", filter("adult")).put("gambling", filter("gambling")).put("malware", filter("malware"))
             .put("trackers", filter("trackers")).put("annoyances", filter("annoyances"))
             .put("pin", if (device?.has("pin") == true) device.optBoolean("pin") else devices?.optBoolean("pin", false) ?: false)
@@ -544,9 +570,31 @@ object Whitelist {
         if (host == HomePage.HOST) return true
         // The content filters win over the lists (and temporary access), unless the site was approved "anyway".
         if (filteredAs(host).isNotEmpty() && !isUnfiltered(host)) return false
-        if (tempsFor(url, host, "site", "page").isNotEmpty()) return true // temporary access wins, even over blocks
-        return allowedForGood(url, host, mainFrame)
+        val base = tempsFor(url, host, "site", "page").isNotEmpty() || allowedForGood(url, host, mainFrame) // temporary access wins, even over blocks
+        if (!mainFrame || state.timers.isEmpty()) return base
+        // Timers (the strictest wins): "nothing opens", "only some lists", a used-up allowance; or "also these lists".
+        val byTimer = runCatching { Timers.blocks(url, host, base) }.onFailure { AppLog.e("Timers", "Checking a page", it) }.getOrNull()
+        if (byTimer != null) return false
+        return base || runCatching { Timers.alsoOpens(url, host) }.logged("Timers", "Lists a timer opens").getOrDefault(false)
     }
+
+    /** Text search on now: as the phone is set, unless a timer on now says otherwise. */
+    fun searchOn(): Boolean = (if (state.timers.isEmpty()) null else runCatching { Timers.searchRule() }.logged("Timers", "Search").getOrNull()) ?: state.search
+
+    /** The timer that blocks [url] right now, if one does (for the blocked page). */
+    fun blockedByTimer(url: String?): Timers.Timer? {
+        if (url.isNullOrEmpty() || state.timers.isEmpty()) return null
+        val host = hostOf(url) ?: return null
+        if (host == HomePage.HOST) return null
+        val base = tempsFor(url, host, "site", "page").isNotEmpty() || allowedForGood(url, host, true)
+        return runCatching { Timers.blocks(url, host, base) }.logged("Timers", "Why it's blocked").getOrNull()
+    }
+
+    /** Does the list [s] open [url] (its sites and blocks, ignoring temporary access)? For timers' lists. */
+    fun listAllows(s: State, url: String, host: String): Boolean = allowedForGood(url, host, true, s)
+
+    /** Temporary access opens [url] (unless a timer pauses it). */
+    fun tempOpens(url: String, host: String): Boolean = tempsFor(url, host, "site", "page").isNotEmpty()
 
     /**
      * The content filters that list [host] and are on for this phone (e.g. ["adult"]). Empty if none.
@@ -569,8 +617,7 @@ object Whitelist {
     }
 
     /** Allowed by the lists themselves, ignoring temporary access. */
-    private fun allowedForGood(url: String, host: String, mainFrame: Boolean): Boolean {
-        val s = state
+    private fun allowedForGood(url: String, host: String, mainFrame: Boolean, s: State = state): Boolean {
         val sites = s.sites.filter { it.matches(host) }
         if (sites.isEmpty() || covers(s.block, host)) return false
         if (!mainFrame) return true
@@ -654,6 +701,8 @@ object Whitelist {
         if (url.isNullOrEmpty() || !(url.startsWith("http://") || url.startsWith("https://"))) return false
         val host = Uri.parse(url).host?.lowercase()?.trimEnd('.') ?: return false
         if (host == HomePage.HOST) return false                              // the app's own pages (home, search)
+        // A timer on now: blocked (it wins over everything), or open (over the lists).
+        if (state.timers.isNotEmpty()) runCatching { Timers.mediaRule(url, kind) }.logged("Timers", "Photos, videos and sound").getOrNull()?.let { return it }
         if (tempsFor(url, host, "media", kind).isNotEmpty()) return false  // on for a while (all, or this one)
         return kindBlockedForGood(url, host, kind)
     }
@@ -690,6 +739,7 @@ object Whitelist {
 
     /** Active temporary access of these kinds that covers [url]. */
     private fun tempsFor(url: String, host: String, vararg kinds: String): List<Temp> {
+        if (state.timers.isNotEmpty() && runCatching { Timers.tempsPaused() }.logged("Timers", "Temporary access").getOrDefault(false)) return emptyList()   // paused by a timer
         val key = pageKey(url)
         return state.temps.filter { it.what in kinds && it.active() && it.covers(host, key) }
     }
@@ -762,6 +812,16 @@ object Whitelist {
             list += JSONObject().put("name", defaultName(it.entry)).put("url", "https://${it.entry}").put("domain", it.entry)
                 .put("temp", if (min >= 60) "${min / 60}h ${min % 60}m" else "${min}m")
         }
+        // A timer on now: the sites its lists open get tiles too, and only what opens right now shows.
+        val active = runCatching { Timers.activeNow() }.logged("Timers", "Home page").getOrDefault(emptyList())
+        if (active.isNotEmpty()) {
+            active.filter { it.sites == "only" || it.sites == "also" }.flatMap { it.lists }.distinct()
+                .mapNotNull { s.timerLists[it] }.flatMap { it.sites }.filter { it.home && it.domain !in shown }.distinctBy { it.domain }.forEach {
+                    shown += it.domain
+                    list += JSONObject().put("name", it.name).put("url", it.url).put("domain", it.domain)
+                }
+            list.removeAll { !isAllowed(it.optString("url")) }
+        }
         // In this phone's order (dragged on the home page); new ones at the end. And where each was left off.
         val order = Tiles.order(ctx)
         val sorted = list.withIndex().sortedWith(compareBy({ order.indexOf(it.value.optString("domain")).let { i -> if (i < 0) Int.MAX_VALUE else i } }, { it.index }))
@@ -780,7 +840,14 @@ object Whitelist {
             .put("settingUp", !s.registered && Requests.isSetUp())
             .put("loaded", s.updatedAt != 0L || s.sites.isNotEmpty())
             .put("canRequest", Requests.isSetUp())
-            .put("search", s.search && s.registered)
+            .put("search", searchOn() && s.registered)
+            .put("folders", Tiles.folders(ctx))                      // folders on the home page (this phone's)
+            // The timer on now (the strictest), for the line on top or, for "nothing opens", a full screen.
+            .apply { runCatching { Timers.headline() }.logged("Timers", "Home page line").getOrNull()?.let { (t, until) ->
+                put("timer", JSONObject().put("id", t.id).put("name", t.name).put("none", t.sites == "none")
+                    .put("until", until?.let { Timers.clock(it) } ?: JSONObject.NULL).put("canAsk", Requests.isSetUp() && s.registered))
+            } }
+            .put("order", JSONArray(order))                          // (where each folder goes among the tiles)
             .toString()
     }
 }

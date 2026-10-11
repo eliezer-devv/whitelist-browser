@@ -119,12 +119,12 @@ class Filter(private vararg val lists: DomainList) {
     /** Loads its lists the first time it's needed (saved copy, or the one packed into the app). */
     @Synchronized fun ensureLoaded(ctx: Context) {
         if (loaded) return
-        lists.forEach { runCatching { it.load(ctx) } }
+        lists.forEach { runCatching { it.load(ctx) }.logged("Ads", "Loading a list") }
         loaded = true
     }
 
     /** A fresh copy of each list, weekly. Only for filters that are on. */
-    fun refreshIfDue(ctx: Context) = lists.forEach { runCatching { it.refreshIfDue(ctx) } }
+    fun refreshIfDue(ctx: Context) = lists.forEach { runCatching { it.refreshIfDue(ctx) }.logged("Ads", "Updating a list") }
 
     fun blocks(host: String, exceptions: List<String>) = loaded && lists.any { it.blocks(host, exceptions) }
 

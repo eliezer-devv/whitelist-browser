@@ -55,7 +55,7 @@ class PlaybackService : Service() {
     }
 
     /** An update from the app while it's running: straight to it (no "start" for Android to refuse in the background). */
-    fun update(intent: Intent) { runCatching { show(intent) } }
+    fun update(intent: Intent) { runCatching { show(intent) }.logged("Sound", "Updating the playing notification") }
 
     /** Builds (or rebuilds) the notification and the media session from what the page says is playing. */
     private fun show(intent: Intent?) {
@@ -172,7 +172,7 @@ class PlaybackService : Service() {
     override fun onDestroy() {
         if (running === this) running = null
         // An update waiting for the sound to stop: now.
-        if (Updater.isPending(applicationContext)) Thread { runCatching { Updater.installWhenFree(applicationContext) } }.start()
+        if (Updater.isPending(applicationContext)) Thread { runCatching { Updater.installWhenFree(applicationContext) }.logged("Update", "Installing after the sound") }.start()
         AppLog.i("Sound", "Playing notification stopped")
         session?.let { it.isActive = false; it.release() }
         session = null
@@ -216,7 +216,7 @@ class PlaybackService : Service() {
                 .putExtra(EXTRA_POS, info.optLong("pos")).putExtra(EXTRA_LEN, info.optLong("len"))
             val r = running
             if (r != null) { android.os.Handler(android.os.Looper.getMainLooper()).post { r.update(i) }; return }
-            runCatching { if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i) }
+            runCatching { if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i) }.logged("Sound", "Starting the playing notification")
                 .onFailure { AppLog.e("Sound", "Couldn't start the playing notification", it) }
         }
 

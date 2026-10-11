@@ -52,6 +52,17 @@
     background: var(--accent); color: #fff; font-weight: 700; text-decoration: none; padding: .8rem 1.3rem;
     border-radius: 999px; min-height: 48px; }
   .ask svg { flex: none; }
+  [hidden] { display: none !important; }
+  /* A timer on now: a line on top ("Homework time until 18:00 · Ask for time"); "nothing opens": a full screen. */
+  .timerline { display: flex; align-items: center; gap: .6rem; margin: 0 0 1rem; padding: .7rem .9rem; border-radius: 14px;
+    background: var(--soft); color: var(--accent-text); font-size: .95rem; }
+  .timerline span { flex: 1; min-width: 0; }
+  .timerline a, .timerfull a { font-weight: 700; color: var(--accent-text); text-decoration: none; white-space: nowrap; min-height: 40px; display: inline-flex; align-items: center; }
+  .timerfull { min-height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: .8rem; }
+  .timerfull .moon { width: 72px; height: 72px; border-radius: 24px; background: var(--soft); color: var(--accent-text); display: grid; place-items: center; }
+  .timerfull h1 { font: 700 1.6rem/1.2 'Bricolage Grotesque', Figtree, sans-serif; margin: 0; }
+  .timerfull p { margin: 0; color: var(--muted); }
+  .timerfull a { border-radius: 999px; padding: 0 1.3rem; background: var(--accent); color: #fff; min-height: 48px; }
   .ask:active { filter: brightness(.9); }
   /* Small screens (e.g. 2.8-inch phones, about 240px wide): three smaller tiles per row. */
   @media (max-width: 340px) {
@@ -73,6 +84,19 @@
   .search input::placeholder { color: var(--muted); }
   .search:focus-within { border-color: var(--accent); }
   .search[hidden] { display: none; }
+  /* Folders: small versions of the first four tiles; drop a tile on another to make one. */
+  .icon.fold { background: var(--soft); border-color: transparent; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 4px; padding: 7px; box-sizing: border-box; place-items: stretch; }
+  .icon.fold .mini { border-radius: 6px; background: var(--tile); display: grid; place-items: center; overflow: hidden; font-size: .62rem; font-weight: 700; color: var(--accent-text); }
+  .icon.fold .mini img { width: 14px; height: 14px; border-radius: 3px; }
+  a.tile.merge .icon { transform: scale(1.15); background: var(--soft); outline: 2px solid var(--accent); transition: transform .12s; }
+  .hint { position: fixed; z-index: 11; left: 16px; right: 16px; bottom: 20px; background: var(--ink); color: var(--bg); border-radius: 14px; padding: 12px 14px; font-size: .88rem; text-align: center; }
+  .folderview { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; background: rgba(16, 28, 29, .35); padding: 16px; }
+  .folderbox { width: min(360px, 100%); background: var(--tile); color: var(--ink); border-radius: 24px; box-shadow: 0 18px 40px rgba(0, 0, 0, .25); padding: 16px 16px 20px; display: flex; flex-direction: column; gap: 14px; max-height: 85vh; overflow: auto; }
+  .folderhead { display: flex; align-items: center; gap: 8px; }
+  .folderhead input { flex: 1; min-width: 0; border: 0; border-bottom: 2px solid var(--accent); background: transparent; color: var(--ink); font: 700 1.3rem 'Bricolage Grotesque', Figtree, sans-serif; padding: 4px 2px; min-height: 40px; outline: 0; }
+  .folderhead button { width: 44px; height: 44px; border-radius: 22px; border: 0; background: var(--bg); color: var(--ink); font-size: 1.1rem; }
+  .folderbox .grid { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); }
+  .folderbox .tip2 { font-size: .8rem; color: var(--muted); }
   a.tile.opening { opacity: .6; transform: scale(.96); transition: opacity .15s, transform .15s; position: relative; }
   a.tile.opening::after { content: ""; position: absolute; top: 6px; right: 6px; width: 14px; height: 14px; border-radius: 50%;
     border: 2px solid var(--accent, #1F5F55); border-right-color: transparent; animation: wlb-spin .7s linear infinite; }
@@ -82,6 +106,11 @@
 </head>
 <body>
 <main>
+  <div class="timerline" id="timerline" hidden><span id="timertext"></span><a id="timerask" href="#">Ask for time</a></div>
+  <div class="timerfull" id="timerfull" hidden>
+    <span class="moon" aria-hidden="true"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></span>
+    <h1 id="timerfulltitle"></h1><p id="timerfulltext"></p><a id="timerfullask" href="#">Ask for time</a>
+  </div>
   <form class="search" id="search" action="/search/" method="get" role="search" hidden>
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
     <input type="search" name="q" placeholder="Search" aria-label="Search" autocomplete="off" enterkeyhint="search">
@@ -97,6 +126,7 @@
     a.className = 'tile';
     a.href = t.url;
     a.dataset.domain = t.domain;
+    a.dataset.key = t.domain;
     a.dataset.name = t.name || t.domain;
     if (t.last) { a.dataset.last = t.last.url; a.dataset.lastTitle = t.last.title || ''; }
     const icon = document.createElement('span');
@@ -131,17 +161,66 @@
   // temporary site's tile disappears when its time is up, its time left counts down, and newly
   // approved sites appear. Only changes are redrawn, so the tiles don't flicker.
   let shown = '';
+  let last = null;               // the latest data (tiles, folders, order)
+  let folders = [];              // [{ id, name, sites: [domain…] }] (this phone's, kept by the app)
+  let openFolderId = null;       // the folder open on screen, if any
   const keyOf = t => `${t.url}|${t.name}`;
+  // A folder's tile: small versions of its first four sites.
+  function folderTile(f, tiles) {
+    const a = document.createElement('a');
+    a.className = 'tile';
+    a.href = '#';
+    a.dataset.folder = f.id;
+    a.dataset.key = 'folder:' + f.id;
+    a.dataset.name = f.name;
+    const icon = document.createElement('span');
+    icon.className = 'icon fold';
+    tiles.slice(0, 4).forEach(t => {
+      const m = document.createElement('span');
+      m.className = 'mini';
+      const img = document.createElement('img');
+      img.alt = '';
+      img.src = 'https://www.google.com/s2/favicons?sz=32&domain=' + encodeURIComponent(t.domain);
+      img.onerror = () => { m.textContent = (t.name || t.domain).trim().charAt(0).toUpperCase(); img.remove(); };
+      m.append(img);
+      icon.append(m);
+    });
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = f.name;
+    a.append(icon, name);
+    return a;
+  }
+  // What goes on the home page, in order: tiles not in a folder, and folders (a folder with one site left is just that site).
+  function layout(d) {
+    const byDomain = new Map(d.tiles.map(t => [t.domain, t]));
+    folders = (d.folders || []).map(f => ({ ...f, sites: f.sites.filter(x => byDomain.has(x)) })).filter(f => f.sites.length >= 2);
+    const inFolder = new Set(folders.flatMap(f => f.sites));
+    const items = [], used = new Set();
+    const add = k => {
+      if (used.has(k)) return;
+      if (k.startsWith('folder:')) { const f = folders.find(x => 'folder:' + x.id === k); if (f) { used.add(k); items.push({ f }); } return; }
+      const t = byDomain.get(k);
+      if (t && !inFolder.has(k)) { used.add(k); items.push({ t }); }
+    };
+    (d.order || []).forEach(add);
+    d.tiles.forEach(t => add(t.domain));            // (new sites, in the list's order)
+    folders.forEach(f => add('folder:' + f.id));
+    return { items, byDomain };
+  }
   function render(d) {
     if (press && press.dragging) return;          // not while a tile is being moved
-    const keys = d.tiles.map(keyOf).join('\n');
-    if (keys !== shown) {                        // tiles added or removed: redraw them
-      grid.replaceChildren(...d.tiles.map(tile));
+    last = d;
+    const { items, byDomain } = layout(d);
+    const keys = JSON.stringify(items.map(x => x.t ? keyOf(x.t) : ['F', x.f.id, x.f.name, x.f.sites]));
+    if (keys !== shown) {                        // tiles or folders changed: redraw them
+      grid.replaceChildren(...items.map(x => x.t ? tile(x.t) : folderTile(x.f, x.f.sites.map(s => byDomain.get(s)))));
       shown = keys;
+      if (openFolderId) showFolder(openFolderId, false);
     } else {                                     // same tiles: just update the time left
-      d.tiles.forEach((t, i) => {
-        const b = grid.children[i] && grid.children[i].querySelector('.badge');
-        if (b && t.temp) b.textContent = '\u23F1 ' + t.temp;
+      items.forEach((x, i) => {
+        const b = x.t && grid.children[i] && grid.children[i].querySelector('.badge');
+        if (b && x.t.temp) b.textContent = '⏱ ' + x.t.temp;
       });
     }
     const empty = document.getElementById('empty');
@@ -157,6 +236,91 @@
         : d.siteCount ? 'None of your sites have a tile yet. Ask for a site below.' : 'Ask for a site below.';
     }
     document.getElementById('ask').hidden = !d.canRequest || !!d.settingUp;   // asking waits until it's set up
+    // A timer on now.
+    const tm = d.timer, full = !!(tm && tm.none);
+    const askHref = tm ? 'wlb://timer-ask?id=' + encodeURIComponent(tm.id) + '&k=off' : '#';
+    document.getElementById('timerline').hidden = !tm || full;
+    document.getElementById('timerfull').hidden = !full;
+    if (tm) {
+      document.getElementById('timertext').textContent = tm.name + (tm.until ? ' until ' + tm.until : ' on now');
+      document.getElementById('timerfulltitle').textContent = tm.name;
+      document.getElementById('timerfulltext').textContent = 'Nothing opens' + (tm.until ? ' until ' + tm.until : ' for now') + '.';
+      document.getElementById('timerask').href = document.getElementById('timerfullask').href = askHref;
+      document.getElementById('timerask').hidden = document.getElementById('timerfullask').hidden = !tm.canAsk;
+    }
+    if (full) { ['grid', 'empty', 'hello', 'search', 'ask'].forEach(id => { document.getElementById(id).hidden = true; }); }
+    else grid.hidden = false;
+  }
+  // Saves the folders and the order (the app keeps them on this phone).
+  function saveFolders() {
+    const order = [...grid.children].map(x => x.dataset.key || x.dataset.domain).filter(Boolean);
+    const data = { folders: folders.map(f => ({ id: f.id, name: f.name, sites: f.sites })), order };
+    location.href = 'wlb://folders?data=' + encodeURIComponent(JSON.stringify(data));
+    if (last) { last.folders = data.folders; last.order = order; shown = ''; render(last); }
+  }
+  // An open folder: its name (tap to rename) and its tiles.
+  function showFolder(id, focusName) {
+    closeFolder();
+    const f = folders.find(x => x.id === id);
+    if (!f || !last) return;
+    openFolderId = id;
+    const byDomain = new Map(last.tiles.map(t => [t.domain, t]));
+    const view = document.createElement('div');
+    view.className = 'folderview';
+    const box = document.createElement('div');
+    box.className = 'folderbox';
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-label', f.name);
+    const head = document.createElement('div');
+    head.className = 'folderhead';
+    const name = document.createElement('input');
+    name.value = f.name;
+    name.setAttribute('aria-label', 'Folder name');
+    name.maxLength = 30;
+    name.addEventListener('change', () => { f.name = name.value.trim() || 'Folder'; saveFolders(); });
+    name.addEventListener('keydown', e => { if (e.key === 'Enter') name.blur(); });
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Close the folder');
+    close.textContent = '✕';
+    close.addEventListener('click', closeFolder);
+    head.append(name, close);
+    const inner = document.createElement('div');
+    inner.className = 'grid';
+    f.sites.map(s => byDomain.get(s)).filter(Boolean).forEach(t => { const a = tile(t); a.dataset.inFolder = f.id; inner.append(a); });
+    const tip = document.createElement('div');
+    tip.className = 'tip2';
+    tip.textContent = 'Tap the name to rename it. Hold a tile to take it out of the folder.';
+    box.append(head, inner, tip);
+    view.append(box);
+    view.addEventListener('click', e => { if (e.target === view) closeFolder(); });
+    inner.addEventListener('touchstart', start, { passive: true });
+    inner.addEventListener('touchmove', move, { passive: false });
+    inner.addEventListener('touchend', end, { passive: false });
+    inner.addEventListener('mousedown', e => { if (e.button === 0) start(e); });
+    inner.addEventListener('click', e => { if (swallowClick) { e.preventDefault(); e.stopPropagation(); swallowClick = false; } }, true);
+    document.body.append(view);
+    if (focusName) { name.focus(); name.select(); }
+  }
+  function closeFolder() {
+    const v = document.querySelector('.folderview');
+    if (v) { const i = v.querySelector('.folderhead input'); if (i && document.activeElement === i) i.blur(); v.remove(); }
+    openFolderId = null;
+  }
+  function takeOut(domain) {
+    // It goes back next to its folder; a folder left with one site becomes that site, in the folder's place.
+    const f = folders.find(x => x.sites.includes(domain));
+    const el = f && grid.querySelector(`[data-folder="${f.id}"]`);
+    folders.forEach(x => { x.sites = x.sites.filter(d => d !== domain); });
+    if (el) {
+      if (f.sites.length < 2) el.dataset.key = f.sites[0];
+      const spot = document.createElement('span');
+      spot.dataset.key = domain;
+      el.after(spot);
+    }
+    folders = folders.filter(f => f.sites.length >= 2);       // one left: it's just a tile again
+    closeFolder();
+    saveFolders();
   }
   // ---------- holding a tile: a menu (let go), or drag it to move it ----------
   const grid = document.getElementById('grid');
@@ -170,7 +334,7 @@
     if (!a || document.querySelector('.menu')) return;
     closeMenu();
     const p = point(e);
-    press = { a, x: p.x, y: p.y, held: false, dragging: false, ghost: null };
+    press = { a, x: p.x, y: p.y, held: false, dragging: false, ghost: null, merge: null };
     press.timer = setTimeout(() => {
       if (!press) return;
       press.held = true;
@@ -178,12 +342,26 @@
       showMenu(a);                     // straight away, while the finger is still down
     }, HOLD_MS);
   }
+  function setMerge(t) {
+    if (press.merge === t) return;
+    if (press.merge) press.merge.classList.remove('merge');
+    press.merge = t;
+    if (t) t.classList.add('merge');
+    hint(t ? (t.dataset.folder ? `Drop it in ${t.dataset.name}` : `Drop it on ${t.dataset.name} to make a folder`) : '');
+  }
+  function hint(text) {
+    let h = document.querySelector('.hint');
+    if (!text) { if (h) h.remove(); return; }
+    if (!h) { h = document.createElement('div'); h.className = 'hint'; h.setAttribute('role', 'status'); document.body.append(h); }
+    h.textContent = text;
+  }
   function move(e) {
     if (!press) return;
     const p = point(e);
     const moved = Math.hypot(p.x - press.x, p.y - press.y);
     if (!press.held) { if (moved > MOVE) cancel(); return; }      // a swipe before the hold: it's a scroll
     if (e.cancelable) e.preventDefault();                          // held: the page doesn't scroll
+    if (press.a.dataset.inFolder) return;                          // (inside a folder: hold for the menu only)
     if (!press.dragging && moved > MOVE) {
       closeMenu();                     // moving: it's a drag, not the menu
       press.dragging = true;
@@ -198,33 +376,70 @@
     press.ghost.style.top = p.y + 'px';
     const over = document.elementFromPoint(p.x, p.y);
     const target = over && over.closest('a.tile');
-    if (target && target !== press.a && target.parentNode === grid) {
+    if (!target || target === press.a || target.parentNode !== grid) { setMerge(null); clearTimeout(press.slide); press.slideTo = null; return; }
+    // Over the middle of another tile: put them together (a folder can't go into a folder). Near its edge: move there.
+    const r = target.querySelector('.icon').getBoundingClientRect();
+    const middle = Math.hypot(p.x - (r.left + r.width / 2), p.y - (r.top + r.height / 2)) < r.width * 0.42;
+    if (middle && !press.a.dataset.folder) { clearTimeout(press.slide); press.slideTo = null; setMerge(target); return; }
+    setMerge(null);
+    // Near its edge, for a moment: move there (a short wait, so passing over tiles on the way doesn't shuffle them).
+    if (press.slideTo === target) return;
+    clearTimeout(press.slide);
+    press.slideTo = target;
+    const dragged = press;
+    press.slide = setTimeout(() => {
+      if (press !== dragged || press.slideTo !== target || press.merge) return;
       const tiles = [...grid.children];
       grid.insertBefore(press.a, tiles.indexOf(target) > tiles.indexOf(press.a) ? target.nextSibling : target);
-    }
+      press.slideTo = null;
+    }, 250);
   }
   function end(e) {
     if (!press) return;
     clearTimeout(press.timer);
+    clearTimeout(press.slide);
     const p = press;
     press = null;
     if (p.dragging) {
       p.ghost.remove();
       p.a.classList.remove('gap');
+      hint('');
       swallowClick = true;
-      // Keep the new order (on this phone).
-      const keys = [...grid.children].map(x => x.dataset.domain).filter(Boolean);
-      location.href = 'wlb://tile-order?keys=' + encodeURIComponent(keys.join(','));
+      const target = p.merge;
+      if (target) {
+        target.classList.remove('merge');
+        const domain = p.a.dataset.domain;
+        if (target.dataset.folder) {                       // into a folder
+          const f = folders.find(x => x.id === target.dataset.folder);
+          if (f && !f.sites.includes(domain)) f.sites.push(domain);
+          p.a.remove();
+          saveFolders();
+        } else {                                           // onto a tile: a new folder, named "Folder", ready to rename
+          const id = 'f' + Date.now().toString(36);
+          folders.push({ id, name: 'Folder', sites: [target.dataset.domain, domain] });
+          target.dataset.key = 'folder:' + id;             // (the folder takes that tile's place)
+          p.a.remove();
+          saveFolders();
+          showFolder(id, true);
+        }
+      } else {
+        saveFolders();                                     // keep the new order (on this phone)
+      }
     } else if (p.held) {
       swallowClick = true;             // let go without moving: the menu stays open
     }
     if (e && (p.held || p.dragging) && e.cancelable) e.preventDefault();
+    // (Only the click that ends this hold is ignored: if none comes, the next tap still works.)
+    if (swallowClick) setTimeout(() => { swallowClick = false; }, 400);
   }
   function cancel() {
     if (!press) return;
     clearTimeout(press.timer);
+    clearTimeout(press.slide);
     press.a.classList.remove('held', 'gap');
     if (press.ghost) press.ghost.remove();
+    if (press.merge) press.merge.classList.remove('merge');
+    hint('');
     press = null;
   }
   grid.addEventListener('touchstart', start, { passive: true });
@@ -236,16 +451,20 @@
   document.addEventListener('mouseup', end);
   grid.addEventListener('contextmenu', e => e.preventDefault());
   grid.addEventListener('click', e => { if (swallowClick) { e.preventDefault(); e.stopPropagation(); swallowClick = false; } }, true);
-  // A tap that opens a site: the tile shows it at once (dimmed, with a small spinner) while the site opens.
+  // A tap: a folder opens; a site opens, the tile showing it at once (dimmed, with a small spinner).
   grid.addEventListener('click', e => {
     const a = e.target.closest('a.tile');
-    if (a && !e.defaultPrevented) a.classList.add('opening');
+    if (!a || e.defaultPrevented) return;
+    if (a.dataset.folder) { e.preventDefault(); showFolder(a.dataset.folder, false); return; }
+    a.classList.add('opening');
   });
   window.addEventListener('pageshow', () => document.querySelectorAll('a.tile.opening').forEach(t => t.classList.remove('opening')));
 
-  // The menu: open the site's home page, or where it was left off.
+  // The menu: open the site's home page, or where it was left off; for a folder, rename it or take everything out.
   const ICON_HOME = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>';
   const ICON_LAST = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>';
+  const ICON_OUT = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5h5v5"/><path d="M19 5l-8 8"/><path d="M18 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4"/></svg>';
+  const ICON_EDIT = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>';
   function showMenu(a) {
     const shade = document.createElement('div');
     shade.className = 'shade';
@@ -255,7 +474,7 @@
     const head = document.createElement('div');
     head.className = 'head';
     head.textContent = a.dataset.name;
-    const item = (href, icon, text, sub) => {
+    const item = (href, icon, text, sub, onPick) => {
       const link = document.createElement('a');
       link.href = href;
       link.setAttribute('role', 'menuitem');
@@ -264,20 +483,29 @@
       words.textContent = text;
       if (sub) { const s = document.createElement('span'); s.className = 'sub'; s.textContent = sub; words.append(s); }
       link.append(words);
+      if (onPick) link.addEventListener('click', ev => { ev.preventDefault(); closeMenu(); onPick(); });
       return link;
     };
-    menu.append(head, item(a.href, ICON_HOME, 'Open its home page'));
-    if (a.dataset.last) menu.append(item(a.dataset.last, ICON_LAST, 'Open where you left off', a.dataset.lastTitle || a.dataset.last));
+    menu.append(head);
+    if (a.dataset.folder) {
+      const id = a.dataset.folder;
+      menu.append(item('#', ICON_EDIT, 'Rename', null, () => showFolder(id, true)),
+        item('#', ICON_OUT, 'Take them all out', null, () => { folders = folders.filter(f => f.id !== id); saveFolders(); }));
+    } else {
+      menu.append(item(a.href, ICON_HOME, 'Open its home page'));
+      if (a.dataset.last) menu.append(item(a.dataset.last, ICON_LAST, 'Open where you left off', a.dataset.lastTitle || a.dataset.last));
+      if (a.dataset.inFolder) { const dom = a.dataset.domain; menu.append(item('#', ICON_OUT, 'Take it out of the folder', null, () => takeOut(dom))); }
+    }
     const tip = document.createElement('div');
     tip.className = 'tip';
-    tip.textContent = 'Or hold it and drag to move it';
+    tip.textContent = a.dataset.inFolder ? 'It goes back on the home page' : 'Or hold it and drag: onto another tile to make a folder';
     menu.append(tip);
     const r = a.getBoundingClientRect();
     document.body.append(shade, menu);
     const below = r.bottom + 8, h = menu.offsetHeight;
     menu.style.top = Math.max(8, below + h > window.innerHeight - 8 ? r.top - h - 8 : below) + 'px';
     shade.addEventListener('click', closeMenu);
-    menu.addEventListener('click', closeMenu);
+    menu.addEventListener('click', e => { if (!e.defaultPrevented) closeMenu(); });
   }
   function closeMenu() { document.querySelectorAll('.shade, .menu').forEach(x => x.remove()); }
 

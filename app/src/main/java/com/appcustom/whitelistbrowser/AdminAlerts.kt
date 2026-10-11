@@ -96,6 +96,15 @@ object AdminAlerts {
             if (created <= since) continue
             val m = marker.find(c.optString("body").orEmpty()) ?: continue
             val note = runCatching { Seal.open(JSONObject(m.groupValues[1].trim())) }.getOrNull() ?: continue
+            // A request that's already answered (say, with a PIN on the phone, before this check ran): no notification.
+            val number = note.optInt("number", 0)
+            if (number > 0 && note.optString("phone").isBlank()) {
+                val state = runCatching { Requests.read("issues/$number")?.let { JSONObject(it).optString("state") } }
+                    .onFailure { AppLog.w("Notifications", "Couldn't check request #$number is still waiting: ${it.message}") }.getOrNull()
+                if (state == "closed") { AppLog.i("Notifications", "Request #$number already answered: no notification"); continue }
+            }
+            // The admin screen is open right now: it shows it there, so no notification on top.
+            if (adminScreenOpen) { AppLog.i("Notifications", "Admin screen open: not notified"); continue }
             notify(ctx, note.optString("title"), note.optString("text"), note.optInt("number", i),
                 note.optString("phone").takeIf { it.isNotBlank() }, note.optString("file").takeIf { it.isNotBlank() })
             found++
@@ -107,6 +116,9 @@ object AdminAlerts {
 
     private fun iso(t: Long) = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
         .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date(t))
+
+    /** The admin screen is on screen (set by it): what's new shows there, not as a notification. */
+    @Volatile var adminScreenOpen = false
 
     const val EXTRA_REQUEST = "adminRequest"
     const val EXTRA_PHONE = "adminPhone"
@@ -129,7 +141,7 @@ object AdminAlerts {
         val b = if (Build.VERSION.SDK_INT >= 26) android.app.Notification.Builder(ctx, CHANNEL) else android.app.Notification.Builder(ctx)
         b.setSmallIcon(R.drawable.ic_d_inbox).setContentTitle(title).setContentText(text)
             .setStyle(android.app.Notification.BigTextStyle().bigText(text)).setContentIntent(open).setAutoCancel(true)
-        runCatching { nm.notify(10_000 + id, b.build()) }
+        runCatching { nm.notify(10_000 + id, b.build()) }.logged("Admin notes", "Showing a notification")
         AppLog.i("Notifications", "Shown: $title")
     }
 }
@@ -140,6 +152,7 @@ class AdminCheckJob : JobService() {
         Thread {
             try {
                 AppLog.ready(applicationContext)
+                runCatching { TrustedTime.init(applicationContext) }
                 Whitelist.loadCache(applicationContext)                 // (the app may be closed)
                 AdminAlerts.check(applicationContext)
             } catch (e: Exception) {

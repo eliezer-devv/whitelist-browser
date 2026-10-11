@@ -40,7 +40,8 @@ object SearchPage {
             .append("<input type=\"search\" name=\"q\" value=\"${esc(q)}\" placeholder=\"Search\" aria-label=\"Search\" autocomplete=\"off\" enterkeyhint=\"search\"")
             .append(if (q.isEmpty()) " autofocus" else "").append("></form>")
         when {
-            !s.search -> body.append("<p class=\"note\">Search isn't turned on for this phone. You can ask for it: ⋮ → Ask for search.</p>")
+            !Whitelist.searchOn() && s.search -> body.append("<p class=\"note\">Search is off during ${esc(Timers.activeNow().firstOrNull { it.search == "off" }?.name ?: "a timer")}.</p>")
+            !Whitelist.searchOn() -> body.append("<p class=\"note\">Search isn't turned on for this phone. You can ask for it: ⋮ → Ask for search.</p>")
             q.isEmpty() -> body.append("<p class=\"note\">Type what you're looking for.</p>")
             else -> try {
                 val shown = ArrayList<String>()

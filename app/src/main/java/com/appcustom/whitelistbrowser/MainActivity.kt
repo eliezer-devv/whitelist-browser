@@ -205,6 +205,8 @@ class MainActivity : Activity() {
         Updater.init(this)        // (whether this phone gets test versions of the app)
         TempTime.load(this)       // time already used on "time on the site" temporary access
         AppLog.start(applicationContext)                      // the rolling log (About this phone → Share log)
+        runCatching { TrustedTime.init(applicationContext) }.onFailure { AppLog.e("Clock", "Couldn't start the clock", it) }
+        Timers.init(applicationContext)
         CrashLog.install(applicationContext)                  // a crash is recorded (About this phone shows it)
         if (CrashLog.takeUnsent(applicationContext)) main.postDelayed({ sendLog("after a crash", quiet = true) }, 5_000)
         if (intent?.action == AdminAlerts.ACTION_OPEN_ADMIN) { val i = intent; main.post { openAdmin(i) } }   // a notification tapped
@@ -216,8 +218,8 @@ class MainActivity : Activity() {
         // Ad list: load the saved copy (or the one in the app) first, then fetch a fresh one if a week
         // has passed. In that order, so an old copy can never overwrite a fresh one.
         io.execute {
-            runCatching { AdBlock.load(applicationContext) }
-            updateIo.execute { runCatching { AdBlock.refreshIfDue(applicationContext) } }
+            runCatching { AdBlock.load(applicationContext) }.logged("Ads", "Loading the ad lists")
+            updateIo.execute { runCatching { AdBlock.refreshIfDue(applicationContext) }.logged("Ads", "Updating the ad lists") }
             prepareFilters()
         }
         Passthrough.userAgent = android.webkit.WebSettings.getDefaultUserAgent(this) // look like the browser when tracing links
@@ -244,6 +246,7 @@ class MainActivity : Activity() {
         AppLog.i("App", "Opened")
         InstallReceiver.showConfirm = { confirm -> runCatching { startActivity(confirm) }.onFailure { AppLog.e("Update", "Couldn't show the installer", it) } }
         installWaitingUpdate()
+        if (Device.name(this) != null) askNotificationsOnce()   // (phones set up before this was asked: once, now)
         askForAdminNotifications()
         main.removeCallbacks(soundCheck)                      // (the playing notification stays while something plays)
         web.settings.mediaPlaybackRequiresUserGesture = true  // pages start sound only after a tap again
@@ -253,7 +256,7 @@ class MainActivity : Activity() {
         refreshWhitelist() // check GitHub every time the app comes to the front
         AdRules.start(applicationContext)                   // AdGuard's ad rules: once a day (checked at most hourly)
         maybeAutoCheckForUpdate()
-        if (Config.LOCK_TASK) runCatching { startLockTask() }
+        if (Config.LOCK_TASK) runCatching { startLockTask() }.logged("App", "Pinning the app")
         main.removeCallbacks(tempTask)
         main.postDelayed(tempTask, tempTick)
     }
@@ -261,11 +264,13 @@ class MainActivity : Activity() {
     override fun onPause() {
         isResumedNow = false
         UserAlerts.appVisible = false
-        io.execute { runCatching { UserAlerts.schedule(applicationContext) } }   // answers while away: notifications
+        io.execute { runCatching { UserAlerts.schedule(applicationContext) }.logged("Notifications", "Scheduling the background check") }   // answers while away: notifications
         InstallReceiver.showConfirm = null
         AppLog.i("App", "Left")
         main.removeCallbacks(refreshTask)
         main.removeCallbacks(tempTask)
+        runCatching { MyActivity.save(applicationContext) }.logged("Activity", "Saving")
+        runCatching { Timers.save(applicationContext) }.onFailure { AppLog.w("Timers", "Couldn't save the time used: ${it.message}") }
         keepPlayingIfSound()
         super.onPause()
     }
@@ -428,6 +433,29 @@ class MainActivity : Activity() {
             if (AdminAlerts.active(this@MainActivity)) io.execute { AdminAlerts.check(applicationContext) }
             main.postDelayed(this, 60_000)
         }
+    }
+
+    /**
+     * Notifications, asked once on every phone (Android 13 and newer asks the person): a short reason first, then Android's
+     * own question. Turning them off later is in Android's settings for the app.
+     */
+    private fun askNotificationsOnce() {
+        if (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        val p = getSharedPreferences("notifications", Context.MODE_PRIVATE)
+        if (p.getBoolean("asked", false)) return
+        p.edit().putBoolean("asked", true).apply()
+        Ui.AppDialog(this, sheet = false).apply {
+            title("Know when your requests are answered", icon = R.drawable.ic_d_inbox)
+            add(Ui.text(this@MainActivity, "When someone approves or denies something you asked for, the phone tells you, even when this app is closed. " +
+                "Android asks you to allow it next.", 14.5f, Ui.MUTED))
+            button("Continue", Ui.Kind.PRIMARY) {
+                it.dismiss()
+                AppLog.i("Notifications", "Asking Android to allow notifications (setup)")
+                withAndroidPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) { granted ->
+                    AppLog.i("Notifications", if (granted.isEmpty()) "Notifications not allowed" else "Notifications allowed")
+                }
+            }
+        }.show()
     }
 
     /** An admin phone with phone notifications on, but Android not allowing them: asked (at most once a day). */
@@ -611,6 +639,16 @@ class MainActivity : Activity() {
                         val keys = request.url.getQueryParameter("keys").orEmpty().split(',').filter { it.isNotBlank() }
                         if (keys.isNotEmpty()) Tiles.setOrder(this@MainActivity, keys)
                     }
+                    return true
+                }
+                // Folders on the home page were made, renamed or changed (only from the home page).
+                if (url.startsWith("wlb://folders")) {
+                    if (HomePage.isHome(view?.url)) runCatching {
+                        val data = org.json.JSONObject(request.url.getQueryParameter("data").orEmpty().take(20_000))
+                        Tiles.setFolders(this@MainActivity, data.optJSONArray("folders") ?: org.json.JSONArray())
+                        val order = data.optJSONArray("order")
+                        if (order != null) Tiles.setOrder(this@MainActivity, (0 until order.length()).map { order.optString(it) }.filter { it.isNotBlank() })
+                    }.onFailure { AppLog.e("Home", "Couldn't save the folders", it) }
                     return true
                 }
                 // "Ask for it" on a blocked part of a page: ask for the blocked parts.
@@ -884,6 +922,7 @@ class MainActivity : Activity() {
         // them over through this bridge, which only accepts files the app asked for (a one-time code).
         web.addJavascriptInterface(BlobBridge(), "WLBlobSaver")
         web.addJavascriptInterface(TranslateBridge(), "WLBTranslate")
+        web.addJavascriptInterface(MediaBridge(), "WLBMedia")      // (a video playing muted: the "sound is blocked" note)
         web.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
             startDownload(url, userAgent, contentDisposition, mimeType)
         }
@@ -1225,10 +1264,19 @@ class MainActivity : Activity() {
         if (trailBefore.size > 50) trailBefore.clear()
         trailBefore[url] = before
         if (url.startsWith("http://") || url.startsWith("https://")) {
-            traceIo.execute { runCatching { Passthrough.trace(url, before) } }
+            traceIo.execute { runCatching { Passthrough.trace(url, before) }.logged("Links", "Following where a link goes") }
         }
         val filtered = Uri.parse(url).host?.let { Whitelist.filteredAs(it) }.orEmpty()
+        // A timer: which one, until when, and "Ask for time" (or "Ask for more time" for a used-up allowance).
+        val byTimer = runCatching { Whitelist.blockedByTimer(url) }.logged("Timers", "Blocked page").getOrNull()
+        val timerPart = byTimer?.let { t ->
+            val until = Timers.endsAt(t, TrustedTime.now())?.let { Timers.clock(it) }
+            "&tname=${Uri.encode(t.name)}&tid=${Uri.encode(t.id)}&tk=${if (t.kind == "allowance") "more" else "off"}" +
+                (until?.let { "&until=${Uri.encode(it)}" } ?: "") + (if (t.sites == "none") "&tnone=1" else "") +
+                (if (Timers.askBlockedBy() != null || !Requests.isSetUp()) "&noask=1" else "")
+        } ?: ""
         val reason = when {
+            byTimer != null && !(filtered.isNotEmpty() && !Uri.parse(url).host.orEmpty().let { Whitelist.isUnfiltered(it) }) -> "timer"
             filtered.isNotEmpty() && !Uri.parse(url).host.orEmpty().let { Whitelist.isUnfiltered(it) } -> "filtered"
             Whitelist.tempEnded(url) -> "expired"
             Whitelist.state.allow.isEmpty() -> "empty"
@@ -1240,7 +1288,8 @@ class MainActivity : Activity() {
         val pal = listOf(Ui.PAGE, Ui.INK, Ui.INK2, Ui.CARD, Ui.OUTLINE, Ui.ACCENT, Ui.ACCENT_TEXT, Ui.SOFT, Ui.RED_BG, Ui.RED_INK)
             .joinToString(".") { Ui.hex(it).removePrefix("#") }
         val look = (if (Ui.dark) "&theme=dark" else "") + "&pal=$pal"
-        main.post { web.loadUrl("$BLOCKED_PAGE#reason=$reason&url=${Uri.encode(url)}$cats$look") }
+        val tp = if (reason == "timer") timerPart else ""
+        main.post { web.loadUrl("$BLOCKED_PAGE#reason=$reason&url=${Uri.encode(url)}$cats$tp$look") }
     }
 
     /** The site the blocked page is standing in for, or null if we're not on the blocked page. */
@@ -1292,6 +1341,12 @@ class MainActivity : Activity() {
             if (error == null && asked > 0 && asked != logPrefs.getLong("answered", 0L)) {
                 logPrefs.edit().putLong("answered", asked).apply()
                 main.post { AppLog.i("Log", "The admin asked for the log"); sendLog("asked for", quiet = true) }
+            }
+            // The admin page asked this phone to update the app: it checks now (once per ask), and offers it.
+            val updAsked = Whitelist.state.updateRequested
+            if (error == null && updAsked > 0 && updAsked != logPrefs.getLong("updateAnswered", 0L)) {
+                logPrefs.edit().putLong("updateAnswered", updAsked).apply()
+                main.post { AppLog.i("Update", "The admin asked this phone to update"); updateAskedByAdmin = true; checkForUpdate(manual = false) }
             }
             main.post {
                 if (isDestroyed) return@post
@@ -1388,7 +1443,7 @@ class MainActivity : Activity() {
 
         val s = Whitelist.state
         val err = Whitelist.lastError
-        val tempNote = Whitelist.tempStatus(cur)?.let { "$it " } ?: ""
+        val tempNote = (Whitelist.tempStatus(cur) ?: allowanceNote(cur))?.let { "$it " } ?: ""
         val mediaNote = tempNote + if (mediaOffHere) "${Requests.mediaWords(offKinds).replaceFirstChar { it.uppercase() }} " +
             "${if (offKinds.contains(',')) "are" else if (offKinds == "sound") "is" else "are"} off on this page. " else ""
         // The slim line under the top bar: only when there's something to say (time left, photos or videos
@@ -1565,6 +1620,7 @@ class MainActivity : Activity() {
         }
     }
 
+    private var updateAskedByAdmin = false
     private fun checkForUpdate(manual: Boolean) {
         if (updating) return
         if (manual) toast("Checking GitHub for a new version")
@@ -1576,7 +1632,8 @@ class MainActivity : Activity() {
                 when {
                     release != null && Updater.isNewer(release) -> {
                         availableUpdate = release
-                        showBanner("Version ${release.versionName} is available. Tap to update.")
+                        showBanner(if (updateAskedByAdmin) "Please update: version ${release.versionName} is ready. Tap to update."
+                            else "Version ${release.versionName} is available. Tap to update.")
                     }
                     result.isFailure && manual ->
                         toast("Couldn't check for updates: ${result.exceptionOrNull()?.message}")
@@ -1603,7 +1660,7 @@ class MainActivity : Activity() {
             return
         }
         updating = true
-        if (Config.LOCK_TASK) runCatching { stopLockTask() }       // the installer screen needs to open
+        if (Config.LOCK_TASK) runCatching { stopLockTask() }.logged("Update", "Unpinning for the installer")       // the installer screen needs to open
         // Already downloaded (Android's "update?" screen was closed, say): installed again, not downloaded again.
         Updater.readyFile(applicationContext, release)?.let { apk ->
             AppLog.i("Update", "Already downloaded: installing")
@@ -2021,6 +2078,12 @@ class MainActivity : Activity() {
     /** wlb://request?action=allow&url=... and wlb://back, from the home page or blocked page. */
     private fun handleAppLink(uri: Uri) {
         if (uri.host == "back") { goBackSkippingBlocked(); return }
+        // "Ask for time" (home page line, full screen, or blocked page): time off a timer, or more of an allowance.
+        if (uri.host == "timer-ask") {
+            val t = uri.getQueryParameter("id")?.let { Timers.byId(it) } ?: run { toast("That timer isn't on any more"); return }
+            showAskForTime(t, more = uri.getQueryParameter("k") == "more")
+            return
+        }
         // The search results page: DuckDuckGo wants to check a person is searching. Once answered, search again.
         if (uri.host == "search-check") {
             val u = uri.getQueryParameter("u")?.takeIf { Discovery.checkMayOpen(it) } ?: return
@@ -2060,6 +2123,8 @@ class MainActivity : Activity() {
             toast("Requests aren't set up for this app yet")
             return
         }
+        // A timer on now says nothing new can be asked for: say so (asking for time still works).
+        Timers.askBlockedBy()?.let { t -> showCantAsk(t); return }
         val siteDomain = pageUrl?.let { siteScope(it) }          // "coolmathgames.com", "google.com" ...
         val pageKey = pageUrl?.let { Whitelist.pageKey(it) }     // "youtube.com/watch?v=abc"
         // A site's front page is the same as "whole site", so only offer the choice for deeper pages.
@@ -2122,7 +2187,7 @@ class MainActivity : Activity() {
         findButton.setOnClickListener { findNow() }
         siteField.setOnEditorActionListener { _, _, _ -> if (looksLikeWords(siteField.text.toString())) { findNow(); true } else false }
         if (siteDomain == null) {
-            findQueue.execute { runCatching { loadFindFilters() } }     // ready before the first search
+            findQueue.execute { runCatching { loadFindFilters() }.logged("Find", "Loading the filters") }     // ready before the first search
             d.add(Ui.label(this, "Website, or what you're looking for")); d.add(siteField, 6)
             d.add(findButton, 6); d.add(findStatus, 6); d.add(findBox, 6); d.add(findMore, 4)
         }
@@ -2174,17 +2239,42 @@ class MainActivity : Activity() {
             if (siteDomain != null) d.add(Ui.label(this, "$siteDomain itself"))
         }
 
+        // What's off on this page (for which of them to ask), and what was tapped.
+        val tappedKind = Requests.kindList(mediaKind).firstOrNull() ?: "videos"
+        val offOnPage = Requests.kindList(offKinds.ifEmpty { mediaKind })
+        // A video, just this one: its picture and its sound together (sound too, if it's off here).
+        val oneNote = Ui.box(this, "Just this ${if (tappedKind == "photos") "photo" else "video"}: " +
+            (if (tappedKind == "videos" && soundOffHere) "its picture and its sound, both in this request." else "only it, nothing else on the page."))
+        var showKinds: (Boolean) -> Unit = {}
         // Asking for one photo or video (a tapped placeholder): just that one, this page, or the whole site.
         var itemChoice = if (mediaBack && mediaItem != null) 0 else -1
         if (itemChoice == 0) {
-            val opts = if (canChoose) listOf("Just this one", "This page", "Whole site") else listOf("Just this one", "Whole site")
-            d.add(Ui.label(this, "Open"))
-            d.add(Ui.Segmented(this, opts, 0, true) { itemChoice = if (!canChoose && it == 1) 2 else it }.view, 6)
+            val one = if (tappedKind == "photos") "Just this photo" else "Just this video"
+            val opts = if (canChoose) listOf(one, "This page", "Whole site") else listOf(one, "Whole site")
+            d.add(Ui.label(this, "What"))
+            d.add(Ui.Segmented(this, opts, 0, true) {
+                itemChoice = if (!canChoose && it == 1) 2 else it
+                oneNote.visibility = if (itemChoice == 0) View.VISIBLE else View.GONE
+                showKinds(itemChoice != 0)                     // the page or site: which of them (chips)
+            }.view, 6)
+            d.add(oneNote, 6)
         }
+        // From the ⋮ menu: "Just one photo or video" closes this and asks them to tap it on the page.
+        val canPickOne = mediaBack && mediaItem == null && mediaKind != "sound" && (photosOffHere || videosOffHere)
 
         // Just this page, or the whole site.
         var pageScope = canChoose
-        if (canChoose && itemChoice < 0) {
+        if (canPickOne) {
+            val opts = if (canChoose) listOf("Just one photo or video", "This page", "Whole site") else listOf("Just one photo or video", "Whole site")
+            d.add(Ui.label(this, "What"))
+            d.add(Ui.Segmented(this, opts, 1, true) {
+                if (it == 0) {
+                    d.dismiss()
+                    toast("Tap the photo or video you'd like, on the page")
+                    AppLog.i("Requests", "Asking for one item: waiting for a tap on the page")
+                } else pageScope = canChoose && it == 1
+            }.view, 6)
+        } else if (canChoose && itemChoice < 0) {
             val which = Ui.text(this, pageKey ?: "", 13f, Ui.MUTED)
             d.add(Ui.label(this, "What"))
             d.add(Ui.Segmented(this, listOf("Just this page", "Whole site"), 0, narrow) {
@@ -2290,11 +2380,19 @@ class MainActivity : Activity() {
                 }.view, 6)
                 d.add(c.view, 8)
             }
-        } else if (offHere.size > 1 && mediaItem == null) {
-            // More than one is off here: which to ask for (all of them to start with).
-            d.add(Ui.label(this, "Which?"))
-            chips = Ui.Chips(this, offHere.map { kindLabels[kindNames.indexOf(it)] }, offHere.map { kindIcons[kindNames.indexOf(it)] },
-                offHere.indices.toSet(), tinyBar).also { d.add(it.view, 6) }
+        } else if (offOnPage.size > 1) {
+            // More than one is off here: which to ask for. From the menu: all of them to start with. From a tapped video:
+            // that and sound (if off), shown once it's the page or the site rather than just that one.
+            val label = Ui.label(this, "Which?")
+            val start = if (mediaItem == null) offOnPage.indices.filter { offOnPage[it] in Requests.kindList(mediaKind) }.toSet()
+                else offOnPage.indices.filter { offOnPage[it] == tappedKind || (tappedKind == "videos" && offOnPage[it] == "sound") }.toSet()
+            chips = Ui.Chips(this, offOnPage.map { kindLabels[kindNames.indexOf(it)] }, offOnPage.map { kindIcons[kindNames.indexOf(it)] },
+                start, tinyBar)
+            d.add(label); d.add(chips!!.view, 6)
+            if (mediaItem != null) {
+                showKinds = { on -> label.visibility = if (on) View.VISIBLE else View.GONE; chips!!.view.visibility = label.visibility }
+                showKinds(false)
+            }
         }
 
         val noteField = Ui.field(this, "e.g. for maths homework",
@@ -2321,8 +2419,8 @@ class MainActivity : Activity() {
             }
             val subject = if (scope == Requests.Scope.PAGE) pageKey!! else domain
             // Which of photos, videos and sound: the chips that are on.
-            val picked = chips?.let { c -> c.selected.sorted().map { i ->
-                if (mediaBack) offHere[i] else if (action == Requests.Action.ALLOW) openByDefault[i] else kindNames[i] } } ?: emptyList()
+            val picked = chips?.takeIf { !(mediaBack && itemChoice == 0) }?.let { c -> c.selected.sorted().map { i ->
+                if (mediaBack) offOnPage[i] else if (action == Requests.Action.ALLOW) openByDefault[i] else kindNames[i] } } ?: emptyList()
             // Opening: the kinds asked for Open on it (ones this phone blocks by default).
             val opened = openChips?.selected?.sorted()?.map { blockedByDefault[it] }?.joinToString(",") ?: ""
             val media = when {
@@ -2334,8 +2432,10 @@ class MainActivity : Activity() {
             if (action == Requests.Action.BLOCK && blockSome && picked.isEmpty()) {
                 toast("Pick what to block, or choose Completely"); return@button
             }
-            if (mediaBack && chips != null && picked.isEmpty()) { toast("Pick at least one"); return@button }
+            if (mediaBack && itemChoice != 0 && chips != null && picked.isEmpty()) { toast("Pick at least one"); return@button }
             val kind = when {
+                // Just this one video: its picture and its sound (if sound is off here too).
+                mediaBack && itemChoice == 0 -> if (tappedKind == "videos" && soundOffHere) "videos,sound" else tappedKind
                 mediaBack && chips == null -> mediaKind
                 picked.isEmpty() -> "both"
                 else -> picked.joinToString(",")
@@ -2468,11 +2568,11 @@ class MainActivity : Activity() {
      */
     private fun sendWaiting(registerFirst: Boolean = false, checkIn: Boolean = false) {
         updateIo.execute {
-            if (registerFirst) runCatching { Requests.registerIfNeeded(applicationContext) }
-            runCatching { Outbox.flush(applicationContext) }
+            if (registerFirst) runCatching { Requests.registerIfNeeded(applicationContext) }.logged("Setup", "Registering")
+            runCatching { Outbox.flush(applicationContext) }.logged("Outbox", "Sending what's waiting")
             if (checkIn) {
-                runCatching { Requests.checkIn(applicationContext) }
-                runCatching { MyRequests.check(applicationContext, if (fast) 20_000L else 5 * 60_000L) } // answers to this phone's requests
+                runCatching { Requests.checkIn(applicationContext) }.logged("Setup", "Checking in")
+                runCatching { MyRequests.check(applicationContext, if (fast) 20_000L else 5 * 60_000L) }.logged("Requests", "Checking for answers") // answers to this phone's requests
             }
             main.post { if (!isDestroyed) showNewAnswers() }
         }
@@ -2499,6 +2599,8 @@ class MainActivity : Activity() {
         when (r.optString("type")) {
             "search" -> return if (r.optBoolean("off")) !Whitelist.state.search
                 else Whitelist.state.search && Whitelist.state.searchApprovedOnly == r.optBoolean("approvedOnly")
+            // Ask for time: the grant is in this phone's lists.
+            "timer" -> return Whitelist.state.temps.any { it.entry == r.optString("timer") && (it.what == "timeroff" || it.what == "timermore") }
             "mediaDefault" -> {
                 val w = r.optJSONObject("want") ?: return true
                 return Whitelist.MEDIA_KINDS.all { k -> w.optString(k).let { v -> v.isEmpty() || (v == "blocked") == Whitelist.defaultBlocks(k) } }
@@ -2582,6 +2684,61 @@ class MainActivity : Activity() {
     @Volatile private var translateToken = ""         // only this page's script can hand text to translate
 
     /** The page script hands over its text in batches; each comes back translated. */
+    /** The page script says a video is playing muted, because sound is blocked here. */
+    private inner class MediaBridge {
+        @android.webkit.JavascriptInterface
+        fun soundBlocked() { main.post { if (!isDestroyed) showSoundNote() } }
+    }
+    private var soundNoteFor: String? = null
+    private var soundNote: View? = null
+
+    /**
+     * "Sound is blocked on this site, so the video plays muted", with "Ask for sound": a small card at the bottom, once
+     * per page, gone after 8 seconds.
+     */
+    private fun showSoundNote() {
+        val here = web.url ?: return
+        if (!soundOffHere || soundNoteFor == here || !Requests.isSetUp()) return
+        soundNoteFor = here
+        hideSoundNote()
+        AppLog.i("Media", "A video is playing muted here (sound is blocked): showing the note")
+        val dp = { v: Int -> Ui.dp(this, v) }
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            background = Ui.rounded(Ui.INK, dp(16).toFloat())
+            elevation = dp(10).toFloat()
+            setPadding(dp(14), dp(10), dp(6), dp(10))
+            addView(android.widget.ImageView(this@MainActivity).apply {
+                setImageResource(R.drawable.ic_d_sound)
+                imageTintList = android.content.res.ColorStateList.valueOf(Ui.PAGE)
+            }, LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginEnd = dp(10) })
+            addView(Ui.text(this@MainActivity, "Sound is blocked on this site, so the video plays muted.", 14f, Ui.PAGE),
+                LinearLayout.LayoutParams(0, -2, 1f))
+            addView(Button(this@MainActivity).apply {
+                text = "Ask for sound"; isAllCaps = false; typeface = Ui.boldFace; stateListAnimator = null
+                setTextColor(Ui.INK); background = Ui.rounded(Ui.SOFT, dp(12).toFloat())
+                minHeight = dp(44); minimumHeight = dp(44); setPadding(dp(12), 0, dp(12), 0)
+                setOnClickListener { hideSoundNote(); showRequestDialog(Requests.Action.ALLOW, web.url, mediaBack = true, mediaKind = "sound") }
+            })
+            addView(android.widget.ImageButton(this@MainActivity).apply {
+                setImageResource(R.drawable.ic_d_x); imageTintList = android.content.res.ColorStateList.valueOf(Ui.PAGE)
+                background = null; contentDescription = "Close"
+                setOnClickListener { hideSoundNote() }
+            }, LinearLayout.LayoutParams(dp(44), dp(44)))
+        }
+        val root = window.decorView as? android.widget.FrameLayout ?: return
+        root.addView(card, android.widget.FrameLayout.LayoutParams(-1, -2, android.view.Gravity.BOTTOM).apply {
+            setMargins(dp(12), 0, dp(12), dp(88))
+        })
+        soundNote = card
+        main.postDelayed({ if (soundNote === card) hideSoundNote() }, 8_000)
+    }
+    private fun hideSoundNote() {
+        soundNote?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        soundNote = null
+    }
+
     private inner class TranslateBridge {
         @android.webkit.JavascriptInterface
         fun texts(token: String, json: String) {
@@ -3122,12 +3279,10 @@ class MainActivity : Activity() {
         val d = Ui.AppDialog(this, sheet = true)
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val gap = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = Ui.dp(this@MainActivity, 8) }
-        fun archivedCount() = MyRequests.all(this).count { it.archived }
         fun whenText(r: MyRequests.Item) = if (r.status == "waiting") "Asked ${shortDate(r.asked)}" else "Answered ${shortDate(r.answered)}"
         if (!archive) {
             val notSent = Outbox.waitingRequestsWithIds(this).reversed()
             val sent = MyRequests.all(this).filter { !it.archived }.map { shownAs(it) }
-            var archiveButton: Button? = null
             d.title("My requests")
             // Tapping the title 7 times (within a few seconds): approval mode, to approve or deny with the PIN.
             var taps = 0
@@ -3178,7 +3333,7 @@ class MainActivity : Activity() {
             } else if (notSent.isEmpty() && sent.isEmpty()) {
                 d.add(Ui.text(this, "Nothing here right now.", 15f, Ui.MUTED))
             } else {
-                d.add(Ui.text(this, "Swipe a request right to archive it, or left to delete it (or cancel it, if it's still waiting).", 13f, Ui.MUTED), 4)
+                d.add(Ui.text(this, "Swipe a request left to delete it (or cancel it, if it's still waiting).", 13f, Ui.MUTED), 4)
             }
             if (approving) {
                 // Only waiting requests can be ticked; the rest are shown faded.
@@ -3257,46 +3412,12 @@ class MainActivity : Activity() {
                     return@forEach
                 }
                 lateinit var holder: View
-                val removed = { list.removeView(holder); archiveButton?.text = "Archived (${archivedCount()})" }
-                val archiveIt = { MyRequests.setArchived(this, item.asked, true); removed(); toast("Archived") }
-                val deleteIt = { MyRequests.delete(this, item.asked); removed(); toast("Deleted") }
-                holder = swipeRow(row,
-                    right = SwipeAction("Archive", R.drawable.ic_d_archive, Ui.ACCENT, archiveIt),
-                    left = SwipeAction("Delete", R.drawable.ic_d_trash, Ui.DANGER, deleteIt))
-                list.addView(holder, LinearLayout.LayoutParams(gap))
-            }
-            d.add(list, 8)
-            archiveButton = d.button("Archived (${archivedCount()})", Ui.Kind.SECONDARY) { it.dismiss(); showMyRequests(archive = true) }
-            d.button("Close", Ui.Kind.PRIMARY) { it.dismiss() }
-        } else {
-            val items = MyRequests.all(this).filter { it.archived }
-            d.title("Archived requests")
-            d.add(Ui.text(this, if (items.isEmpty()) "Nothing archived." else
-                "Swipe one right to put it back, or left to delete it. Only this phone's copy is deleted.", 13f, Ui.MUTED), 4)
-            items.forEach { item ->
-                val row = requestRow(item.status, item.summary, item.message, whenText(item), card = true)
-                lateinit var holder: View
-                val putBack = { MyRequests.setArchived(this, item.asked, false); list.removeView(holder); toast("Put back in My requests") }
                 val deleteIt = { MyRequests.delete(this, item.asked); list.removeView(holder); toast("Deleted") }
-                holder = swipeRow(row,
-                    right = SwipeAction("Put back", R.drawable.ic_d_undo, Ui.ACCENT, putBack),
-                    left = SwipeAction("Delete", R.drawable.ic_d_trash, Ui.DANGER, deleteIt))
+                holder = swipeRow(row, right = null, left = SwipeAction("Delete", R.drawable.ic_d_trash, Ui.DANGER, deleteIt))
                 list.addView(holder, LinearLayout.LayoutParams(gap))
             }
             d.add(list, 8)
-            if (items.isNotEmpty()) d.button("Delete all", Ui.Kind.GHOST) { dlg ->
-                Ui.AppDialog(this, sheet = false).apply {
-                    title("Delete all archived requests?", icon = R.drawable.ic_d_trash, iconBg = Ui.RED_BG, iconFg = Ui.RED_INK)
-                    add(Ui.text(this@MainActivity, "Only this phone's copies are deleted.", 14.5f, Ui.MUTED))
-                    button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
-                    button("Delete", Ui.Kind.DANGER) {
-                        it.dismiss(); dlg.dismiss()
-                        MyRequests.deleteArchived(this@MainActivity)
-                        showMyRequests(archive = true)
-                    }
-                }.show()
-            }
-            d.button("Back", Ui.Kind.PRIMARY) { it.dismiss(); showMyRequests() }
+            d.button("Close", Ui.Kind.PRIMARY) { it.dismiss() }
         }
         d.show()
     }
@@ -3466,7 +3587,7 @@ class MainActivity : Activity() {
                 sendWaiting()
             }
         }
-        runCatching { cm.registerDefaultNetworkCallback(cb); networkCallback = cb }
+        runCatching { cm.registerDefaultNetworkCallback(cb); networkCallback = cb }.logged("App", "Watching the connection")
     }
 
     // ---------- clearing data ----------
@@ -3722,9 +3843,14 @@ class MainActivity : Activity() {
     // ---------- settings ----------
 
     /** ⋮ → Settings: appearance, cookies and site data, cache, app update, and about this phone. */
-    private fun showSettings() {
+    /** A sheet of rows (icon, title, line under it), each opening its own screen. [back]: a "‹ back" link above the title. */
+    private fun menuSheet(title: String, backLabel: String?, back: (() -> Unit)?, rows: List<Triple<Int, Pair<String, String>, () -> Unit>>) {
         val d = Ui.AppDialog(this, sheet = true)
-        d.title("Settings")
+        if (back != null && backLabel != null) d.add(Ui.text(this, "‹ $backLabel", 15f, Ui.ACCENT_TEXT, "bold").apply {
+            minHeight = Ui.dp(this@MainActivity, 36); gravity = android.view.Gravity.CENTER_VERTICAL
+            setOnClickListener { d.dismiss(); back() }
+        }, 0)
+        d.title(title)
         fun row(icon: Int, title: String, sub: String, onTap: () -> Unit): LinearLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
@@ -3742,49 +3868,192 @@ class MainActivity : Activity() {
             addView(words, LinearLayout.LayoutParams(0, -2, 1f))
             setOnClickListener { d.dismiss(); onTap() }
         }
-        val look = when (Ui.choice(this)) { "light" -> "Light"; "dark" -> "Dark"; else -> "Phone's setting" } +
-            if (Ui.usePhoneColours(this)) ", phone's colours" else ""
-        val name = Device.name(this) ?: "Not registered yet"
-        val rows = listOf(
-            row(R.drawable.ic_d_theme, "Appearance", look) { showAppearance() },
-            row(R.drawable.ic_d_photo, "This phone's default", Whitelist.MEDIA_KINDS.joinToString(", ") { k ->
-                "${k.replaceFirstChar { it.uppercase() }} ${if (Whitelist.defaultBlocks(k)) "blocked" else "open"}" }) { showPhoneDefault() },
-            row(R.drawable.ic_d_search, "Search", searchNow()) { showSearchSettings() },
-            *(if (AdminAlerts.isAdminPhone()) arrayOf(row(R.drawable.ic_d_inbox, "Phone notifications",
-                when {
-                    !AdminAlerts.wanted(this@MainActivity) -> "Off"
-                    !AdminAlerts.allowed(this@MainActivity) -> "Blocked by Android: tap to allow notifications"
-                    else -> "On: new requests, logs and crashes, as notifications on this phone"
-                }) {
-                // On, but Android blocks them: its settings for this app's notifications.
-                if (AdminAlerts.wanted(this@MainActivity) && !AdminAlerts.allowed(this@MainActivity)) {
-                    runCatching { startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)) }
-                    return@row
-                }
-                val on = !AdminAlerts.wanted(this@MainActivity)
-                AdminAlerts.setWanted(this@MainActivity, on)
-                if (on && Build.VERSION.SDK_INT >= 33) withAndroidPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) { granted ->
-                    if (granted.isEmpty()) toast("Notifications are off for this app in the phone's settings")
-                }
-                toast(if (on) "Phone notifications on" else "Phone notifications off")
-                showSettings()                                    // (the row closed the sheet: open again, updated)
-            }) else emptyArray<LinearLayout>()),
-            row(R.drawable.ic_d_globe, "Phone's browser",
-                if (isPhonesBrowser()) "This is the phone's browser: links from other apps open here"
-                else "Make it the phone's browser, so links from other apps open here") { becomePhonesBrowser() },
-            row(R.drawable.ic_d_cookie, "Cookies and site data", "Sign out of sites, reset camera and location answers") { confirmClearCookies() },
-            row(R.drawable.ic_d_broom, "Clear cache", "Frees space; pages load fresh") { clearCache() },
-            row(R.drawable.ic_d_update, "App update", "Version ${BuildConfig.VERSION_NAME}. Check for a new one") { checkForUpdate(manual = true) },
-            row(R.drawable.ic_d_user, "About this phone", "$name · ${Device.id(this)}") { showAbout() })
         d.add(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 16).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
             clipToOutline = true
-            rows.forEachIndexed { i, r ->
+            rows.forEachIndexed { i, (icon, words, tap) ->
                 if (i > 0) addView(View(this@MainActivity).apply { setBackgroundColor(Ui.LINE2) }, LinearLayout.LayoutParams(-1, Ui.dp(this@MainActivity, 1)))
-                addView(r)
+                addView(row(icon, words.first, words.second, tap))
             }
         })
+        d.button("Close", Ui.Kind.PRIMARY) { it.dismiss() }
+        d.show()
+    }
+
+    /** ⋮ → Settings: five rows, each opening its own screen. */
+    private fun showSettings() {
+        val look = when (Ui.choice(this)) { "light" -> "Light"; "dark" -> "Dark"; else -> "Phone's setting" } +
+            if (Ui.usePhoneColours(this)) ", phone's colours" else ""
+        val name = Device.name(this) ?: "Not registered yet"
+        menuSheet("Settings", null, null, listOf(
+            Triple(R.drawable.ic_d_theme, "Appearance" to look) { showAppearance() },
+            Triple(R.drawable.ic_d_user, "This phone" to "Photos, videos and sound · Search · My activity · Phone's browser") { showThisPhone() },
+            Triple(R.drawable.ic_d_cookie, "Cookies and cache" to "Sign out of sites, free up space") { showCookiesAndCache() },
+            Triple(R.drawable.ic_d_update, "App update" to "Version ${BuildConfig.VERSION_NAME}. Check for a new one") { checkForUpdate(manual = true) },
+            Triple(R.drawable.ic_d_user, "About this phone" to "$name · ${Device.id(this)}") { showAbout() }))
+    }
+
+    /** Settings → This phone: its default for photos, videos and sound, search, my activity, and being the phone's browser. */
+    private fun showThisPhone() {
+        menuSheet("This phone", "Settings", { showSettings() }, listOf(
+            Triple(R.drawable.ic_d_photo, "Photos, videos and sound" to ("This phone's default: " + Whitelist.MEDIA_KINDS.joinToString(", ") { k ->
+                "$k ${if (Whitelist.defaultBlocks(k)) "blocked" else "open"}" })) { showPhoneDefault() },
+            Triple(R.drawable.ic_d_search, "Search" to searchNow()) { showSearchSettings() },
+            Triple(R.drawable.ic_d_clock, "My activity" to "Time on each site, for you only") { showMyActivity() },
+            Triple(R.drawable.ic_d_globe, "Phone's browser" to (if (isPhonesBrowser()) "This is the phone's browser: links from other apps open here"
+                else "Make it the phone's browser, so links from other apps open here")) { becomePhonesBrowser() }))
+    }
+
+    /** Settings → Cookies and cache: signing out of sites, and clearing the cache. */
+    private fun showCookiesAndCache() {
+        menuSheet("Cookies and cache", "Settings", { showSettings() }, listOf(
+            Triple(R.drawable.ic_d_cookie, "Cookies and site data" to "Sign out of sites, reset camera and location answers") { confirmClearCookies() },
+            Triple(R.drawable.ic_d_broom, "Clear cache" to "Frees space; pages load fresh") { clearCache() }))
+    }
+
+    // ---------- timers ----------
+
+    private val timerWarned = HashSet<String>()
+    private var timerSig = ""
+
+    /** Every 15 seconds while the app is open: allowances, the 5-minute notes, and redrawing home when timers switch. */
+    private fun timerTick(cur: String, countTime: Boolean) {
+        if (Whitelist.state.timers.isEmpty()) return
+        val now = TrustedTime.now()
+        val isWeb = cur.startsWith("https://") || cur.startsWith("http://")
+        if (countTime && isWeb && !HomePage.isOwn(cur)) Timers.addUse(applicationContext, cur, tempTick)
+        // 5 minutes before an allowance is used up, and before a timer starts: a note, once.
+        if (isWeb && !HomePage.isOwn(cur)) Timers.allowanceHere(applicationContext, cur)?.let { (t, left) ->
+            if (left in 1..5 * 60_000L && timerWarned.add("a|${t.id}|${Timers.dayKey(t, now)}"))
+                toast("${t.name}: ${(left + 59_999) / 60_000} min left today")
+        }
+        for (t in Whitelist.state.timers) {
+            val inMs = Timers.startsWithin(t, now, 5 * 60_000L) ?: continue
+            if ((t.sites != null || t.media.isNotEmpty()) && timerWarned.add("s|${t.id}|${(now + inMs) / 60_000L}"))
+                toast("${t.name} starts in ${(inMs + 59_999) / 60_000} min")
+        }
+        // Switched on or off (or an allowance ran out): the home page shows what's open now.
+        val sig = Timers.signature(applicationContext)
+        if (sig != timerSig) {
+            val was = timerSig; timerSig = sig
+            if (was.isNotEmpty()) {
+                AppLog.i("Timers", "Timers now: ${Timers.activeNow().joinToString { it.name }.ifEmpty { "none on" }}")
+                if (HomePage.isHome(cur)) web.reload() else main.post { if (!isDestroyed) enforceCurrent() }   // (a blocked page whose timer ended opens the site)
+            }
+        }
+    }
+
+    /** "YouTube time: 32 min left today", while on a site an allowance counts. */
+    private fun allowanceNote(cur: String?): String? {
+        if (cur == null || Whitelist.state.timers.isEmpty() || HomePage.isOwn(cur) || !(cur.startsWith("https://") || cur.startsWith("http://"))) return null
+        val (t, left) = runCatching { Timers.allowanceHere(applicationContext, cur) }.logged("Timers", "Time left today").getOrNull() ?: return null
+        val min = (left + 59_999) / 60_000
+        return if (left <= 0L) "${t.name}: used up for today." else "${t.name}: ${if (min >= 60) "${min / 60} h ${min % 60} min" else "$min min"} left today."
+    }
+
+    /** A timer says nothing new can be asked for now. */
+    private fun showCantAsk(t: Timers.Timer) {
+        val d = Ui.AppDialog(this, sheet = true)
+        d.title("Not during ${t.name}")
+        val until = Timers.endsAt(t, TrustedTime.now())?.let { " (until ${Timers.clock(it)})" } ?: ""
+        d.add(Ui.text(this, "Nothing new can be asked for during ${t.name}$until. You can ask for time off it.", 15f, Ui.INK2), 6)
+        d.button("Close", Ui.Kind.GHOST) { it.dismiss() }
+        d.button("Ask for time", Ui.Kind.PRIMARY) { it.dismiss(); showAskForTime(t, more = false) }
+        d.show()
+    }
+
+    /** "Ask for time": a while off a timer, or more of an allowance today, on the usual wheels. */
+    private fun showAskForTime(t: Timers.Timer, more: Boolean) {
+        if (!Requests.isSetUp()) { toast("Requests aren't set up for this app yet"); return }
+        val d = Ui.AppDialog(this, sheet = true)
+        d.title(if (more) "Ask for more time" else "Ask for time", sub = t.name)
+        d.add(Ui.text(this, if (more) "More of ${t.name} today. Your request goes to whoever manages this browser."
+            else "Time off ${t.name}, starting when it's approved. Your request goes to whoever manages this browser.", 14.5f, Ui.MUTED), 6)
+        val hoursWheel = android.widget.NumberPicker(this).apply {
+            minValue = 0; maxValue = 12; value = 0; wrapSelectorWheel = false
+            descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
+            setFormatter { String.format(java.util.Locale.US, "%02d", it) }
+        }
+        val minutesWheel = android.widget.NumberPicker(this).apply {
+            minValue = 0; maxValue = 11; value = 6
+            displayedValues = Array(12) { String.format(java.util.Locale.US, "%02d", it * 5) }
+            wrapSelectorWheel = false
+            descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        }
+        Ui.styleWheel(hoursWheel); Ui.styleWheel(minutesWheel)
+        d.add(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER
+            background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 14).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
+            addView(hoursWheel); addView(Ui.text(this@MainActivity, "hours", 13f, Ui.MUTED).apply { setPadding(Ui.dp(this@MainActivity, 6), 0, Ui.dp(this@MainActivity, 20), 0) })
+            addView(minutesWheel); addView(Ui.text(this@MainActivity, "min", 13f, Ui.MUTED).apply { setPadding(Ui.dp(this@MainActivity, 6), 0, 0, 0) })
+        }, 10)
+        val why = Ui.field(this, "Why? (optional)")
+        d.add(why, 10)
+        d.button("Cancel", Ui.Kind.GHOST) { it.dismiss() }
+        d.button("Send", Ui.Kind.PRIMARY) {
+            val minutes = hoursWheel.value * 60 + minutesWheel.value * 5
+            if (minutes < 5) { toast("Choose how long"); return@button }
+            it.dismiss()
+            val extra = org.json.JSONObject().put("timer", t.id).put("timerName", t.name).put("ask", if (more) "more" else "off").put("minutes", minutes)
+            val summary = if (more) "${Requests.duration(minutes)} more of ${t.name}" else "${Requests.duration(minutes)} off ${t.name}"
+            AppLog.i("Timers", "Asking for time: $summary")
+            sendPhoneRequest("timer", extra, why.text.toString().trim(), summary)
+        }
+        d.show()
+    }
+
+    /** Settings → This phone → My activity: time on each site, today or the last 7 days. On this phone only. */
+    private fun showMyActivity(days: Int = 1) {
+        runCatching { MyActivity.save(applicationContext) }.logged("Activity", "Saving")
+        val d = Ui.AppDialog(this, sheet = true)
+        d.add(Ui.text(this, "‹ This phone", 15f, Ui.ACCENT_TEXT, "bold").apply {
+            minHeight = Ui.dp(this@MainActivity, 36); gravity = android.view.Gravity.CENTER_VERTICAL
+            setOnClickListener { d.dismiss(); showThisPhone() }
+        }, 0)
+        d.title("My activity")
+        d.add(Ui.Segmented(this, listOf("Today", "Last 7 days"), if (days == 1) 0 else 1, false) { i ->
+            d.dismiss(); showMyActivity(if (i == 0) 1 else 7)
+        }.view, 6)
+        val rows = runCatching { MyActivity.totals(applicationContext, days) }
+            .getOrElse { AppLog.w("Activity", "Couldn't add it up: ${it.message}"); emptyList() }
+        val total = rows.sumOf { it.second }
+        d.add(Ui.text(this, if (rows.isEmpty()) "Nothing yet" + (if (days == 1) " today." else " in the last 7 days.")
+            else "${MyActivity.fmt(total)} in the browser", 15f, Ui.INK, "bold"), 10)
+        if (rows.isNotEmpty()) {
+            val top = rows.first().second.coerceAtLeast(1L)
+            d.add(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 16).toFloat(), Ui.LINE, Ui.dp(this@MainActivity, 1))
+                setPadding(Ui.dp(this@MainActivity, 14), Ui.dp(this@MainActivity, 4), Ui.dp(this@MainActivity, 14), Ui.dp(this@MainActivity, 4))
+                rows.take(15).forEachIndexed { i, (site, ms) ->
+                    if (i > 0) addView(View(this@MainActivity).apply { setBackgroundColor(Ui.LINE2) }, LinearLayout.LayoutParams(-1, Ui.dp(this@MainActivity, 1)))
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(0, Ui.dp(this@MainActivity, 10), 0, Ui.dp(this@MainActivity, 10))
+                        addView(LinearLayout(this@MainActivity).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            addView(Ui.text(this@MainActivity, site, 15f, Ui.INK, "bold").apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END },
+                                LinearLayout.LayoutParams(0, -2, 1f))
+                            addView(Ui.text(this@MainActivity, MyActivity.fmt(ms), 14f, Ui.MUTED))
+                        })
+                        // A bar: this site's time against the most.
+                        val track = android.widget.FrameLayout(this@MainActivity)
+                        track.background = Ui.rounded(Ui.CHIP_OFF, Ui.dp(this@MainActivity, 4).toFloat())
+                        val bar = View(this@MainActivity)
+                        bar.background = Ui.rounded(Ui.ACCENT, Ui.dp(this@MainActivity, 4).toFloat())
+                        track.addView(bar, android.widget.FrameLayout.LayoutParams(0, -1))
+                        track.post {
+                            val lp = bar.layoutParams
+                            lp.width = maxOf(Ui.dp(this@MainActivity, 6), (track.width.toLong() * ms / top).toInt())
+                            bar.layoutParams = lp
+                        }
+                        addView(track, LinearLayout.LayoutParams(-1, Ui.dp(this@MainActivity, 7)).apply { topMargin = Ui.dp(this@MainActivity, 6) })
+                    })
+                }
+            }, 8)
+        }
+        d.add(Ui.text(this, "Only on this phone: never sent anywhere, not to the admin page. Time counts while a site is on screen. Kept 30 days.", 13f, Ui.MUTED), 10)
         d.button("Close", Ui.Kind.PRIMARY) { it.dismiss() }
         d.show()
     }
@@ -4048,12 +4317,20 @@ class MainActivity : Activity() {
     private fun checkTemporary(countTime: Boolean) {
         val cur = web.url ?: return
         if (countTime) TempTime.add(Whitelist.usingNow(cur).map { it.id }, tempTick)
+        // Timers: time on today's allowances, notes 5 minutes before, and the home page redrawn when they switch.
+        runCatching { timerTick(cur, countTime) }.onFailure { AppLog.e("Timers", "Checking the timers", it) }
+        // "My activity" (on this phone only): time on each site while it's on screen.
+        if (countTime) runCatching {
+            val site = if (SearchPage.isSearch(cur)) "Search" else if (HomePage.isOwn(cur)) null
+                else Uri.parse(cur).host?.lowercase()?.removePrefix("www.")
+            if (site != null) MyActivity.add(applicationContext, site, tempTick)
+        }.onFailure { AppLog.w("Activity", "Couldn't count the time: ${it.message}") }
         Whitelist.endingSoon(cur)?.let { t ->
             if (warned.add(t.id)) toast("Only a few minutes left" + if (t.mode == "use") " of your time on this site." else " on this site.")
         }
         if ((cur.startsWith("https://") || cur.startsWith("http://")) && !HomePage.isOwn(cur)) {
             if (!Whitelist.isAllowed(cur)) {
-                toast("Time's up for ${Uri.parse(cur).host?.removePrefix("www.") ?: "this site"}")
+                if (Whitelist.blockedByTimer(cur) == null) toast("Time's up for ${Uri.parse(cur).host?.removePrefix("www.") ?: "this site"}")
                 showBlocked(cur)
                 return
             }
@@ -4119,6 +4396,7 @@ class MainActivity : Activity() {
                 Device.setNames(this@MainActivity, first, last)
                 it.dismiss()
                 sendWaiting(registerFirst = true) // registers now (or as soon as it's online)
+                askNotificationsOnce()            // then, once: notifications (answers to requests)
             }
         }.show()
     }
@@ -4184,14 +4462,27 @@ class MainActivity : Activity() {
         Ui.AppDialog(this, sheet = true).apply {
             title("About this phone", icon = R.drawable.ic_d_user)
             add(table(phone))
-            add(Ui.label(this@MainActivity, "Filters"))
-            add(table(listOf(
+            // The filters: hidden until asked for (most people never need them).
+            val filtersTable = table(listOf(
                 filterRow("Block ads", "Ads on pages, including YouTube's", if (st.adblock) "On · ${AdBlock.blockedCount.get()} blocked" else "Off"),
                 filterRow("Block trackers", "Trackers and analytics, and tracking codes in addresses", if (st.trackers) "On" else "Off"),
                 filterRow("Hide annoyances", "Cookie notices, pop-ups, \"get our app\" banners, widgets and social buttons", if (st.annoyances) "On" else "Off"),
                 filterRow("Block adult content", "Adult sites, and anything from them", f(st.adult, Filters.adult)),
                 filterRow("Block gambling", "Betting and gambling sites", f(st.gambling, Filters.gambling)),
-                filterRow("Block malware and scams", "Sites known for viruses, phishing and scams", f(st.malware, Filters.malware)))), 6)
+                filterRow("Block malware and scams", "Sites known for viruses, phishing and scams", f(st.malware, Filters.malware)))).apply { visibility = View.GONE }
+            val showFilters = Button(this@MainActivity).apply {
+                text = "Show filters"; isAllCaps = false; typeface = Ui.boldFace; stateListAnimator = null
+                setTextColor(Ui.ACCENT_TEXT)
+                background = Ui.rounded(Ui.CARD, Ui.dp(this@MainActivity, 14).toFloat(), Ui.OUTLINE, Ui.dp(this@MainActivity, 1))
+                minHeight = Ui.dp(this@MainActivity, 46); minimumHeight = Ui.dp(this@MainActivity, 46)
+                setOnClickListener {
+                    val open = filtersTable.visibility != View.VISIBLE
+                    filtersTable.visibility = if (open) View.VISIBLE else View.GONE
+                    text = if (open) "Hide filters" else "Show filters"
+                }
+            }
+            add(showFilters, 10)
+            add(filtersTable, 6)
             // Messages to whoever manages this browser: its own section (the bottom bar keeps Copy ID and Close).
             add(Ui.label(this@MainActivity, "Message admin"))
             add(Ui.text(this@MainActivity, "Questions, comments, or something not working: send a message to whoever manages this browser.",

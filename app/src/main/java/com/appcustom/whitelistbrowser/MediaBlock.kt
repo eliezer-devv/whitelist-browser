@@ -183,6 +183,10 @@ object MediaBlock {
     el.__wlbMuted = true;
     try { el.muted = true; } catch (e) {}
     el.addEventListener('volumechange', function () { if (!el.muted) { try { el.muted = true; } catch (e) {} } });
+    // Tell the app a video is playing muted (it shows a short note with "Ask for sound", once per page).
+    var told = function () { try { if (window.WLBMedia) window.WLBMedia.soundBlocked(); } catch (e) {} };
+    el.addEventListener('playing', told);
+    if (!el.paused) told();
   }
   // Videos off, sound on: the picture is hidden; it keeps playing (its sound). A label covers where it was, with
   // "Ask"; taps elsewhere still reach the player (so its own play / pause works).

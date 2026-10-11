@@ -115,5 +115,15 @@
         <receiver
             android:name=".InstallReceiver"
             android:exported="false" />
+
+        <!-- The clock or time zone was changed: GitHub's time (for timers) is kept right, and a change by hand is noted. -->
+        <receiver
+            android:name=".ClockChangedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

@@ -63,7 +63,7 @@ class InstallReceiver : BroadcastReceiver() {
             b.setSmallIcon(R.drawable.ic_d_update).setContentTitle(title).setContentText(text).setAutoCancel(true)
             if (open != null) b.setContentIntent(android.app.PendingIntent.getActivity(ctx, 7, open,
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE))
-            runCatching { nm.notify(ID, b.build()) }
+            runCatching { nm.notify(ID, b.build()) }.logged("Install", "Showing a notification")
         }
     }
 }

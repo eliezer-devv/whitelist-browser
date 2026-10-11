@@ -38,9 +38,9 @@ object MyRequests {
     private fun toItem(o: JSONObject): Item {
         val status = o.optString("status", "waiting")
         val answered = o.optLong("answered")
-        val old = status != "waiting" && answered > 0 && System.currentTimeMillis() - answered > AUTO_ARCHIVE_MS
+        // (No archive any more: requests stay in the list until deleted, including ones archived before.)
         return Item(o.optInt("number"), o.optString("summary"), o.optLong("asked"), status, o.optString("message"),
-            answered, o.optBoolean("seen", true), o.optBoolean("archived", false) || (old && !o.optBoolean("restored", false)),
+            answered, o.optBoolean("seen", true), false,
             o.optJSONObject("request"), status == "waiting" && o.optBoolean("pinChecking", false))
     }
 
@@ -143,6 +143,8 @@ object MyRequests {
             fresh += toItem(o)
         }
         if (fresh.isNotEmpty()) write(ctx, items)
+        // Shown in the app now: a notification about the same answer (from the background check) goes.
+        fresh.forEach { UserAlerts.clear(ctx, it.number) }
         return fresh
     }
 
@@ -168,7 +170,36 @@ object MyRequests {
         return maxOf(here, Whitelist.state.pinLockedUntil).takeIf { it > System.currentTimeMillis() } ?: 0L
     }
 
+    /**
+     * Answers changed on the admin page after this phone had them ("Changed to denied", or approved after all):
+     * published with the lists. Each is taken once (by when it was changed), and shown like a new answer.
+     */
+    @Synchronized fun applyAnswerChanges(ctx: Context) {
+        val raw = Whitelist.state.answerChanges
+        if (raw.isBlank()) return
+        val changes = runCatching { JSONArray(raw) }.getOrElse { AppLog.w("MyRequests", "Couldn't read changed answers: ${it.message}"); return }
+        val items = read(ctx)
+        var changed = false
+        for (c in 0 until changes.length()) {
+            val ch = changes.optJSONObject(c) ?: continue
+            val n = ch.optInt("n"); val at = ch.optString("at")
+            val status = ch.optString("o").takeIf { it == "approved" || it == "denied" } ?: continue
+            for (i in 0 until items.length()) {
+                val o = items.getJSONObject(i)
+                if (o.optInt("number") != n || n <= 0 || o.optString("changedAt") >= at) continue
+                // (Still waiting here: the first answer hasn't reached this phone yet. It's simply this answer now.)
+                o.put("status", status).put("message", ch.optString("m")).put("changedAt", at)
+                    .put("answered", System.currentTimeMillis()).put("seen", false).put("pinChecking", false)
+                Requests.forget(ctx, o.optJSONObject("request"))
+                AppLog.i("MyRequests", "Request #$n changed to $status")
+                changed = true
+            }
+        }
+        if (changed) write(ctx, items)
+    }
+
     fun check(ctx: Context, minGapMs: Long = 5 * 60_000L) {
+        runCatching { applyAnswerChanges(ctx) }.onFailure { AppLog.w("MyRequests", "Changed answers: ${it.message}") }
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (System.currentTimeMillis() - p.getLong("lastCheck", 0L) < minGapMs) return
         p.edit().putLong("lastCheck", System.currentTimeMillis()).apply()

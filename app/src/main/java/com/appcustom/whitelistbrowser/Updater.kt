@@ -215,7 +215,7 @@ object Updater {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (System.currentTimeMillis() - prefs.getLong("asking", 0L) < 120_000L) { AppLog.i("Update", "Android's already asking about it: not again"); return }
         // An older one left unfinished: closed, so only one is ever asked about.
-        runCatching { installer.mySessions.forEach { installer.abandonSession(it.sessionId) } }
+        runCatching { installer.mySessions.forEach { installer.abandonSession(it.sessionId) } }.logged("Update", "Clearing old installs")
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("pending", false).apply()
         AppLog.i("Update", "Installing" + if (Build.VERSION.SDK_INT >= 31) " (without asking, if Android allows)" else "")
         val sessionId = installer.createSession(params)

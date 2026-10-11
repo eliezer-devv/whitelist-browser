@@ -55,6 +55,17 @@ object AppLog {
     @Synchronized fun text(): String = runCatching { file?.readText() }.getOrNull().orEmpty()
 }
 
+private val loggedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+/**
+ * Something that failed (and was carried on past) goes in the log: [area] and what was being done. The same failure
+ * at most once a minute, so a check that runs often doesn't fill the log.
+ */
+fun <T> Result<T>.logged(area: String, what: String): Result<T> = onFailure { e ->
+    val key = "$area|$what|${e.javaClass.simpleName}"
+    val now = System.currentTimeMillis()
+    if (now - (loggedAt[key] ?: 0L) >= 60_000L) { loggedAt[key] = now; AppLog.e(area, what, e) }
+}
+
 /**
  * A work queue (one task at a time) that quietly drops work handed to it after it's shut down, rather than crashing
  * the app: work handed over by something that finished late, after the screen closed, isn't needed any more.

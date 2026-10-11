@@ -44,7 +44,7 @@ object UserAlerts {
         if (before.isEmpty()) { schedule(ctx); return }
         MyRequests.check(ctx, 0L)
         // Approved: the change itself comes with the lists, so it's there when they tap.
-        runCatching { Whitelist.refresh(ctx) }
+        runCatching { Whitelist.refresh(ctx) }.logged("Notifications", "Checking the lists in the background")
         if (!appVisible) {
             MyRequests.all(ctx).filter { it.number in before && it.status != "waiting" }.forEach { item ->
                 val title = when (item.status) {
@@ -56,6 +56,11 @@ object UserAlerts {
             }
         }
         schedule(ctx)
+    }
+
+    /** The notification about request [number], if it's showing (its answer is shown in the app instead). */
+    fun clear(ctx: Context, number: Int) {
+        runCatching { ctx.getSystemService(NotificationManager::class.java).cancel(20_000 + number) }
     }
 
     private fun notify(ctx: Context, title: String, text: String, id: Int) {
@@ -70,7 +75,7 @@ object UserAlerts {
         val b = if (Build.VERSION.SDK_INT >= 26) android.app.Notification.Builder(ctx, CHANNEL) else android.app.Notification.Builder(ctx)
         b.setSmallIcon(R.drawable.ic_d_check).setContentTitle(title).setContentText(text)
             .setStyle(android.app.Notification.BigTextStyle().bigText(text)).setContentIntent(open).setAutoCancel(true)
-        runCatching { nm.notify(20_000 + id, b.build()) }
+        runCatching { nm.notify(20_000 + id, b.build()) }.logged("Notifications", "Showing an answer")
         AppLog.i("Notifications", "Shown: $title")
     }
 }
@@ -81,6 +86,7 @@ class AnswerCheckJob : JobService() {
         Thread {
             try {
                 AppLog.ready(applicationContext)
+                runCatching { TrustedTime.init(applicationContext) }
                 Whitelist.loadCache(applicationContext)                 // (the app may be closed)
                 UserAlerts.check(applicationContext)
             } catch (e: Exception) {

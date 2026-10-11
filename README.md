@@ -267,6 +267,51 @@ You can keep something blocked but open it **for a while**: a whole site, a sing
   - **A warning pops up** 5 minutes before the end.
   - **When time runs out,** the page is replaced by **"Time's up"**, with **Ask to open** to ask for more.
 - **Expired entries are removed from the lists** by the daily check.
+- **The time comes from GitHub, not the phone's clock,** so changing the phone's clock doesn't add time (see
+  [Timers](#timers)). A "time on the site" grant given before the app was reinstalled counts as clock time instead
+  (reinstalling forgets the time already used).
+
+### Home page folders, settings and My activity
+- **Folders:** drag one home page tile onto another to make a folder; tap it to open, tap its name to rename it, hold a
+  tile to take it out. Kept on the phone.
+- **⋮ → Settings** has five rows: **Appearance**; **This phone** (photos, videos and sound default, Search, My
+  activity, Phone's browser); **Cookies and cache**; **App update**; **About this phone** (**Show filters** shows the
+  filter details; **Share log** on admin phones).
+- **Notifications:** the app asks once, when it's set up. No phone notification while the app is open (the answer
+  shows in the app instead).
+- **My activity:** time on each site, today or the last 7 days. Only on that phone: never sent anywhere, not to the
+  admin page. Kept 30 days.
+- **Asking for one photo or video:** "Just this video/photo", "This page" or "Whole site"; a video opens with its
+  sound. When a video plays muted because sound is blocked, a note offers **Ask for sound**.
+- **Reinstalling** gives back exactly the same settings (the phone's ID stays the same). Daily
+  allowances count as used up on the day of a reinstall (the time already used went with the old install).
+
+### Timers
+Changes that switch on at set times, made on the admin page (**Timers** tab, or a phone's screen → **Timers**). As
+many as you like, each with a name and an on/off switch (off = paused, not deleted).
+- **For:** groups (every phone in them, now or later) and phones.
+- **Three kinds:**
+  - **On a schedule:** days and hours every week, e.g. Sun–Thu 16:00–18:00. 21:00 to 07:00 runs into the next morning.
+  - **One time only:** from now (or a set day and time) for as long as you choose, then it's over.
+  - **A daily allowance:** so much time a day on some sites or whole lists (counted only while one is on screen),
+    starting again at midnight. When it's used up: **blocked until tomorrow**, or **only videos and sound blocked**.
+    The phone shows *"YouTube time: 32 min left today"*, a note at 5 minutes left, then the blocked page with
+    **Ask for more time**.
+- **During it** (schedule and one time), each **No change** unless you pick: **Sites** (*Only some lists*, *Also these
+  lists*, or *Nothing opens*), **Photos / Videos / Sound** (Open or Blocked on every site), **Search** (On / Off),
+  **Asking for sites** (Can't ask), **Temporary access** (Paused).
+- **Timers that overlap all apply, and the strictest wins:** an allowance that's used up blocks its sites even while
+  another timer opens them; Blocked beats Open.
+- **Time zones:** each timer keeps the time zone it was made in (changeable on its screen), wherever the phone is.
+- **On the phone:** the home page shows only what's open, with *"Homework time until 18:00 · Ask for time"* on top;
+  *Nothing opens* shows a full screen instead. 5 minutes before a timer starts, a note says so. A page that's no longer
+  allowed shows the blocked page saying which timer, and until when. **Ask for time** sends a request
+  (*"30 minutes off Homework time"*, on the usual wheels), answered on the admin page or with the approval PIN.
+- **The clock:** every answer from GitHub carries the time. The phone keeps GitHub's time and how far its own clock is
+  off, across restarts, and never goes back past the last time it was sure of. Changing the clock by hand doesn't
+  help: the app notices (Android tells it), and the admin page's phone screen says *"Its clock was changed by hand"*
+  or *"Automatic date and time is off"*. Until the phone hears from GitHub after a restart, timers use whichever
+  reading is stricter.
 
 ### Text search
 Off for every phone to start with (no search box until it's on). A phone asks for it with ⋮ → **Ask for search**,
@@ -973,8 +1018,9 @@ into the app (below). It never needs a GitHub token.
 ### Saving
 - **Tap Save** in the bar at the bottom after changing anything (**Undo** puts it back). Answers to requests go
   without the Save bar.
-- **Then GitHub's automation checks the change and saves it,** about a minute later: the top right says
-  **Saving… (about a minute)**, then **Saved**. You can carry on meanwhile; changes made while one is saving go in the
+- **Then GitHub's automation checks the change and saves it,** about half a minute later: the top right says
+  **Saving…**, then **Saved** as soon as it's saved (the page's own copy of the data is re-packed just after, and
+  loads by itself). You can carry on meanwhile; changes made while one is saving go in the
   next one. Saving tidies every address, so `https://www.bbc.co.uk/news` becomes `www.bbc.co.uk`.
 - **Not saved: tap for details** (in red) means it was refused, with why: tap it for **Try again** or **Start over**
   (reload everything from GitHub). The usual reason is that the list or the phones changed meanwhile (a request was
@@ -985,6 +1031,7 @@ into the app (below). It never needs a GitHub token.
   refuses it, the page says why and shows what's really saved.
 - **Why saving takes a little while:** every change is done by GitHub's automation (that's what keeps it safe without
   a server of your own), and GitHub takes about half a minute to start it. Nothing waits for it, though.
+- **Opening the page** shows what it showed last time straight away (**Updating…** at the top right), then the newest.
 - **The page keeps itself up to date** while it's open: every 45 seconds (and when you come back to it), it loads the
   newest data, so a new request, a locked PIN or another admin's change shows without reloading.
 
@@ -1032,7 +1079,17 @@ Open requests from phones, newest first, with a red count on the tab.
 - **New phones without a name** are listed below the requests, with a box to type one.
 - **After answering,** the request moves to **Answered just now**. **Check for new requests** loads the newest.
 - **Answered:** requests answered in the last 30 days (newest first), each with **who answered and how**: *On the admin
-  page by Ms Green*, or *On the phone with your PIN*. A helper sees only their phones' requests.
+  page by Ms Green*, or *On the phone with your PIN*. A helper sees only their phones' requests. **Tap one** for all
+  its details: what it changed, what the phone was told, and its history. Then:
+  - **Undo the approval:** takes back exactly what it changed (anything changed since stays as it is), with an
+    optional reason. The phone shows *"Changed to denied"* in My requests (and a notification), like any answer.
+  - **Approve after all** (a denied one): the same card as a waiting request.
+- **What the site is:** a request card shows the site's own name and description (found when the request arrives),
+  and **Look at the site first** opens it in a new tab.
+- **Ask for time** requests (from [Timers](#timers)): **Approve** as asked, **Other time**, or **Deny**.
+- **Emails about a new request** go a minute after it arrives, and only if it's still waiting (answered with a PIN
+  meanwhile: no email). Admin phones aren't notified of a request that was already answered, or while the admin
+  page is open on them.
 
 ### Sites
 **Search sites in every list** at the top suggests sites as you type (name, address, and which lists it's in); tap
@@ -1065,8 +1122,11 @@ any list marked public), then each phone's own list, and **+** makes a new one (
       such entry in the list, in one place.
 
 ### Phones
-One compact row per phone: its name, ID, lists and groups, and tags only when something needs attention (*Blocked*,
-*Needs a name*, *Locked PIN*, a filter switched off). **Search phones** filters by name, ID, model or list as you type.
+One compact row per phone: its name, ID, lists and groups, **when it last used the app and its app version** (*older
+app* if it hasn't updated), and tags only when something needs attention (*Blocked*, *Needs a name*, *Locked PIN*,
+*Clock*, a filter switched off). A phone that hasn't opened the app for **2 days** gets a yellow note at the top (it may
+have been uninstalled, or another browser is being used); its screen has **Ask it to update** for an older app, and
+says if its clock was changed by hand. **Search phones** filters by name, ID, model or list as you type.
 - **Groups** (e.g. everyone from one school): the chips at the top show just one group's phones. **Groups** (at the
   bottom) makes, renames and deletes them; put a phone in a group on its screen. A helper admin given a group looks
   after every phone in it, including phones added later.
@@ -1090,6 +1150,9 @@ One compact row per phone: its name, ID, lists and groups, and tags only when so
 - **Add a phone by its ID:** found on the phone under ⋮ → Settings → About this phone, with its first and last name.
 - **Questions** (delete, block, archive, discard changes) appear as the page's own dialogs: **Escape** or **Cancel**
   backs out.
+
+### Timers
+Every timer, by who it's for, with **On now / Later / Paused**, and **New timer**. See [Timers](#timers).
 
 ### Settings
 - **Filters:** **Block ads**, **Block trackers**, **Hide annoyances**, **Block adult content**, **Block gambling**,

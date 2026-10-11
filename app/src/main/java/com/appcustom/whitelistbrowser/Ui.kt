@@ -75,6 +75,7 @@ object Ui {
         private set
     var HANDLE = 0
         private set
+    var CHIP_OFF = 0                  // a button that isn't picked (chips, and the band behind choices)
     var BAR = 0                       // the top bar (and the phone's status bar)
         private set
     var dark = false
@@ -91,7 +92,7 @@ object Ui {
             PAPER = c(0xFFF5F3EE); PAGE = c(0xFFF5F3EE); CARD = c(0xFFFFFFFF); SEG = c(0xFFEAE7E0)
             ACCENT = c(0xFF1F5F55); ACCENT_TEXT = c(0xFF1F5F55); SOFT = c(0xFFE1EEEA); OUTLINE = c(0xFFCFDDD8)
             AMBER_BG = c(0xFFFBEFD5); AMBER_INK = c(0xFF6B4700); RED_BG = c(0xFFF7E3DE); RED_INK = c(0xFF8E3322)
-            DANGER = c(0xFFA33A2A); TRACK_OFF = c(0xFFBFBAB0); HANDLE = c(0xFFCFCBC2); BAR = c(0xFF1F3A3D)
+            DANGER = c(0xFFA33A2A); TRACK_OFF = c(0xFFBFBAB0); HANDLE = c(0xFFCFCBC2); BAR = c(0xFF1F3A3D); CHIP_OFF = c(0xFFE3DFD6)
         } else {
             // Dark: softer than near-black, so text and edges are easier to read.
             INK = c(0xFFECF2F0); INK2 = c(0xFFD2DDDA); MUTED = c(0xFFAEBFBB); HINT = c(0xFF8EA19D)
@@ -99,7 +100,7 @@ object Ui {
             PAPER = c(0xFF273536); PAGE = c(0xFF1F2B2C); CARD = c(0xFF304041); SEG = c(0xFF364748)
             ACCENT = c(0xFF3D8F7E); ACCENT_TEXT = c(0xFF9BE3C2); SOFT = c(0xFF2C4A44); OUTLINE = c(0xFF4A5D5E)
             AMBER_BG = c(0xFF4A3B20); AMBER_INK = c(0xFFF5D08A); RED_BG = c(0xFF4A2C28); RED_INK = c(0xFFF7B4A7)
-            DANGER = c(0xFFC4553F); TRACK_OFF = c(0xFF56696A); HANDLE = c(0xFF56696A); BAR = c(0xFF1A3134)
+            DANGER = c(0xFFC4553F); TRACK_OFF = c(0xFF56696A); HANDLE = c(0xFF56696A); BAR = c(0xFF1A3134); CHIP_OFF = c(0xFF425455)
         }
     }
 
@@ -117,14 +118,14 @@ object Ui {
             OUTLINE = sys("system_accent1_200"); PAPER = sys("system_neutral1_50"); PAGE = sys("system_neutral1_10")
             SEG = sys("system_neutral2_100"); LINE = sys("system_neutral2_100"); LINE2 = sys("system_neutral2_50")
             INK = sys("system_neutral1_900"); INK2 = sys("system_neutral2_800"); MUTED = sys("system_neutral2_600")
-            TRACK_OFF = sys("system_neutral2_300"); HANDLE = sys("system_neutral2_300"); BAR = sys("system_accent1_800")
+            TRACK_OFF = sys("system_neutral2_300"); HANDLE = sys("system_neutral2_300"); BAR = sys("system_accent1_800"); CHIP_OFF = sys("system_neutral2_200")
         } else {
             ACCENT = sys("system_accent1_500"); ACCENT_TEXT = sys("system_accent1_200"); SOFT = sys("system_accent1_800")
             OUTLINE = sys("system_neutral2_600"); PAPER = sys("system_neutral1_800"); PAGE = sys("system_neutral1_900")
             CARD = sys("system_neutral1_700"); SEG = sys("system_neutral2_700"); LINE = sys("system_neutral2_700")
             LINE2 = sys("system_neutral2_800"); INK = sys("system_neutral1_50"); INK2 = sys("system_neutral1_100")
             MUTED = sys("system_neutral2_200"); TRACK_OFF = sys("system_neutral2_500"); HANDLE = sys("system_neutral2_500")
-            BAR = sys("system_accent1_900")
+            BAR = sys("system_accent1_900"); CHIP_OFF = sys("system_neutral2_600")
         }
     }
 
@@ -245,7 +246,7 @@ object Ui {
             top.addView(Ui.text(ctx, title, 15f, Ui.INK, "bold"), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             val seg = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
-                background = Ui.rounded(Ui.SEG, Ui.dp(ctx, 12).toFloat())
+                background = Ui.rounded(Ui.CHIP_OFF, Ui.dp(ctx, 12).toFloat())
                 setPadding(Ui.dp(ctx, 3), Ui.dp(ctx, 3), Ui.dp(ctx, 3), Ui.dp(ctx, 3))
                 addView(open, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(ctx, 40)))
                 addView(block, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(ctx, 40)))
@@ -293,30 +294,31 @@ object Ui {
             // Drawn by the app, so it's always clear. On: a solid green track with a big white knob. Off: an outlined
             // track (a clear dark outline) with a smaller dark knob, so it stands out even on a white card.
             val on = intArrayOf(android.R.attr.state_checked)
+            // Sized so the ball always stays inside the track: the track is exactly two balls wide (48dp), so Android
+            // never widens the switch past the track, and the ball moves half the track's width.
             trackDrawable = android.graphics.drawable.StateListDrawable().apply {
                 // On: outlined too (a deeper shade of the accent; lighter in dark mode), so it stands out even
                 // when the accent is pale (e.g. with the phone's own colours).
                 addState(on, GradientDrawable().apply {
-                    setColor(ACCENT); setStroke(dp(ctx, 2), outlineOf(ACCENT)); cornerRadius = dp(ctx, 14).toFloat(); setSize(dp(ctx, 46), dp(ctx, 28))
+                    setColor(ACCENT); setStroke(dp(ctx, 2), outlineOf(ACCENT)); cornerRadius = dp(ctx, 14).toFloat(); setSize(dp(ctx, 48), dp(ctx, 28))
                 })
                 addState(intArrayOf(), GradientDrawable().apply {
-                    setColor(SEG); setStroke(dp(ctx, 2), MUTED); cornerRadius = dp(ctx, 14).toFloat(); setSize(dp(ctx, 46), dp(ctx, 28))
+                    setColor(SEG); setStroke(dp(ctx, 2), MUTED); cornerRadius = dp(ctx, 14).toFloat(); setSize(dp(ctx, 48), dp(ctx, 28))
                 })
             }
             thumbDrawable = android.graphics.drawable.StateListDrawable().apply {
-                // On: white, 22dp (a 3dp gap inside the track).
-                // (With its own outline, so a white knob still stands out on a pale accent.)
+                // On: a white 20dp ball in a 24×28 slot (2dp from the track's end).
                 addState(on, android.graphics.drawable.InsetDrawable(GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL; setColor(Color.WHITE); setStroke(dp(ctx, 1), outlineOf(ACCENT)); setSize(dp(ctx, 22), dp(ctx, 22))
-                }, dp(ctx, 3)))
-                // Off: dark grey, 16dp (a 6dp gap), the outline's colour.
+                    shape = GradientDrawable.OVAL; setColor(Color.WHITE); setStroke(dp(ctx, 1), outlineOf(ACCENT)); setSize(dp(ctx, 20), dp(ctx, 20))
+                }, dp(ctx, 2), dp(ctx, 4), dp(ctx, 2), dp(ctx, 4)))
+                // Off: a smaller dark 14dp ball, the outline's colour.
                 addState(intArrayOf(), android.graphics.drawable.InsetDrawable(GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL; setColor(MUTED); setSize(dp(ctx, 16), dp(ctx, 16))
-                }, dp(ctx, 6)))
+                    shape = GradientDrawable.OVAL; setColor(MUTED); setSize(dp(ctx, 14), dp(ctx, 14))
+                }, dp(ctx, 5), dp(ctx, 7), dp(ctx, 5), dp(ctx, 7)))
             }
             trackTintList = null
             thumbTintList = null
-            switchMinWidth = dp(ctx, 46)
+            switchMinWidth = dp(ctx, 48)
             showText = false
         }
         val row = LinearLayout(ctx).apply {
@@ -342,7 +344,7 @@ object Ui {
     class Segmented(ctx: Context, options: List<String>, selected: Int, vertical: Boolean, private val onChange: (Int) -> Unit) {
         val view = LinearLayout(ctx).apply {
             orientation = if (vertical) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
-            background = Ui.rounded(Ui.SEG, Ui.dp(ctx, 13).toFloat())
+            background = Ui.rounded(Ui.CHIP_OFF, Ui.dp(ctx, 13).toFloat())     // (darker than the picked one, so it stands out)
             setPadding(Ui.dp(ctx, 4), Ui.dp(ctx, 4), Ui.dp(ctx, 4), Ui.dp(ctx, 4))
         }
         private val buttons: List<Button> = options.mapIndexed { i, label ->
@@ -382,7 +384,7 @@ object Ui {
         private fun paintButton(i: Int, b: Button) {
             val on = i == index
             b.background = if (on) Ui.rounded(Ui.CARD, Ui.dp(b.context, 10).toFloat()) else ColorDrawable(Color.TRANSPARENT)
-            b.setTextColor(if (on) Ui.ACCENT_TEXT else Ui.MUTED)
+            b.setTextColor(if (on) Ui.ACCENT_TEXT else Ui.INK2)
             b.elevation = if (on) Ui.dp(b.context, 1).toFloat() else 0f
         }
     }
@@ -428,7 +430,8 @@ object Ui {
         private fun paintChip(i: Int, b: Button) {
             val on = i in selected
             val r = Ui.dp(b.context, 12).toFloat()
-            b.background = if (on) Ui.rounded(Ui.ACCENT, r) else Ui.rounded(Ui.CARD, r, Ui.LINE, Ui.dp(b.context, 1))
+            // Not picked: grey, no border (white looked as if it were picked).
+            b.background = if (on) Ui.rounded(Ui.ACCENT, r) else Ui.rounded(Ui.CHIP_OFF, r)
             val c = if (on) Color.WHITE else Ui.INK2
             b.setTextColor(c)
             b.compoundDrawables[0]?.setTint(c)

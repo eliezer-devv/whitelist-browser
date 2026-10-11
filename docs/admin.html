@@ -23,7 +23,7 @@
     --line: #E7E3DB; --line2: #EFECE5; --field: #D5D1C8;
     --accent: #1F5F55; --accent-dark: #16463F; --accent-soft: #E1EEEA; --mint: #7FD1A8;
     --amber: #FBEFD5; --amber-line: #EFD9A6; --amber-ink: #5C3D00;
-    --red: #A33A2A; --red-soft: #F7E3DE;
+    --red: #A33A2A; --red-soft: #F7E3DE; --chipoff: #E3DFD6; --danger: #A33A2A;
     --display: 'Bricolage Grotesque', Figtree, system-ui, sans-serif;
     --body: Figtree, system-ui, -apple-system, 'Segoe UI', sans-serif;
     --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -117,7 +117,7 @@
   .seg.ob { flex: none; gap: 2px; padding: 3px; }
   .seg.ob button { flex: none; padding: 0 14px; min-height: 38px; }
   .seg.ob button[aria-pressed="true"][data-v="open"] { background: var(--accent); color: #fff; }
-  .seg.ob button[aria-pressed="true"][data-v="blocked"] { background: var(--red); color: #fff; }
+  .seg.ob button[aria-pressed="true"][data-v="blocked"] { background: var(--danger); color: #fff; }
   .seg.ob button:disabled { opacity: .55; }
   .mrows { display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 2px 14px; }
   .mrow { display: flex; flex-direction: column; gap: 4px; padding: 9px 0; border-top: 1px solid var(--line2); }
@@ -329,6 +329,7 @@
   :root[data-theme="dark"] { --bg: #1F2B2C; --card: #304041; --ink: #ECF2F0; --ink2: #D2DDDA; --muted: #AEBFBB; --faint: #8EA19D;
     --line: #3D4E4F; --line2: #364748; --field: #4A5D5E; --accent: #3D8F7E; --accent-dark: #347A6C; --accent-soft: #2C4A44;
     --mint: #9BE3C2; --amber: #4A3B20; --amber-line: #6A5530; --amber-ink: #F5D08A; --red: #F7B4A7; --red-soft: #4A2C28;
+    --chipoff: #425455; --danger: #C4553F;
     color-scheme: dark; }
   :root[data-theme="dark"] a, :root[data-theme="dark"] .back, :root[data-theme="dark"] .done, :root[data-theme="dark"] details.more > summary, :root[data-theme="dark"] .chip.teal, :root[data-theme="dark"] .av, :root[data-theme="dark"] .pick[aria-pressed="true"],
   :root[data-theme="dark"] #tabs button[aria-current="page"] { color: var(--mint); }
@@ -340,7 +341,7 @@
   :root[data-theme="dark"] .lc.add, :root[data-theme="dark"] .lc.addtxt { background: transparent; border-color: #56696A; }
   :root[data-theme="dark"] .listrow .lc.add { background: color-mix(in srgb, var(--bg) 60%, transparent); }
   :root[data-theme="dark"] .seg, :root[data-theme="dark"] .chip, :root[data-theme="dark"] .av.grey { background: #364748; }
-  :root[data-theme="dark"] .seg button[aria-pressed="true"] { background: #435657; color: var(--ink); }
+  :root[data-theme="dark"] .seg button[aria-pressed="true"] { background: #5E7374; color: var(--ink); }
   :root[data-theme="dark"] .chip.amber { color: var(--amber-ink); }
   :root[data-theme="dark"] .chip.red { color: var(--red); }
   :root[data-theme="dark"] .sw { background: #364748; }
@@ -370,6 +371,28 @@
   .rules { list-style: none; margin: -4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted, #5B6B69); }
   .rules li { display: flex; align-items: center; gap: 6px; }
   .rules li.ok { color: var(--accent); }
+  /* Buttons that aren't picked: grey with no border (white looked picked), on both themes. */
+  :root .lc:not([aria-pressed="true"]):not(.add):not(.addtxt), :root .kc:not([aria-pressed="true"]) { background: var(--chipoff); border-color: transparent; color: var(--ink2); }
+  :root .seg { background: var(--chipoff); }
+  :root .seg.ob button[aria-pressed="true"][data-v="open"] { background: var(--accent); color: #fff; }
+  :root .seg.ob button[aria-pressed="true"][data-v="blocked"] { background: var(--danger); color: #fff; }
+  :root .seg button:not([aria-pressed="true"]) { color: var(--ink2); }
+  /* A request card: what the site says it is, and a link to look at it first. */
+  .siteabout { display: flex; flex-direction: column; gap: 6px; }
+  .siteabout .sa { display: flex; gap: 10px; align-items: flex-start; background: var(--chipoff); border-radius: 12px; padding: 10px 12px; }
+  .siteabout .sal { flex: none; width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+  .siteabout .sat { overflow-wrap: anywhere; }
+  .lookfirst { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .row.tap { width: 100%; text-align: left; }
+  /* Timers */
+  .timerrow { align-items: center; gap: 10px; }
+  .timerrow .tbody { display: flex; flex-direction: column; gap: 1px; text-align: left; background: none; border: 0; padding: 0; min-width: 0; color: inherit; font: inherit; cursor: pointer; }
+  .seg.wrap { flex-wrap: wrap; }
+  .seg.wrap button { flex: 1 1 auto; padding: 0 10px; }
+  :root .seg button.strict[aria-pressed="true"] { background: var(--danger); color: #fff; }
+  :root .seg.wrap button[aria-pressed="true"]:not([data-v=""]):not(.strict) { background: var(--accent); color: #fff; }
+  .during .drow { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; }
+  .daychips .lc { min-width: 3.2rem; justify-content: center; }
 </style>
 </head>
 <body>
@@ -426,11 +449,11 @@ const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>', check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>',
   shield: '<path d="M12 3.5l7 3v5c0 4.2-3 7.6-7 9-4-1.4-7-4.8-7-9v-5z"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>',
-  ext: '<path d="M14 5h5v5"/><path d="M19 5l-8 8"/><path d="M18 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4"/>',
   table: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 10h16M10 10v9"/>',
   ban: '<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>',
   info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/>',
   trash: '<path d="M5 7h14M10 7V5h4v2M7 7l1 13h8l1-13"/>',
+  ext: '<path d="M14 5h5v5"/><path d="M19 5l-8 8"/><path d="M18 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   list: '<path d="M8 6h12M8 12h12M8 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
@@ -610,7 +633,7 @@ async function newMacSecret() {
 async function forgetDevice() {
   DEV = null; setSession(null);
   try { localStorage.removeItem('wl-admin-pin'); localStorage.removeItem('wl-admin-bio'); } catch {}   // (its locks go with it)
-  await idb.del('device').catch(() => {}); await idb.del('mac').catch(() => {});
+  await idb.del('device').catch(e => console.log(`(carried on, line 636) ${e && e.message}`)); await idb.del('mac').catch(e => console.log(`(carried on, line 636) ${e && e.message}`));
 }
 // This device's time zone (emails give times in it).
 const localTz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { return ''; } };
@@ -684,7 +707,7 @@ let signedChain = Promise.resolve();
 function command(cmd, opts = {}) {
   if (opts.signed === false) return commandNow(cmd, opts);
   const run = signedChain.then(() => commandNow(cmd, opts));
-  signedChain = run.catch(() => {});
+  signedChain = run.catch(e => console.log(`(carried on, line 710) ${e && e.message}`));
   return run;
 }
 async function commandNow(cmd, { signed = true, minutes = 4 } = {}) {
@@ -700,9 +723,12 @@ async function commandNow(cmd, { signed = true, minutes = 4 } = {}) {
     sealed = { p, aid: s.aid, did: dev.did, mac: u8b64(await crypto.subtle.sign('HMAC', mac, enc8(p))) };
   } else sealed = { p: JSON.stringify(payload) };
   const number = await postCommand(sealed);
-  const r = await awaitAnswers(number, () => true, { minutes });
+  const seen = new Set();
+  const r = await awaitAnswers(number, () => true, { minutes, seen });
   if (!r) throw new Error('No answer from GitHub yet. Its automation may be busy or switched off (private repository → Actions). Try again in a minute.');
   r.number = number;
+  // Saved already; the admin data is re-packed after (a second answer says when, with the version to read).
+  if (r.later) r.published = awaitAnswers(number, x => !!x.published, { minutes: 6, seen }).then(x => x ? x.sha || null : null).catch(() => null);
   if (r.code === 'SIGNED_OUT' || r.code === 'PAUSED') { await signedOutHere(r.error); throw new Error(r.error); }
   return r;
 }
@@ -726,18 +752,20 @@ async function aesOpen(key, text) {
   return dec8(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64u8(iv) }, key, b64u8(d)));
 }
 // Loads the index (and this device's key) at version [sha]. False: this device has no key there (signed out).
-async function loadData(sha) {
+async function loadData(sha, { cached = false } = {}) {
   const s = getSession();
   if (!s) throw new Error('SIGNED_OUT');
   sha = sha || await latestSha() || s.sha;
   if (!sha) return false;
   const at = p => `${RAW}/${C.owner}/${publicRepoName()}/${sha}/a/${s.ah}/${p}`;
-  const kres = await fetch(at(`k/${s.dh}.json`), { cache: 'no-store' });
+  // (A version that opened here before never changes, so this browser's copy will do: that's the quick open.)
+  const how = { cache: cached ? 'force-cache' : 'no-store' };
+  const kres = await fetch(at(`k/${s.dh}.json`), how);
   if (kres.status === 404) return false;
   if (!kres.ok) throw new Error(`Couldn't load your data (${kres.status}). Check this device is online.`);
   const k = await unseal(await kres.json());
   const key = await crypto.subtle.importKey('raw', b64u8(k.k), 'AES-GCM', false, ['decrypt']);
-  const ires = await fetch(at('i.json'), { cache: 'no-store' });
+  const ires = await fetch(at('i.json'), how);
   if (!ires.ok) throw new Error(`Couldn't load your data (${ires.status}).`);
   const index = JSON.parse(await aesOpen(key, await ires.text()));
   Object.assign(DATA, { sha, key, index, at });
@@ -751,12 +779,27 @@ async function loadData(sha) {
 // If none of those has it (GitHub can take a moment to show a new version), it asks GitHub's automation, which
 // publishes it again, and says if this device really was signed out. It never signs out by itself.
 async function openData(sha) {
-  const tryAt = async v => { try { return await loadAll(v); } catch { return false; } };
+  const tryAt = async (v, o) => { try { return await loadAll(v, o); } catch (e) { console.log('open', e); return false; } };
   if (sha) for (let i = 0; i < 3; i++) { if (await tryAt(sha)) return true; await sleep(3000); }
-  else if (await tryAt()) return true;
+  else {
+    // Opening: what showed here last time, at once ("Updating…"), then the newest.
+    const last = getSession() && getSession().sha;
+    if (last && await tryAt(last, { cached: true })) {
+      S.updating = true; renderSync();
+      (async () => {
+        try { const v = await latestSha(); if (v && v !== DATA.sha && quietNow() && !S.devDirty && !S.listDirty) await refreshData(v); }
+        catch (e) { console.log('update', e); }
+        S.updating = false; renderSync();
+        const a = document.activeElement;
+        if (!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'checkbox')) render();
+      })();
+      return true;
+    }
+    if (await tryAt()) return true;
+  }
   const s = getSession();
   if (s && s.sha && s.sha !== sha && await tryAt(s.sha)) {
-    command({ op: 'refresh' }).then(r => r.ok && refreshData(r.sha)).catch(() => {});     // (then the newest, quietly)
+    command({ op: 'refresh' }).then(r => r.ok && refreshData(r.sha)).catch(e => console.log(`(carried on, line 802) ${e && e.message}`));     // (then the newest, quietly)
     return true;
   }
   const r = await command({ op: 'refresh' });           // (signed out for real: this signs out, and throws)
@@ -829,7 +872,8 @@ async function moveFile(from, to, message) {   // keeps the content exactly
   OVER.set(to, { text: t }); OVER.set(from, { gone: true });
   return true;
 }
-async function reply(number, text) { queueOp({ op: 'reply', number, text }, `Answer request #${number}`); }
+// [again]: answering one that was answered already ('undo' an approval, or 'approve' a denied one after all).
+async function reply(number, text, again) { queueOp({ op: 'reply', number, text, ...(again ? { again } : {}) }, `Answer request #${number}`); }
 async function flushQueue() {
   if (QUEUE.busy || !QUEUE.ops.length || QUEUE.failed) return;
   const ops = QUEUE.ops.splice(0), message = QUEUE.message;
@@ -839,16 +883,50 @@ async function flushQueue() {
     if (!r.ok) throw new Error(r.error || 'It wasn\'t saved.');
     QUEUE.busy = false; QUEUE.savedAt = Date.now();
     if (r.warning) say(r.warning, true);
-    if (!QUEUE.ops.length) {
-      // Saved: read GitHub's version (the same as what's shown, plus anything that came in meanwhile).
-      await refreshData(r.sha).catch(() => {});
+    // Saved a little differently (tidied by GitHub's automation): carry on from what's there now.
+    for (const [path, text] of Object.entries(r.files || {})) {
+      if (QUEUE.ops.some(o => o.path === path || o.to === path)) continue;      // (a newer change of it is on its way)
+      OVER.set(path, { text });
+      if (path === 'devices.json') {
+        S.devicesSha = await gitSha(text);
+        if (!S.devDirty) { try { const d = JSON.parse(text); S.D = d; if (!S.D.archived) S.D.archived = {}; softRender(); } catch (e) { console.log('devices', e); } }
+      }
     }
+    afterSave(r);
   } catch (e) {
     QUEUE.busy = false;
     if (e.message !== 'SIGNED_OUT') { QUEUE.failed = e.message; QUEUE.ops.unshift(...ops); }
   }
   renderSync();
   if (QUEUE.ops.length && !QUEUE.failed) flushQueue();
+}
+// Redraws, unless that would interrupt: a finger or mouse held down (a swipe, a drag) waits until it's let go, and
+// something being typed isn't cleared.
+let pointerHeld = false, renderWaiting = false;
+document.addEventListener('pointerdown', () => { pointerHeld = true; }, true);
+const letGo = () => { pointerHeld = false; if (renderWaiting) { renderWaiting = false; setTimeout(softRender, 0); } };
+document.addEventListener('pointerup', letGo, true);
+document.addEventListener('pointercancel', letGo, true);
+function softRender() {
+  if (pointerHeld) { renderWaiting = true; return; }
+  const a = document.activeElement;
+  if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'checkbox' && a.type !== 'radio') return;
+  render();
+}
+// Once a save is re-packed for the admin page: the newest data, once nothing else is still on its way (until then,
+// what's shown here stays, changes included).
+const PUB = { pending: 0 };
+const quietNow = () => !PUB.pending && !QUEUE.busy && !QUEUE.ops.length && !QUEUE.failed && !CMDQ.pending;
+function afterSave(r) {
+  if (!r.later) { if (!QUEUE.ops.length && !QUEUE.busy && !PUB.pending) refreshData(r.sha).catch(e => console.log('refresh', e)); return; }
+  PUB.pending++; renderSync();
+  r.published.then(async sha => {
+    PUB.pending--;
+    if (!quietNow()) return;                       // (the last one to finish reads it)
+    const was = DATA.sha;
+    await refreshData().catch(e => console.log('refresh', e));
+    if (DATA.sha === was && sha) { await sleep(3000); if (quietNow()) await refreshData(sha).catch(e => console.log('refresh', e)); }
+  }).finally(() => { renderSync(); softRender(); });
 }
 // After a save (or "Check for new requests"): the newest data, without losing what's being edited.
 async function refreshData(sha) {
@@ -870,12 +948,12 @@ function bg(cmd, okText, apply) {
   command(cmd).then(async r => {
     if (!r.ok) throw new Error(r.error || 'It wasn\'t saved.');
     QUEUE.savedAt = Date.now();
-    await refreshData(r.sha).catch(() => {});
+    if (r.later) afterSave(r); else await refreshData(r.sha).catch(e => console.log(`(carried on, line 951) ${e && e.message}`));
     if (r.warning) say(r.warning, true); else if (okText) say(r.msg || okText);
   }).catch(async e => {
     if (e.message === 'SIGNED_OUT') return;
     say(e.message, true);
-    await refreshData().catch(() => {});               // (back to what GitHub has)
+    await refreshData().catch(e => console.log(`(carried on, line 956) ${e && e.message}`));               // (back to what GitHub has)
   }).finally(() => {
     CMDQ.pending--; renderSync();
     // (Not while something's being typed: that would clear it.)
@@ -888,9 +966,10 @@ function renderSync() {
   const el = $('syncPill');
   if (!el) return;
   const busy = QUEUE.busy || QUEUE.ops.length || CMDQ.pending;
-  el.hidden = !(busy || QUEUE.failed || (QUEUE.savedAt && Date.now() - QUEUE.savedAt < 5000));
-  el.className = QUEUE.failed ? 'bad' : busy ? 'busy' : 'ok';
-  el.replaceChildren(QUEUE.failed ? 'Not saved: tap for details' : busy ? 'Saving…' : 'Saved');
+  const upd = !busy && !QUEUE.failed && S.updating;
+  el.hidden = !(busy || upd || QUEUE.failed || (QUEUE.savedAt && Date.now() - QUEUE.savedAt < 5000));
+  el.className = QUEUE.failed ? 'bad' : busy || upd ? 'busy' : 'ok';
+  el.replaceChildren(QUEUE.failed ? 'Not saved: tap for details' : busy ? 'Saving…' : upd ? 'Updating…' : 'Saved');
   if (!busy && !QUEUE.failed && QUEUE.savedAt) setTimeout(renderSync, 5200);
 }
 async function showSaveProblem() {
@@ -1163,8 +1242,8 @@ function markDevices() { S.devDirty = true; renderSaveBar(); }
 
 // ---------- loading ----------
 // Everything this admin sees, at the newest version (or [sha]). False: this device is signed out.
-async function loadAll(sha) {
-  if (!(await loadData(sha))) return false;
+async function loadAll(sha, opts) {
+  if (!(await loadData(sha, opts))) return false;
   const folder = await getRaw('docs/lists');
   S.lists = ['public', ...(Array.isArray(folder) ? folder.filter(f => f.type === 'file' && f.name.endsWith('.json')).map(f => f.name.slice(0, -5)).sort() : [])];
   await loadDevices();
@@ -1525,8 +1604,8 @@ function render() {
   else if (S.sub) node = ({ site: siteScreen, temp: tempScreen, block: blockScreen, nomedia: noMediaScreen, import: importScreen,
     listsettings: listSettingsScreen, phone: phoneScreen, archived: archivedScreen, neverblock: neverBlockScreen, pin: pinScreen,
     log: logScreen, account: accountScreen, admins: adminsScreen, admin: adminScreen, groups: groupsScreen,
-    approvalpin: approvalPinScreen, embeds: embedsScreen, request: requestDetailsScreen })[S.sub.name]();
-  else node = ({ requests: requestsScreen, sites: sitesScreen, phones: phonesScreen, settings: settingsScreen })[S.tab]();
+    approvalpin: approvalPinScreen, embeds: embedsScreen, request: requestDetailsScreen, answered: answeredDetailsScreen, timer: timerScreen })[S.sub.name]();
+  else node = ({ requests: requestsScreen, sites: sitesScreen, phones: phonesScreen, timers: timersScreen, settings: settingsScreen })[S.tab]();
   view.replaceChildren(node);
   const key = S.connected ? (S.sub ? 'sub:' + S.sub.name : 'tab:' + S.tab) : 'connect';
   if (key !== lastScreenKey) { window.scrollTo(0, 0); lastScreenKey = key; }
@@ -1542,7 +1621,7 @@ function renderTabs() {
   const waiting = S.requests ? S.requests.length + S.newPhones.length : 0;
   // (A mini admin sees only what they can use.)
   const tabs = [canDo('requests') ? ['requests', 'Requests', 'inbox', waiting] : null, canDo('edit') ? ['sites', 'Sites', 'globe', 0] : null,
-    seesPhones() ? ['phones', 'Phones', 'phone', 0] : null, ['settings', 'Settings', 'sliders', 0]].filter(Boolean);
+    seesPhones() ? ['phones', 'Phones', 'phone', 0] : null, seesPhones() ? ['timers', 'Timers', 'clock', 0] : null, ['settings', 'Settings', 'sliders', 0]].filter(Boolean);
   $('tabs').replaceChildren(...tabs.map(([id, label, ic, badge]) => h('button', { type: 'button', 'aria-current': S.tab === id ? 'page' : null, onclick: () => go(id) },
     h('span', { class: 'pill' }, icon(ic, 22), badge ? h('span', { class: 'badge', 'aria-label': `${badge} waiting` }, badge) : null), label)));
 }
@@ -1583,7 +1662,7 @@ async function openSignedIn() {
 async function finishSignIn(r, macKey) {
   if (!macKey) { const p = await idb.get('macPending').catch(() => null); if (p && p.did === r.did) macKey = p.key; }
   if (macKey) await idb.set('mac', macKey);
-  await idb.del('macPending').catch(() => {});
+  await idb.del('macPending').catch(e => console.log(`(carried on, line 1665) ${e && e.message}`));
   setSession({ aid: r.aid, did: r.did, ah: r.ah, dh: r.dh, n: Number(r.seq) || 0 });
   S.signin = null;
   try {
@@ -1750,7 +1829,7 @@ async function pinOk(pin) {
   localStorage.setItem(PIN_KEY, JSON.stringify(P));
   if (P.tries >= 5) {                       // 5 wrong: this phone is signed out (sign in again with the password)
     localStorage.removeItem(PIN_KEY);
-    command({ op: 'signout' }).catch(() => {});
+    command({ op: 'signout' }).catch(e => console.log(`(carried on, line 1832) ${e && e.message}`));
     await sleep(300);
     await forgetDevice();
   }
@@ -1870,7 +1949,7 @@ function unlockScreen() {
     P ? h('div', { class: 'field' }, h('label', { for: 'uPin' }, 'Your PIN'), pin) : null, go1,
     h('button', { type: 'button', class: 'btn d', onclick: async () => {
       if (!(await uiConfirm('Sign in with your password instead?', 'This device is signed out, then you sign in again with your email and password.', 'Sign out', { icon: 'warn' }))) return;
-      command({ op: 'signout' }).catch(() => {}); await sleep(300); localStorage.removeItem(PIN_KEY); localStorage.removeItem(BIO_KEY); S.locked = false; await signedOutHere(); } },
+      command({ op: 'signout' }).catch(e => console.log(`(carried on, line 1952) ${e && e.message}`)); await sleep(300); localStorage.removeItem(PIN_KEY); localStorage.removeItem(BIO_KEY); S.locked = false; await signedOutHere(); } },
       P ? 'Forgot the PIN?' : 'Use my password instead'));
 }
 
@@ -1892,7 +1971,7 @@ async function runCommand(btn, label, cmd, okText) {
   try {
     const r = await command(cmd);
     if (!r.ok) throw new Error(r.error);
-    await refreshData(r.sha).catch(() => {});
+    await refreshData(r.sha).catch(e => console.log(`(carried on, line 1974) ${e && e.message}`));
     S.admins = null;
     if (r.warning) say(r.warning, true); else say(r.msg || okText);
     return r;
@@ -1925,7 +2004,7 @@ function accountScreen() {
   };
   const signOut = async () => {
     if (!(await uiConfirm('Sign out on this device?', 'You\'ll need your email and password (and the emailed link) to sign in here again.', 'Sign out', { icon: 'warn' }))) return;
-    command({ op: 'signout' }).catch(() => {});
+    command({ op: 'signout' }).catch(e => console.log(`(carried on, line 2007) ${e && e.message}`));
     await sleep(400); localStorage.removeItem(PIN_KEY); localStorage.removeItem(BIO_KEY);
     await signedOutHere(); say('Signed out on this device.');
   };
@@ -2207,18 +2286,20 @@ async function loadInbox() {
       i.body = r ? (who ? `**Phone:** ${who} (\`${r.device || r.id || ''}\`)\n` : '') +
         (r.note ? `**Note:** ${String(r.note).replace(/\n/g, ' ')}\n` : '') + `<!-- whitelist-request\n${JSON.stringify(r)}\n-->` : '';
       i._log = (i.record && i.record.log) || [];
+      i._site = (i.record && i.record.site) || null;           // what the site says it is (found when it arrived)
     }
     const answered = new Set(S.answeredNumbers || []);
     S.requests = items.filter(i => i.kind === 'request' && marker(i.body) && !answered.has(i.number));
     S.newPhones = items.filter(i => i.kind === 'phone' && (marker(i.body) || {}).type === 'register' && !answered.has(i.number));
     try { S.answeredList = JSON.parse(await textOf('answered.json') || '[]'); } catch { S.answeredList = []; }
+    try { S.seen = JSON.parse(await textOf('seen.json') || 'null'); } catch (e) { console.log('seen', e); S.seen = null; }
     S.inboxError = null;
   } catch (e) {
     S.requests = []; S.newPhones = [];
     S.inboxError = e.message;
   }
   if (S.focusRequest && !S.sub) S.tab = 'requests';
-  render();
+  if (S.focusRequest) render(); else softRender();      // (not in the middle of a swipe, or while typing)
   if (S.focusRequest) {
     const card = document.querySelector(`[data-n="${CSS.escape(S.focusRequest)}"]`);
     if (card) { card.classList.add('focus'); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
@@ -2261,6 +2342,8 @@ function setDefault(d, k, v) {
   if (Object.keys(md).length) d.mediaDefault = md; else delete d.mediaDefault;
 }
 function describe(req) {
+  if (req.type === 'timer') { const tn = (timerDefs()[req.timer] || {}).name || req.timerName || 'a timer', m = Number(req.minutes) || 30;
+    return { title: req.ask === 'more' ? `${fmtMin(m)} more of ${tn} today` : `${fmtMin(m)} off ${tn}`, page: null }; }
   if (req.type === 'mediaDefault') return { title: 'Change this phone\'s default', page: null };
   if (req.type === 'search') return { title: req.off === true ? 'Turn off search' : req.wasOn === true ? 'Change search' : 'Turn on search', page: null };
   const site = req.domain || '?';
@@ -2302,11 +2385,13 @@ function requestsScreen() {
       const a = x.answer, denied = a.verdict === 'denied';
       const by = a.how === 'pin' ? `On the phone with ${a.by === ME.name || (isOwner() && a.by === 'the main admin') ? 'your' : possessive(a.by)} PIN`
         : `${a.how === 'page' ? 'On the admin page' : 'On GitHub'} by ${a.by === (ME.name || ME.email) ? 'you' : a.by}`;
-      return h('div', { class: 'row' }, h('span', { class: 'ic', style: `color:${denied ? 'var(--red-ink,#8A2E1F)' : 'var(--accent)'}` }, icon(denied ? 'ban' : 'check', 20, 2.2)),
+      return h('button', { type: 'button', class: 'row tap', 'data-answered': x.number, onclick: () => open({ name: 'answered', number: x.number }) },
+        h('span', { class: 'ic', style: `color:${denied ? 'var(--red-ink,#8A2E1F)' : 'var(--accent)'}` }, icon(denied ? 'ban' : 'check', 20, 2.2)),
         h('span', { class: 'grow', style: 'min-width:0' }, h('span', { class: 'name' }, describe(x.request).title),
           h('span', { class: 'dom' }, `${who} · ${new Date(a.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`),
           h('span', { class: 'dom' }, by)),
-        h('span', { class: 'small', style: `font-weight:700;color:${denied ? 'var(--red-ink,#8A2E1F)' : 'var(--accent)'}` }, denied ? 'Denied' : 'Approved'));
+        h('span', { class: 'small', style: `font-weight:700;color:${denied ? 'var(--red-ink,#8A2E1F)' : 'var(--accent)'}` }, a.undone ? 'Undone' : denied ? 'Denied' : 'Approved'),
+        icon('chev', 16));
     })));
     if (!S.answeredMore && S.answeredList.length > done.length) kids.push(h('button', { type: 'button', class: 'btn s sm', style: 'align-self:center', onclick: () => { S.answeredMore = true; render(); } }, 'Show more'));
   }
@@ -2316,6 +2401,7 @@ const possessive = n => /^the /.test(n) ? `${n}'s` : `${n}'${/s$/i.test(n) ? '' 
 function requestCard(issue) {
   const req = marker(issue.body);
   if (req.type === 'mediaDefault' || req.type === 'search') return settingRequestCard(issue, req);
+  if (req.type === 'timer') return timerRequestCard(issue, req);
   const { title, page } = describe(req);
   const phone = field(issue.body, 'Phone').replace(/`/g, '').replace(/\s*\([A-Z0-9-]+\)\s*$/, '') || 'A phone';
   const note = field(issue.body, 'Note');
@@ -2375,7 +2461,14 @@ function requestCard(issue) {
       const approving = text.startsWith('approve');
       const lw = approving ? listWords() : '';
       const kw = approving && allow && req.media !== 'on' && !frames.length ? kindWords() : '';
-      await reply(issue.number, text + lw + kw);
+      await reply(issue.number, text + lw + kw, issue._again);
+      if (issue._again) {
+        // Approved after all: shown at once on the answered request.
+        const x = (S.answeredList || []).find(i => i.number === issue.number);
+        if (x) x.answer = { ...x.answer, verdict: 'approved', undone: false, at: new Date().toISOString(), by: ME.name || ME.email, how: 'page', message: '', undoable: false, changed: [] };
+        render();
+        return say(`${label}. ${phone}'s phone is told within a few minutes.`);
+      }
       S.answeredNumbers = [...(S.answeredNumbers || []), issue.number];
       S.requests = S.requests.filter(i => i.number !== issue.number);
       const where = approving ? targets.filter(t => t.box.checked).map(t => t.label) : [];
@@ -2427,13 +2520,14 @@ function requestCard(issue) {
       (asked ? `Approve for ${fmtMin(asked)}` : 'Approve') + (filtered.length ? ' anyway' : '')));
     if (!frames.length) actions.append(h('button', { type: 'button', class: 'btn s while', onclick: openWhile }, asked ? 'Other time' : 'Temporary'));
   }
-  actions.append(h('button', { type: 'button', class: 'btn d deny', onclick: openDeny }, 'Deny'));
+  if (!issue._again) actions.append(h('button', { type: 'button', class: 'btn d deny', onclick: openDeny }, 'Deny'));
   card.append(...[
     h('div', { class: 'who' }, h('span', null, h('span', { class: 'av' }, phone[0].toUpperCase()), h('b', null, phone), h('span', { class: 'muted small' }, '· ' + ago(issue.created_at))),
       asked ? chip(fmtMin(asked), 'amber', 'clock') : !allow ? chip(req.media === 'off' ? 'Only some' : 'Block', 'red', 'ban')
         : req.media === 'on' ? chip(req.item ? 'One item' : 'Media', 'teal', 'photooff') : null),
     h('h3', null, title),
     page ? h('p', { class: 'mono muted', style: 'margin:0' }, page) : null,
+    siteAbout(req, issue._site),
     allow && req.media === 'off' ? h('p', { class: 'line' }, icon('photooff', 16), `Asked without ${mediaWords(req.mediaKind)}`) : null,
     allow && req.media !== 'on' && askedOpen.length ? h('p', { class: 'line' }, icon('photo', 16), `Asked for ${mediaWords(askedOpen.join(','))} too`) : null,
     hops.length ? h('p', { class: 'line' }, icon('link', 16), `Goes through ${plural(hops.length, 'other address')} first, allowed too when you approve`) : null,
@@ -2451,9 +2545,146 @@ function requestCard(issue) {
     allow && req.media !== 'on' && !frames.length && openByDef.length ? h('div', { class: 'flabel klabel' }, 'Block', defTag(openByDef, 'open')) : null,
     allow && req.media !== 'on' && !frames.length && openByDef.length ? h('div', { class: 'kinds', 'data-group': 'block' }, kindChips) : null,
     actions, panels,
-    h('button', { type: 'button', class: 'btn d details', style: 'align-self:center', onclick: () => open({ name: 'request', number: issue.number }) },
+    issue._again ? null : h('button', { type: 'button', class: 'btn d details', style: 'align-self:center', onclick: () => open({ name: 'request', number: issue.number }) },
       'All the details', icon('chev', 16))].filter(Boolean)); // skip lines that don't apply
   return card;
+}
+// ---------- an answered request: all the details, and changing the answer ----------
+const whenText = t => new Date(t).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+function answeredBy(a) {
+  const me = a.by === (ME.name || ME.email) || (isOwner() && a.by === 'the main admin');
+  return a.how === 'pin' ? `On the phone with ${me ? 'your' : possessive(a.by)} PIN` : `${a.how === 'page' ? 'On the admin page' : 'On GitHub'} by ${me ? 'you' : a.by}`;
+}
+function answeredDetailsScreen() {
+  const x = (S.answeredList || []).find(i => i.number === S.sub.number);
+  if (!x) return h('main', { class: 'stack' }, backLink('Requests'), h('div', { class: 'card empty' }, h('b', null, 'Not found'), 'It may be more than 30 days old.'));
+  const req = x.request || {}, a = x.answer || {};
+  const { title, page } = describe(req);
+  const dev = S.D.devices[x.phone] || (S.D.archived || {})[x.phone];
+  const kv = (k, v) => v == null || v === '' ? null : h('div', { class: 'kv' }, h('span', { class: 'k' }, k), h('span', { class: 'v' }, v));
+  const denied = a.verdict === 'denied';
+  const isSet = req.type === 'mediaDefault' || req.type === 'search';
+  const noSite = isSet || req.type === 'timer';
+  const asked = Number(req.minutes) || 0;
+  const changed = (a.changed || []).map(c => `${c.text}${c.list ? ` (${c.list === x.phone.toLowerCase() ? (dev && dev.name ? dev.name + '\'s own list' : 'own list') : /^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(c.list) ? 'phone' : listLabel(c.list)})` : ''}`);
+  const status = a.undone ? 'Approval undone' : denied ? 'Denied' : 'Approved';
+  const kids = [backLink('Requests'), screenTitle(title, `Request #${x.number} · ${status}`),
+    h('section', { class: 'card kvs' },
+      kv('Phone', dev ? `${dev.name || x.phone} (${x.phone})` : x.phone),
+      x.asked ? kv('Asked', whenText(x.asked)) : null,
+      noSite ? null : kv('What', req.action === 'block' ? (req.media === 'off' ? `Block only the ${mediaWords(req.mediaKind)}` : 'Block it')
+        : req.media === 'on' ? (req.item ? 'One photo or video' : `Turn ${mediaWords(req.mediaKind)} back on`)
+        : Array.isArray(req.frames) && req.frames.length ? 'Embedded content' : 'Open it'),
+      noSite ? null : kv('Where', page ? `Just this page: ${page}` : `The whole site: ${req.domain || '?'}`),
+      kv('One item', req.item || null),
+      isSet || req.action === 'block' ? null : kv(req.type === 'timer' ? 'Asked for' : 'How long', asked ? `${fmtMin(asked)}${req.timeMode === 'use' ? ', time on the site only' : ', from when it\'s approved'}` : 'Always'),
+      kv('Note', req.note ? `“${req.note}”` : null),
+      kv('Answered', `${status === 'Approval undone' ? 'Undone' : status} ${answeredBy(a).replace(/^On/, 'on')}, ${whenText(a.at)}`),
+      kv('Reason', a.reason || null),
+      kv('It changed', !denied && changed.length ? changed.join('\n') : null),
+      kv('Phone told', a.message ? `“${a.message}”` : null),
+      kv('Before that', (x.earlier || []).length ? x.earlier.map(e => `${e.verdict === 'denied' ? 'Denied' : 'Approved'} ${answeredBy(e).replace(/^On/, 'on')}, ${whenText(e.at)}`).join('\n') : null),
+      kv('History', (x.log || []).length ? x.log.map(e => `${new Date(e.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: ${String(e.text).replace(/\*\*/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\n+/g, ' ').slice(0, 300)}`).join('\n') : null))];
+  const mayAnswer = isSet ? (canDo('manage') || fullAdmin()) : canDo('requests');
+  if (mayAnswer && req.type !== 'register') {
+    if (!denied && a.undoable) {
+      kids.push(h('div', { class: 'flabel', style: 'margin-top:8px' }, 'Change the answer'),
+        h('button', { type: 'button', class: 'btn dline', id: 'undoAnswer', onclick: () => undoApproval(x, changed) }, icon('undo', 18), 'Undo the approval'),
+        h('p', { class: 'hint', style: 'margin:0' }, 'Takes back exactly what it changed, and tells the phone. Anything changed since stays as it is.'));
+    } else if (!denied) {
+      kids.push(h('p', { class: 'hint' }, 'This approval can\'t be undone here (it was made before undoing was possible, or changed nothing). Change it on the Sites tab instead.'));
+    } else {
+      kids.push(h('div', { class: 'flabel', style: 'margin-top:8px' }, 'Approve after all'));
+      // The same card as a waiting request (lists, Open/Block, Temporary): answered again.
+      const issue = { number: x.number, created_at: x.asked || a.at, _log: x.log || [], _again: 'approve',
+        body: (dev ? `**Phone:** ${dev.name || x.phone} (\`${x.phone}\`)\n` : '') + (req.note ? `**Note:** ${String(req.note).replace(/\n/g, ' ')}\n` : '') + `<!-- whitelist-request\n${JSON.stringify(req)}\n-->` };
+      kids.push(requestCard(issue));
+    }
+  }
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, kids);
+}
+async function undoApproval(x, changed) {
+  const dev = S.D.devices[x.phone];
+  const who = dev && dev.name ? dev.name : 'the phone';
+  const reason = h('input', { class: 'inp', id: 'undoReason', type: 'text', placeholder: 'e.g. only for the project, which is done', 'aria-label': 'Why? (optional)' });
+  const ok = await uiDialog({ title: 'Undo the approval?', icon: 'undo', red: true, danger: true, ok: 'Undo it',
+    text: `${changed.length ? changed.slice(0, 4).join('; ') + ' — taken back.' : 'What it changed is taken back.'} ${who}'s phone is told within a few minutes.`,
+    body: [h('div', { class: 'flabel' }, 'Why? (optional, shown on their phone)'), reason,
+      h('p', { class: 'hint', style: 'margin:6px 0 0' }, `They see in My requests: "Changed to denied" (and the reason).`)] });
+  if (!ok) return;
+  await reply(x.number, ('undo ' + reason.value.trim()).trim(), 'undo');
+  // (Shown at once; GitHub's version follows.)
+  x.answer = { ...x.answer, verdict: 'denied', undone: true, at: new Date().toISOString(), by: ME.name || ME.email, how: 'page', reason: reason.value.trim() || undefined,
+    message: 'Changed to denied' + (reason.value.trim() ? ': ' + reason.value.trim() : '.'), undoable: false };
+  render();
+  say(`Undone. ${who}'s phone is told within a few minutes.`);
+}
+// "Ask for time": time off a timer, or more of a daily allowance today. Approve (as asked, or another time) or deny.
+function timerRequestCard(issue, req) {
+  const { title } = describe(req);
+  const phone = field(issue.body, 'Phone').replace(/`/g, '').replace(/\s*\([A-Z0-9-]+\)\s*$/, '') || 'A phone';
+  const note = field(issue.body, 'Note');
+  const asked = Number(req.minutes) || 30;
+  const t = timerDefs()[req.timer];
+  const card = h('article', { class: 'card', 'data-n': issue.number });
+  const actions = h('div', { class: 'acts' }), panels = h('div');
+  const send = async (text, label) => {
+    actions.querySelectorAll('button').forEach(b => b.disabled = true);
+    try {
+      await reply(issue.number, text, issue._again);
+      if (issue._again) { const x = (S.answeredList || []).find(i => i.number === issue.number);
+        if (x) x.answer = { ...x.answer, verdict: 'approved', undone: false, at: new Date().toISOString(), by: ME.name || ME.email, how: 'page', message: '', undoable: false, changed: [] };
+        render(); return say(`${label}. ${phone}'s phone is told within a few minutes.`); }
+      S.answeredNumbers = [...(S.answeredNumbers || []), issue.number];
+      S.requests = S.requests.filter(i => i.number !== issue.number);
+      S.answered.unshift({ title, label: `${label} for ${phone}` });
+      render();
+      say(`${label}. GitHub does it within a minute, and ${phone} is told a few minutes after.`);
+    } catch (e) { actions.querySelectorAll('button').forEach(b => b.disabled = false); say(e.message === 'NO_ISSUES' ? NO_ISSUES_MSG : e.message, true); }
+  };
+  const dur = m => `${Math.floor(m / 60) ? Math.floor(m / 60) + 'h' : ''}${m % 60 ? m % 60 + 'm' : ''}`;
+  let whilePanel = null;
+  const openWhile = () => {
+    if (whilePanel) { whilePanel.hidden = !whilePanel.hidden; if (!whilePanel.hidden) whilePanel._picker.sync(); return; }
+    const label = h('div', { class: 'flabel' }), host = h('div');
+    const goBtn = h('button', { type: 'button', class: 'btn p grow approveFor' });
+    whilePanel = h('div', { class: 'panel', 'data-sync': '' }, label, host, h('div', { class: 'acts' }, goBtn));
+    panels.append(whilePanel);
+    const picker = makePicker(host, asked, m => { label.textContent = `How long: ${fmtMin(m)}`; goBtn.textContent = `Approve ${fmtMin(m)}`; goBtn.disabled = !m; });
+    whilePanel._picker = picker;
+    goBtn.onclick = () => { const m = picker.get(); if (m) send(`approve for ${dur(m)}`, `Approved ${fmtMin(m)}`); };
+    picker.sync();
+  };
+  let denyPanel = null;
+  const openDeny = () => {
+    if (denyPanel) { denyPanel.hidden = !denyPanel.hidden; return; }
+    const reason = h('input', { class: 'inp reason', type: 'text', placeholder: 'e.g. finish your homework first', 'aria-label': 'Reason' });
+    denyPanel = h('div', { class: 'panel' }, h('div', { class: 'flabel' }, 'Why not? (optional, shown on their phone)'), reason,
+      h('div', { class: 'acts' }, h('button', { type: 'button', class: 'btn dline grow denySend', onclick: () => send(('deny ' + reason.value.trim()).trim(), 'Denied') }, 'Deny')));
+    panels.append(denyPanel); reason.focus();
+  };
+  actions.append(h('button', { type: 'button', class: 'btn p grow approve', onclick: () => send(`approve for ${dur(asked)}`, `Approved ${fmtMin(asked)}`) }, `Approve ${fmtMin(asked)}`),
+    h('button', { type: 'button', class: 'btn s while', onclick: openWhile }, 'Other time'));
+  if (!issue._again) actions.append(h('button', { type: 'button', class: 'btn d deny', onclick: openDeny }, 'Deny'));
+  card.append(...[
+    h('div', { class: 'who' }, h('span', null, h('span', { class: 'av' }, phone[0].toUpperCase()), h('b', null, phone), h('span', { class: 'muted small' }, '· ' + ago(issue.created_at))),
+      chip(fmtMin(asked), 'amber', 'clock')),
+    h('h3', null, title),
+    t ? h('p', { class: 'line' }, icon('clock', 16), `${t.name}: ${timerWhen(t)} · ${timerWhat(t)}`) : null,
+    h('p', { class: 'hint', style: 'margin:0' }, req.ask === 'more' ? 'Approving adds that much to today\'s allowance.' : 'Approving switches the timer off on this phone for that long, from now.'),
+    note ? h('p', { class: 'quote' }, `“${note}”`) : null,
+    actions, panels].filter(Boolean));
+  return card;
+}
+// What the site says it is, and a link to look at it first (in a new tab).
+function siteAbout(req, site) {
+  if (!req.domain || (Array.isArray(req.frames) && req.frames.length)) return null;
+  const url = req.url && /^https?:\/\//i.test(req.url) ? req.url : `https://${req.domain}/`;
+  return h('div', { class: 'siteabout' },
+    site && (site.title || site.description) ? h('div', { class: 'sa' }, h('span', { class: 'sal' }, (site.title || req.domain)[0].toUpperCase()),
+      h('span', { class: 'grow', style: 'min-width:0;display:flex;flex-direction:column;gap:1px' },
+        site.title ? h('b', { class: 'sat' }, site.title) : null, site.description ? h('span', { class: 'small muted' }, site.description) : null)) : null,
+    h('a', { class: 'lookfirst', href: INAPP ? `wladmin://look?u=${encodeURIComponent(url)}` : url, target: INAPP ? null : '_blank', rel: 'noopener noreferrer' }, 'Look at the site first', icon('ext', 16)));
 }
 // ---------- a request: all the details ----------
 function requestDetailsScreen() {
@@ -2473,7 +2704,7 @@ function requestDetailsScreen() {
       kv('Phone', dev ? `${dev.name || devId} (${devId})${dev.model ? ', ' + dev.model : ''}` : (devId || 'Unknown')),
       kv('Asked', when.toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })),
       kv('Note', field(issue.body, 'Note') ? `“${field(issue.body, 'Note')}”` : null),
-      kv('History', (issue._log || []).length ? issue._log.map(e => `${new Date(e.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: ${String(e.text).replace(/\*\*/g, '').replace(/\n+/g, ' ').slice(0, 300)}`).join('\n') : null)),
+      kv('History', (issue._log || []).length ? issue._log.map(e => `${new Date(e.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: ${String(e.text).replace(/\*\*/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\n+/g, ' ').slice(0, 300)}`).join('\n') : null)),
     h('div', { class: 'flabel', style: 'margin-top:8px' }, 'Answer it'),
     requestCard(issue));
   return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink('Requests'),
@@ -2495,7 +2726,7 @@ function requestDetailsScreen() {
       kv('Passes through', hopText.length ? hopText.join('\n') : null),
       kv('On a filter list', Array.isArray(req.filtered) && req.filtered.length ? req.filtered.join(', ') : null),
       kv('Unverified', req.unverified ? 'The phone couldn\'t find this site when asking: check for a typo' : null),
-      kv('History', (issue._log || []).length ? issue._log.map(e => `${new Date(e.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: ${String(e.text).replace(/\*\*/g, '').replace(/\n+/g, ' ').slice(0, 300)}`).join('\n') : null)),
+      kv('History', (issue._log || []).length ? issue._log.map(e => `${new Date(e.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: ${String(e.text).replace(/\*\*/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\n+/g, ' ').slice(0, 300)}`).join('\n') : null)),
     h('div', { class: 'flabel', style: 'margin-top:8px' }, 'Answer it'),
     requestCard(issue));
 }
@@ -2515,7 +2746,13 @@ function settingRequestCard(issue, req) {
   const send = async (text, label) => {
     actions.querySelectorAll('button').forEach(b => b.disabled = true);
     try {
-      await reply(issue.number, text);
+      await reply(issue.number, text, issue._again);
+      if (issue._again) {
+        const x = (S.answeredList || []).find(i => i.number === issue.number);
+        if (x) x.answer = { ...x.answer, verdict: 'approved', undone: false, at: new Date().toISOString(), by: ME.name || ME.email, how: 'page', message: '', undoable: false, changed: [] };
+        render();
+        return say(`${label}. ${phone}'s phone is told within a few minutes.`);
+      }
       S.answeredNumbers = [...(S.answeredNumbers || []), issue.number];
       S.requests = S.requests.filter(i => i.number !== issue.number);
       S.answered.unshift({ title, label: `${label} for ${phone}` });
@@ -2556,7 +2793,7 @@ function settingRequestCard(issue, req) {
   if (may) {
     actions.append(h('button', { type: 'button', class: 'btn p grow approve', onclick: () => send(req.type === 'search' && onlyBox ? (onlyBox.checked ? 'approve approved-only' : 'approve all-results') : 'approve',
       req.type === 'search' ? (req.off === true ? 'Search turned off' : 'Search changed') : 'Default changed') }, 'Approve'));
-    actions.append(h('button', { type: 'button', class: 'btn d deny', onclick: openDeny }, 'Deny'));
+    if (!issue._again) actions.append(h('button', { type: 'button', class: 'btn d deny', onclick: openDeny }, 'Deny'));
   }
   card.append(...[
     h('div', { class: 'who' }, h('span', null, h('span', { class: 'av' }, phone[0].toUpperCase()), h('b', null, phone), h('span', { class: 'muted small' }, '· ' + ago(issue.created_at)))),
@@ -3173,6 +3410,29 @@ function groupsScreen() {
     h('p', { class: 'hint' }, 'Give a helper admin a group (Settings → Admins), and they look after every phone in it, including phones added to it later. Tap Save after changes.'));
 }
 
+// When a phone last opened the app, and its version (from its check-in, every few hours).
+const DAY = 86400000;
+const seenOf = id => (S.seen && S.seen.phones && S.seen.phones[id]) || null;
+const verNum = v => Number((String(v || '').match(/(\d+)$/) || [])[1]) || 0;
+const olderApp = id => { const x = seenOf(id), l = S.seen && S.seen.latest; return !!(x && x.v && l && verNum(x.v) < verNum(l)); };
+const daysAway = id => { const x = seenOf(id); return x ? Math.floor((Date.now() - x.at) / DAY) : null; };
+function seenText(id) {
+  const x = seenOf(id);
+  if (!x) return null;
+  const startOf = t => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+  const days = Math.round((startOf(Date.now()) - startOf(x.at)) / DAY);
+  return days <= 0 ? 'Used today' : days === 1 ? 'Used yesterday' : Date.now() - x.at >= 2 * DAY ? `Not seen for ${days} days` : `Used ${days} days ago`;
+}
+// The phone's clock: automatic time switched off, or changed by hand (timers and "for a while" go by GitHub's clock).
+function clockNotes(id) {
+  const c = (seenOf(id) || {}).clock;
+  if (!c) return [];
+  const out = [];
+  if (c.auto === false) out.push('Automatic date and time is off on this phone.');
+  if (c.changedAt && Date.now() - c.changedAt < 14 * DAY) out.push(`Its clock was changed by hand (${new Date(c.changedAt).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}).`);
+  if (out.length) out.push('Timers and "for a while" still go by GitHub\'s clock, so this doesn\'t get around them.');
+  return out;
+}
 function phonesScreen() {
   const gf = S.groupFilter && groupDefs()[S.groupFilter] ? S.groupFilter : null;
   const entries = Object.entries(S.D.devices).filter(([, d]) => !gf || (d.groups || []).includes(gf))
@@ -3181,7 +3441,9 @@ function phonesScreen() {
   // One compact row per phone: name and ID, its lists, and only the tags that matter.
   const cards = entries.map(([id, d]) => {
     const off = [...AD_GROUPS, ...FILTERS].filter(([key]) => d[key] === 'off').map(([, title]) => title.replace('Block ', '').replace('Hide ', '').replace(/ and scams$/, ''));
+    const away = daysAway(id), seen = seenText(id), v = (seenOf(id) || {}).v;
     const tags = [d.blocked ? chip('Blocked', 'red', 'ban') : null, !d.name ? chip('Needs a name', 'amber') : null,
+      clockNotes(id).length ? chip('Clock', 'amber', 'clock') : null,
       d.pinLockedUntil && Date.parse(d.pinLockedUntil) > Date.now() ? chip('Locked PIN', 'amber') : null,
       off.length ? chip(`${cap(off.join(', '))} off`, 'amber') : null].filter(Boolean);
     const lists = (d.blocked ? 'Blocked: no lists' : (d.lists || []).length
@@ -3193,7 +3455,9 @@ function phonesScreen() {
       h('span', { class: 'av' }, (d.name || '?')[0].toUpperCase()),
       h('span', { class: 'grow', style: 'min-width:0;display:flex;flex-direction:column;gap:1px' },
         h('span', { style: 'display:flex;gap:6px;align-items:baseline;min-width:0' }, h('b', { class: 'pname' }, d.name || 'No name yet'), h('span', { class: 'muted small' }, id)),
-        h('span', { class: 'muted small plists' }, lists)),
+        h('span', { class: 'muted small plists' }, lists),
+        seen || v ? h('span', { class: 'small pseen', style: away >= 2 && !d.blocked ? 'color:var(--amber-ink,#8A5A00);font-weight:700' : 'color:var(--muted)' },
+          [seen, v ? `App ${v}${olderApp(id) ? ' · older app' : ''}` : null].filter(Boolean).join(' · ')) : null),
       tags.length ? h('span', { class: 'chips', style: 'flex:none' }, tags) : null,
       h('span', { class: 'chev' }, icon('chev', 18)));
   });
@@ -3247,6 +3511,13 @@ function phonesScreen() {
         h('div', { class: 'warn', style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap' },
           h('span', { style: 'flex:1;min-width:12rem' }, h('b', null, `${d.name || id}: `), `My requests PIN is locked (5 wrong PINs), until ${new Date(d.pinLockedUntil).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.`),
           h('button', { type: 'button', class: 'btn s sm', onclick: () => unlockPin(id) }, 'Unlock'))));
+    })(),
+    // Not seen for 2 days or more: uninstalled, or another browser being used?
+    (() => {
+      const gone = entries.filter(([id, d]) => !d.blocked && daysAway(id) >= 2);
+      return gone.length ? h('div', { class: 'warn', id: 'notSeen' }, gone.length === 1
+        ? `${possessive(gone[0][1].name || gone[0][0])} phone hasn't opened the app for ${daysAway(gone[0][0])} days. It may have been uninstalled, or another browser is being used.`
+        : `${joinWords(gone.map(([id, d]) => d.name || id))} haven't opened the app for 2 days or more. It may have been uninstalled, or another browser is being used.`) : null;
     })(),
     gchips,
     entries.length || gf ? search : null,
@@ -3386,6 +3657,7 @@ function phoneScreen() {
       h('span', { style: 'flex:1;min-width:12rem' }, `My requests PIN is locked (5 wrong PINs), until ${new Date(d.pinLockedUntil).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.`),
       M ? h('button', { type: 'button', class: 'btn s sm', id: 'pinUnlock', onclick: () => unlockPin(id) }, 'Unlock') : null) : null,
     d.blocked ? h('p', { class: 'warn' }, `Blocked: it can't open any site. Its lists (${(d.blockedLists || []).map(listLabel).join(', ') || 'none'}) come back when you unblock it.`) : null,
+    phoneSeenPart(id, d, M),
     h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Lists it uses'), lists,
       h('p', { class: 'hint', style: 'margin:0' }, d.blocked ? 'Unblock it to change its lists.' : 'A site opens if any of these allows it, and is blocked if any of them blocks it.')),
     own ? h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Groups'),
@@ -3399,6 +3671,7 @@ function phoneScreen() {
         const g = await newGroup(); if (g) { d.groups = [...(d.groups || []), g]; markDevices(); render(); } } }, icon('plus', 15, 2.4), 'New group')),
       h('p', { class: 'hint', style: 'margin:0' }, 'Helper admins given a group look after every phone in it.')) : null,
     phoneMediaAndSearch(d, M),
+    phoneTimers(id),
     h('div', { class: 'field' }, h('label', { for: 'pReq' }, 'When you approve its requests, change'), req),
     own ? [    h('div', { class: 'field' }, h('span', { class: 'flabel' }, 'Approval PIN'), pinSeg,
       h('p', { class: 'hint', style: 'margin:0' }, pinMode === 'own' ? 'This phone has its own PIN.' : pinMode === 'none' ? 'Requests from this phone can\'t be approved with a PIN.'
@@ -3423,6 +3696,20 @@ function phoneScreen() {
       h('button', { type: 'button', class: 'btn s wide', id: 'pArchive', onclick: () => archiveNow(id) }, 'Archive now'),
       h('p', { class: 'hint' }, 'Block: it stays here but can\'t open any site, for a lost phone or one that shouldn\'t be used. ' +
         'Archive: put it away, with its own list, until it\'s needed again (Phones → Archived phones → Restore). If it\'s still being used, it comes back by itself.')));
+}
+// Last used, app version ("Ask it to update"), and its clock.
+function phoneSeenPart(id, d, M) {
+  const x = seenOf(id);
+  if (!x) return null;
+  const asked = Number(d.updateRequested) > x.at;
+  const ask = async () => { d.updateRequested = Date.now(); markDevices(); await saveAll(); say('Asked. The phone offers the update next time the app is open.'); render(); };
+  const notes = clockNotes(id);
+  return h('div', { class: 'stack', style: 'gap:6px' },
+    h('div', { class: 'card kvs', style: 'padding:6px 14px' },
+      h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Last used'), h('span', { class: 'v' }, `${seenText(id)} (${new Date(x.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })})`)),
+      x.v ? h('div', { class: 'kv' }, h('span', { class: 'k' }, 'App'), h('span', { class: 'v' }, `${x.v}${olderApp(id) ? ` (newest: ${S.seen.latest})` : ' (up to date)'}`)) : null),
+    olderApp(id) && M ? h('button', { type: 'button', class: 'btn s sm', id: 'pAskUpdate', disabled: asked, onclick: ask }, asked ? 'Asked it to update' : 'Ask it to update') : null,
+    notes.length ? h('p', { class: 'warn', id: 'pClock', style: 'margin:0' }, notes.join(' ')) : null);
 }
 // A phone's default for photos, videos and sound, and its text search. Changed by those who manage the phone.
 function phoneMediaAndSearch(d, M) {
@@ -3663,6 +3950,252 @@ function settingsScreen() {
 }
 
 // ============================================================================================
+// Timers: changes that switch on at set times, for phones and groups (devices.json "timers")
+// ============================================================================================
+// kind: "schedule" (days and hours, every week), "once" (from a time, for so long), "allowance" (so much time a day on
+// some sites or lists). "during": what changes while it's on (left out: no change). Each keeps its own time zone.
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const timerDefs = () => (S.D && S.D.timers && typeof S.D.timers === 'object') ? S.D.timers : {};
+const canTimers = () => fullAdmin() || canDo('manage');
+// Which phones a timer reaches (its own, and its groups' phones).
+const timerPhones = t => Object.entries(S.D.devices).filter(([id, d]) => (t.for && ((t.for.phones || []).includes(id) || (d.groups || []).some(g => (t.for.groups || []).includes(g))))).map(([id]) => id);
+// May this admin change it? (Helpers: only timers just for their own phones.)
+const timerMine = t => fullAdmin() || (canDo('manage') && !(t.for.groups || []).length && (t.for.phones || []).length && (t.for.phones || []).every(id => !!S.D.devices[id]));
+// The day and minute of the day in a time zone.
+function tzNow(tz, t = Date.now()) {
+  try {
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz || undefined, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .formatToParts(new Date(t)).map(x => [x.type, x.value]));
+    return { day: DAYS.indexOf(p.weekday), min: Number(p.hour) % 24 * 60 + Number(p.minute) };
+  } catch { const d = new Date(t); return { day: d.getDay(), min: d.getHours() * 60 + d.getMinutes() }; }
+}
+const hm = s => { const [a, b] = String(s || '0:0').split(':').map(Number); return (a || 0) * 60 + (b || 0); };
+// On right now? (A daily allowance: "on" on the days it applies.)
+function timerOn(t, now = Date.now()) {
+  if (t.paused) return false;
+  if (t.kind === 'once') return now >= t.startAt && now < t.startAt + t.minutes * 60000;
+  const { day, min } = tzNow(t.tz, now);
+  const days = t.days || [];
+  if (t.kind === 'allowance') return days.includes(day);
+  const f = hm(t.from), to = hm(t.to);
+  if (f === to) return days.includes(day);
+  if (f < to) return days.includes(day) && min >= f && min < to;
+  return (days.includes(day) && min >= f) || (days.includes((day + 6) % 7) && min < to);
+}
+const timerOver = t => t.kind === 'once' && Date.now() >= t.startAt + t.minutes * 60000;
+function daysText(days) {
+  const d = [...(days || [])].sort();
+  if (d.length === 7) return 'Every day';
+  if (!d.length) return 'No days';
+  // Runs of days in a row: "Sun–Thu", "Mon, Wed, Fri".
+  const runs = []; let s = d[0], p = d[0];
+  for (const x of d.slice(1).concat(99)) { if (x === p + 1) { p = x; continue; } runs.push(s === p ? DAYS[s] : p === s + 1 ? `${DAYS[s]}, ${DAYS[p]}` : `${DAYS[s]}–${DAYS[p]}`); s = p = x; }
+  return runs.join(', ');
+}
+function timerWhen(t) {
+  if (t.kind === 'once') {
+    const start = new Date(t.startAt).toLocaleString([], { timeZone: t.tz || undefined, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return `${timerOver(t) ? 'Was ' : ''}${start}, for ${fmtMin(t.minutes)}`;
+  }
+  if (t.kind === 'allowance') return `${fmtMin(t.minutes)} a day · ${daysText(t.days)}`;
+  return `${daysText(t.days)}, ${t.from} to ${t.to}`;
+}
+function timerWhat(t) {
+  if (t.kind === 'allowance') {
+    const on = [...((t.on || {}).sites || []), ...((t.on || {}).lists || []).map(l => `the ${listLabel(l)} list`)];
+    return `On ${joinWords(on) || 'nothing yet'} · then ${t.usedUp === 'media' ? 'videos and sound blocked' : 'blocked until tomorrow'}`;
+  }
+  const d = t.during || {}, out = [];
+  if (d.sites === 'none') out.push('Nothing opens');
+  if (d.sites === 'only') out.push(`Only ${joinWords((d.lists || []).map(listLabel)) || 'no lists'}`);
+  if (d.sites === 'also') out.push(`Also opens: ${joinWords((d.lists || []).map(listLabel)) || 'no lists'}`);
+  const bl = MKINDS.filter(([k]) => d[k] === 'blocked').map(([k]) => k), op = MKINDS.filter(([k]) => d[k] === 'open').map(([k]) => k);
+  if (bl.length) out.push(`${joinWords(bl)} blocked`);
+  if (op.length) out.push(`${joinWords(op)} open`);
+  if (d.search) out.push(`search ${d.search}`);
+  if (d.ask === 'no') out.push('can\'t ask for sites');
+  if (d.temporary === 'paused') out.push('temporary access paused');
+  return out.length ? capFirst(out.join(' · ')) : 'No changes yet';
+}
+const timerFor = t => joinWords([...((t.for || {}).groups || []).map(g => `${groupName(g)} (group)`), ...((t.for || {}).phones || []).map(id => (S.D.devices[id] || {}).name || id)]) || 'Nobody yet';
+function timerStatus(t) {
+  if (t.paused) return ['Paused', 'amber'];
+  if (timerOver(t)) return ['Over', ''];
+  return timerOn(t) ? [t.kind === 'allowance' ? 'Today' : 'On now', 'teal'] : [t.kind === 'allowance' ? 'Not today' : 'Later', ''];
+}
+// A new timer (for [phone], if made from a phone's screen).
+function newTimer(phone) {
+  if (!S.D.timers) S.D.timers = {};
+  const id = 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const tz = localTz() || 'UTC';
+  S.D.timers[id] = { name: 'New timer', kind: 'schedule', tz, for: { groups: [], phones: phone ? [phone] : [] },
+    days: /Jerusalem|Tel_Aviv|Hebron|Gaza/.test(tz) ? [0, 1, 2, 3, 4] : [1, 2, 3, 4, 5], from: '16:00', to: '18:00', during: {}, created: new Date().toISOString() };
+  markDevices();
+  open({ name: 'timer', id, from: phone || null });
+}
+function timerRow(id, t) {
+  const [st, kind] = timerStatus(t);
+  const mine = timerMine(t);
+  return h('div', { class: 'row timerrow', 'data-timer': id },
+    h('button', { type: 'button', class: 'grow tbody', onclick: () => open({ name: 'timer', id, from: S.sub && S.sub.name === 'phone' ? S.sub.id : null }) },
+      h('b', null, t.name || 'Timer'), h('span', { class: 'small muted' }, timerWhen(t)), h('span', { class: 'small muted' }, timerWhat(t))),
+    h('span', { class: `chip ${kind}`, style: 'flex:none' }, st),
+    h('input', { type: 'checkbox', class: 'sw', 'aria-label': `${t.name}: on`, checked: !t.paused, disabled: !mine || !canTimers(), onchange: e => {
+      if (e.target.checked) delete t.paused; else t.paused = true; markDevices(); render(); } }));
+}
+// The Timers tab: every timer, by who it's for.
+function timersScreen() {
+  const all = Object.entries(timerDefs());
+  const on = all.filter(([, t]) => timerOn(t) && !t.paused).length;
+  const by = new Map();
+  for (const [id, t] of all.sort(([, a], [, b]) => (a.name || '').localeCompare(b.name || ''))) {
+    const k = timerFor(t);
+    if (!by.has(k)) by.set(k, []);
+    by.get(k).push([id, t]);
+  }
+  return h('main', { class: 'stack' },
+    h('div', { style: 'display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap' },
+      h('div', { class: 'grow' }, screenTitle('Timers', all.length ? `${plural(all.length, 'timer')} · ${on} on now` : 'Changes that switch on at set times')),
+      canTimers() ? h('button', { type: 'button', class: 'btn p sm', id: 'newTimer', onclick: () => newTimer(null) }, icon('plus', 16, 2.4), 'New timer') : null),
+    all.length ? null : h('div', { class: 'card empty' }, h('b', null, 'No timers yet'),
+      'For example: Bedtime (nothing opens 21:00–07:00), Homework time (only the School list, 16:00–18:00), or an hour of YouTube a day.'),
+    ...[...by.entries()].flatMap(([who, rows]) => [h('h2', { class: 'sec' }, who), h('div', { class: 'group' }, rows.map(([id, t]) => timerRow(id, t)))]),
+    all.length ? h('p', { class: 'hint' }, 'When timers overlap, all of them apply and the strictest wins: an allowance that\'s used up blocks its sites even during a timer that opens them.') : null);
+}
+// One phone's timers (on its screen): its own and its groups'.
+function phoneTimers(id) {
+  const d = S.D.devices[id];
+  const rows = Object.entries(timerDefs()).filter(([, t]) => (t.for.phones || []).includes(id) || (d.groups || []).some(g => (t.for.groups || []).includes(g)));
+  return h('div', { class: 'field', id: 'pTimers' },
+    h('div', { style: 'display:flex;align-items:center;gap:10px' }, h('span', { class: 'flabel grow' }, 'Timers'),
+      canTimers() ? h('button', { type: 'button', class: 'btn s sm', id: 'pNewTimer', onclick: () => newTimer(id) }, icon('plus', 15, 2.4), 'New timer') : null),
+    rows.length ? h('div', { class: 'group' }, rows.map(([tid, t]) => timerRow(tid, t)))
+      : h('p', { class: 'hint', style: 'margin:0' }, 'None. A timer switches changes on at set times: bedtime, homework time, or so much time a day on some sites.'));
+}
+// Choices in a row: [[value, label]], the picked one pressed; red for the strict ones.
+function choiceSeg(label, value, opts, set, disabled) {
+  return h('div', { class: 'seg wrap', role: 'group', 'aria-label': label }, opts.map(([v, t]) =>
+    h('button', { type: 'button', 'data-v': v, class: /^(none|blocked|off|no|paused)$/.test(v) ? 'strict' : '', 'aria-pressed': String((value || '') === v), disabled,
+      onclick: () => { if ((value || '') !== v) set(v); } }, t)));
+}
+// One timer: everything about it.
+function timerScreen() {
+  const id = S.sub.id, t = timerDefs()[id];
+  const backTo = () => { if (S.sub.from && S.D.devices[S.sub.from]) open({ name: 'phone', id: S.sub.from }); else { S.sub = null; S.tab = 'timers'; render(); } };
+  const backLabel = S.sub.from && S.D.devices[S.sub.from] ? (S.D.devices[S.sub.from].name || S.sub.from) : 'Timers';
+  if (!t) return h('main', { class: 'stack' }, backLink(backLabel, backTo), h('div', { class: 'card empty' }, h('b', null, 'Not there any more'), 'It was deleted.'));
+  const ed = timerMine(t) && canTimers();
+  const ch = (fn, redraw = true) => { fn(); markDevices(); if (redraw) render(); };
+  t.for = t.for || { groups: [], phones: [] };
+  t.during = t.during || {};
+  const name = h('input', { class: 'inp', id: 'tName', value: t.name || '', maxlength: 40, readonly: !ed, oninput: e => { t.name = e.target.value; markDevices(); } });
+  // For: groups and phones.
+  const forChips = h('div', { class: 'chips', style: 'gap:8px', id: 'tFor' },
+    (fullAdmin() ? groupIds() : []).map(g => { const on = t.for.groups.includes(g);
+      return h('button', { type: 'button', class: 'lc pick', 'data-g': g, 'aria-pressed': String(on), disabled: !ed, onclick: () => ch(() => {
+        t.for.groups = on ? t.for.groups.filter(x => x !== g) : [...t.for.groups, g]; }) }, on ? icon('check', 15, 2.4) : null, `${groupName(g)} (group)`); }),
+    Object.entries(S.D.devices).sort(([, a], [, b]) => (a.name || '').localeCompare(b.name || '')).map(([pid, d]) => { const on = t.for.phones.includes(pid);
+      return h('button', { type: 'button', class: 'lc pick', 'data-p': pid, 'aria-pressed': String(on), disabled: !ed, onclick: () => ch(() => {
+        t.for.phones = on ? t.for.phones.filter(x => x !== pid) : [...t.for.phones, pid]; }) }, on ? icon('check', 15, 2.4) : null, d.name || pid); }));
+  // Kind.
+  const KINDS = [['schedule', 'On a schedule', 'Days and hours, every week'], ['once', 'One time only', 'Doesn\'t repeat: from now (or a set day and time) for as long as you choose, then it\'s over'],
+    ['allowance', 'A daily allowance', 'So much time a day on some sites or lists']];
+  const kinds = h('div', { class: 'group', id: 'tKind' }, KINDS.map(([k, title, sub]) => h('label', { class: 'radio' },
+    h('input', { type: 'radio', name: 'tkind', value: k, checked: t.kind === k, disabled: !ed, onchange: () => ch(() => {
+      const was = t.kind; t.kind = k;
+      if (k === 'once') { t.startAt = t.startAt || Date.now(); if (was !== 'once') t.minutes = 120; }
+      if (k === 'allowance') { if (was !== 'allowance') t.minutes = 60; t.on = t.on || { sites: [], lists: [] }; t.usedUp = t.usedUp || 'block'; t.days = t.days || [0, 1, 2, 3, 4, 5, 6]; }
+      if (k === 'schedule') { t.days = t.days || [1, 2, 3, 4, 5]; t.from = t.from || '16:00'; t.to = t.to || '18:00'; }
+    }) }), h('span', { class: 'grow' }, h('b', null, title), h('span', { class: 'small muted', style: 'display:block' }, sub)))));
+  const dayChips = () => h('div', { class: 'chips daychips', style: 'gap:6px' }, DAYS.map((dn, i) => { const on = (t.days || []).includes(i);
+    return h('button', { type: 'button', class: 'lc pick', 'data-day': i, 'aria-pressed': String(on), disabled: !ed, onclick: () => ch(() => {
+      t.days = on ? t.days.filter(x => x !== i) : [...(t.days || []), i].sort(); }) }, dn); }));
+  const timeIn = (idv, val, set) => h('input', { class: 'inp', id: idv, type: 'time', value: val, step: 300, readonly: !ed, style: 'max-width:9rem', onchange: e => { if (/^\d\d:\d\d$/.test(e.target.value)) { set(e.target.value); markDevices(); } } });
+  // A picker for "how long" (hours and minutes).
+  const howLong = (idv, min, set) => {
+    const host = h('div', { id: idv, 'data-sync': '' });
+    const lbl = h('div', { class: 'flabel' });
+    host._picker = makePicker(host, min, m => { lbl.textContent = `${fmtMin(m)}`; if (m > 0 && ed) { set(m); markDevices(); } });
+    lbl.textContent = fmtMin(min);
+    return h('div', { class: 'stack', style: 'gap:2px' }, lbl, host);
+  };
+  const parts = [];
+  if (t.kind === 'schedule') {
+    parts.push(h('span', { class: 'flabel' }, 'When'), h('div', { class: 'card', style: 'gap:10px' }, dayChips(),
+      h('div', { style: 'display:flex;align-items:center;gap:10px;flex-wrap:wrap' }, h('span', null, 'From'), timeIn('tFrom', t.from, v => { t.from = v; }), h('span', null, 'to'), timeIn('tTo', t.to, v => { t.to = v; })),
+      hm(t.to) <= hm(t.from) ? h('p', { class: 'hint', style: 'margin:0' }, `Ends the next morning (${t.from} to ${t.to}).`) : null));
+  } else if (t.kind === 'once') {
+    const local = new Date(t.startAt - new Date(t.startAt).getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    parts.push(h('span', { class: 'flabel' }, 'When'), h('div', { class: 'card', style: 'gap:10px' },
+      choiceSeg('Starts', t.startAt <= Date.now() + 60000 ? 'now' : 'at', [['now', 'From now'], ['at', 'At a set time']], v => ch(() => { t.startAt = v === 'now' ? Date.now() : Date.now() + 3600000; }), !ed),
+      t.startAt > Date.now() + 60000 ? h('input', { class: 'inp', id: 'tStart', type: 'datetime-local', value: local, readonly: !ed, onchange: e => { const v = Date.parse(e.target.value); if (v) { t.startAt = v; markDevices(); } } }) : null,
+      h('span', { class: 'small muted' }, 'For how long'), howLong('tLong', t.minutes || 120, m => { t.minutes = m; }),
+      timerOver(t) ? h('p', { class: 'hint', style: 'margin:0' }, 'This one is over. Change the time to use it again, or delete it.') : null));
+  } else {
+    t.on = t.on || { sites: [], lists: [] };
+    const siteIn = h('input', { class: 'inp', id: 'tSite', type: 'text', placeholder: 'e.g. youtube.com', autocapitalize: 'off', spellcheck: 'false' });
+    const addSite = () => { const v = siteIn.value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+      if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(v)) return say('Type a site, like youtube.com.', true);
+      ch(() => { t.on.sites = [...new Set([...(t.on.sites || []), v])]; }); };
+    parts.push(h('span', { class: 'flabel' }, 'Time a day'), h('div', { class: 'card', style: 'gap:10px' }, howLong('tLong', t.minutes || 60, m => { t.minutes = m; }), dayChips(),
+      h('span', { class: 'small muted' }, 'Days it applies. Starts again at midnight.')),
+      h('span', { class: 'flabel' }, 'On'), h('div', { class: 'card', style: 'gap:10px' },
+        h('div', { class: 'chips', style: 'gap:8px' }, (t.on.sites || []).map(s => h('button', { type: 'button', class: 'lc pick', 'aria-pressed': 'true', disabled: !ed,
+          'aria-label': `${s}: take it off`, onclick: () => ch(() => { t.on.sites = t.on.sites.filter(x => x !== s); }) }, s, icon('x', 14, 2.4))),
+          S.lists.map(l => { const on = (t.on.lists || []).includes(l);
+            return h('button', { type: 'button', class: 'lc pick', 'data-list': l, 'aria-pressed': String(on), disabled: !ed, onclick: () => ch(() => {
+              t.on.lists = on ? t.on.lists.filter(x => x !== l) : [...(t.on.lists || []), l]; }) }, on ? icon('check', 15, 2.4) : null, `${listLabel(l)} list`); })),
+        ed ? h('div', { style: 'display:flex;gap:8px' }, siteIn, h('button', { type: 'button', class: 'btn s sm', onclick: addSite }, 'Add')) : null,
+        h('span', { class: 'small muted' }, 'Sites, or whole lists. Time counts only while one of them is on screen.')),
+      h('span', { class: 'flabel' }, 'When it\'s used up'),
+      h('div', { class: 'group' }, [['block', 'They\'re blocked until tomorrow'], ['media', 'Only videos and sound are blocked']].map(([v, tx]) => h('label', { class: 'radio' },
+        h('input', { type: 'radio', name: 'tused', value: v, checked: (t.usedUp || 'block') === v, disabled: !ed, onchange: () => ch(() => { t.usedUp = v; }) }), h('span', { class: 'grow' }, tx)))),
+      h('p', { class: 'hint', style: 'margin:0' }, 'On the phone: "32 min left today" while on them, a note at 5 minutes left, then "Ask for more time".'));
+  }
+  // During it (schedule and once).
+  if (t.kind !== 'allowance') {
+    const d = t.during;
+    const set = (k, v) => ch(() => { if (v) d[k] = v; else delete d[k]; if (k === 'sites' && !['only', 'also'].includes(v)) delete d.lists; });
+    const ROWS = [['sites', 'Sites', [['', 'No change'], ['only', 'Only some lists'], ['also', 'Also these lists'], ['none', 'Nothing opens']],
+        { '': 'As the phone\'s lists say', only: `Only ${joinWords((d.lists || []).map(listLabel)) || 'the lists below'} open${(d.lists || []).length === 1 ? 's' : ''}`, also: 'The lists below open too', none: 'Nothing opens: a full screen instead' }],
+      ['photos', 'Photos', [['', 'No change'], ['open', 'Open'], ['blocked', 'Blocked']], { '': 'As each site is set', open: 'Open on every site', blocked: 'Blocked on every site, whatever its setting' }],
+      ['videos', 'Videos', [['', 'No change'], ['open', 'Open'], ['blocked', 'Blocked']], { '': 'As each site is set', open: 'Open on every site', blocked: 'Blocked on every site, whatever its setting' }],
+      ['sound', 'Sound', [['', 'No change'], ['open', 'Open'], ['blocked', 'Blocked']], { '': 'As each site is set', open: 'Open on every site', blocked: 'Blocked on every site, whatever its setting' }],
+      ['search', 'Search', [['', 'No change'], ['on', 'On'], ['off', 'Off']], { '': 'As the phone is set', on: 'A search box', off: 'No search box' }],
+      ['ask', 'Asking for sites', [['', 'No change'], ['no', 'Can\'t ask']], { '': 'Requests can still be sent', no: 'Nothing new can be asked for (they can still ask for time)' }],
+      ['temporary', 'Temporary access', [['', 'No change'], ['paused', 'Paused']], { '': 'Ones you approved still work', paused: 'Sites open "for a while" wait until it\'s over' }]];
+    parts.push(h('span', { class: 'flabel' }, 'During it'), h('div', { class: 'card during', style: 'gap:0;padding:4px 14px' }, ROWS.map(([k, title, opts, says], i) =>
+      h('div', { class: 'drow', 'data-k': k, style: i ? 'border-top:1px solid var(--line2)' : '' },
+        h('b', null, title), choiceSeg(title, d[k], opts, v => set(k, v), !ed), h('span', { class: 'small muted' }, says[d[k] || ''])))));
+    if (d.sites === 'only' || d.sites === 'also') parts.push(h('div', { class: 'card', style: 'gap:8px' }, h('b', null, 'Lists that open during it'),
+      h('div', { class: 'chips', style: 'gap:8px', id: 'tLists' }, S.lists.map(l => { const on = (d.lists || []).includes(l);
+        return h('button', { type: 'button', class: 'lc pick', 'data-list': l, 'aria-pressed': String(on), disabled: !ed, onclick: () => ch(() => {
+          d.lists = on ? d.lists.filter(x => x !== l) : [...(d.lists || []), l]; }) }, on ? icon('check', 15, 2.4) : null, listLabel(l)); }))));
+  }
+  // Its time zone (the one it was made in).
+  const zones = (() => { try { return Intl.supportedValuesOf('timeZone'); } catch { return []; } })();
+  const tzSel = h('select', { class: 'inp', id: 'tTz', disabled: !ed, onchange: e => ch(() => { t.tz = e.target.value; }) },
+    [...new Set([t.tz, localTz(), ...zones].filter(Boolean))].map(z => h('option', { value: z }, z.replace(/_/g, ' '))));
+  tzSel.value = t.tz;
+  const del = async () => {
+    if (!(await uiConfirmDanger(`Delete ${t.name || 'this timer'}?`, 'It stops on every phone it\'s for, within a few minutes.', 'Delete', 'trash'))) return;
+    delete S.D.timers[id]; markDevices(); backTo(); say('Deleted. Tap Save to keep the change.');
+  };
+  return h('main', { class: 'stack', style: 'padding-bottom:24px' }, backLink(backLabel, backTo),
+    h('div', { class: 'field' }, h('label', { for: 'tName' }, 'Name'), name),
+    h('label', { class: 'tg', for: 'tOn' }, h('span', { class: 'grow' }, h('span', { class: 't' }, 'On'), h('span', { class: 's' }, t.paused ? 'Paused: it does nothing until you switch it on' : timerStatus(t)[0])),
+      h('input', { type: 'checkbox', class: 'sw', id: 'tOn', checked: !t.paused, disabled: !ed, onchange: e => ch(() => { if (e.target.checked) delete t.paused; else t.paused = true; }) })),
+    h('span', { class: 'flabel' }, 'For'), forChips,
+    !t.for.groups.length && !t.for.phones.length ? h('p', { class: 'warn', style: 'margin:0' }, 'Pick who it\'s for: a group, or phones.') : null,
+    h('span', { class: 'flabel' }, 'Kind of timer'), kinds, ...parts,
+    h('div', { class: 'field' }, h('label', { for: 'tTz' }, 'Time zone'), tzSel,
+      h('span', { class: 'hint' }, `Its times are in this zone (the one it was made in), wherever the phone is. Now there: ${new Date().toLocaleTimeString([], { timeZone: t.tz || undefined, hour: '2-digit', minute: '2-digit' })}.`)),
+    ed ? h('div', { class: 'acts' }, h('button', { type: 'button', class: 'btn dline', id: 'tDelete', onclick: del }, 'Delete timer'),
+      h('button', { type: 'button', class: 'btn p grow', id: 'tDone', onclick: async () => { await saveAll(); backTo(); } }, 'Done')) : null,
+    ed ? null : h('p', { class: 'hint' }, 'Only the main admin can change this one.'));
+}
+
+// ============================================================================================
 // Start
 // ============================================================================================
 // Keeping up to date by itself: every 45 seconds while this page is on screen (and as soon as it comes back), the
@@ -3671,7 +4204,7 @@ function settingsScreen() {
 async function autoRefresh() {
   try {
     if (!S.connected || S.locked || document.visibilityState !== 'visible') return;
-    if (S.devDirty || S.listDirty || QUEUE.busy || QUEUE.ops.length || QUEUE.failed || CMDQ.pending) return;
+    if (S.devDirty || S.listDirty || !quietNow()) return;
     const a = document.activeElement;
     if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'checkbox') return;
     const sha = await latestSha();

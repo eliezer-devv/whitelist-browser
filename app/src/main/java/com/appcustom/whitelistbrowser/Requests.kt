@@ -243,7 +243,9 @@ object Requests {
             conn.setRequestProperty("Accept", "application/vnd.github+json")
             conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
             conn.setRequestProperty("User-Agent", "WhitelistBrowser/${BuildConfig.VERSION_NAME}")
-            return when (conn.responseCode) {
+            val code0 = conn.responseCode
+            TrustedTime.fromResponse(conn)
+            return when (code0) {
                 200 -> conn.inputStream.bufferedReader().use { it.readText() }
                 404, 410 -> null
                 else -> throw IOException("GitHub returned ${conn.responseCode}")
@@ -264,7 +266,7 @@ object Requests {
     }
 
     private fun utcNow(): String = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
-        .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date())
+        .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date(TrustedTime.now()))
 
     private fun statusBody(ctx: Context, register: Boolean): String {
         val id = Device.id(ctx)
@@ -275,6 +277,8 @@ object Requests {
             .apply { Device.first(ctx)?.let { put("first", it) }; Device.last(ctx)?.let { put("last", it) } }
             .put("lastSeen", now).put("installed", Device.installedOn(ctx))
             .put("version", BuildConfig.VERSION_NAME)
+            .apply { runCatching { put("clock", TrustedTime.report(ctx)) }.onFailure { AppLog.w("Clock", "Couldn't add the clock to the record: ${it.message}") } }
+            .put("tz", java.util.TimeZone.getDefault().id)
         return (if (register) "🔒 A phone registered." else "🔒 A phone's record.") + "\n\n" + Seal.hiddenPart(marker)
     }
 
@@ -331,10 +335,16 @@ object Requests {
      * last used, at most every 12 hours. A daily GitHub job archives phones that stop checking in.
      * Editing an issue sends no notifications.
      */
+    /** Something the admin page should know soon (the clock was changed): the next check-in isn't held back. */
+    fun checkInSoon(ctx: Context) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong("lastCheckIn", 0L).apply()
+    }
+
     fun checkIn(ctx: Context) {
         if (!isSetUp() || !Whitelist.state.registered) return
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (System.currentTimeMillis() - p.getLong("lastCheckIn", 0L) < 12 * 3_600_000L) return
+        // (Every 6 hours: the admin page shows when each phone was last used. Sooner when its clock changed.)
+        if (System.currentTimeMillis() - p.getLong("lastCheckIn", 0L) in 0 until 6 * 3_600_000L) return
         var number = p.getInt("statusIssue", 0)
         if (number == 0) {
             // No record on this install yet (the app was reinstalled, or the phone was added by hand): make one.
@@ -357,6 +367,7 @@ object Requests {
         try {
             conn.outputStream.use { it.write(payload.toString().toByteArray()) }
             val code = conn.responseCode
+            TrustedTime.fromResponse(conn)
             if (code == 201) return JSONObject(conn.inputStream.bufferedReader().use { it.readText() }).optInt("number")
             // GitHub limits how fast one account can create issues; lots of phones at once can reach it.
             val busy = code == 429 || conn.getHeaderField("Retry-After") != null ||
@@ -384,7 +395,7 @@ object Requests {
         if (number <= 0) return false
         val closed = call("PATCH", "issues/$number", JSONObject().put("state", "closed").put("state_reason", "not_planned"))
         if (closed !in 200..299) return false
-        runCatching { call("POST", "issues/$number/comments", JSONObject().put("body", "🚫 Cancelled on the phone.")) }
+        runCatching { call("POST", "issues/$number/comments", JSONObject().put("body", "🚫 Cancelled on the phone.")) }.logged("Requests", "Saying it was cancelled")
         return true
     }
 
@@ -407,7 +418,7 @@ object Requests {
         val conn = open(method, path)
         try {
             conn.outputStream.use { it.write(payload.toString().toByteArray()) }
-            return conn.responseCode
+            return conn.responseCode.also { TrustedTime.fromResponse(conn) }
         } finally {
             conn.disconnect()
         }

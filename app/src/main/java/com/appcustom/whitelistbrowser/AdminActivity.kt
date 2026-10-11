@@ -181,6 +181,9 @@ class AdminActivity : Activity() {
                 val url = request?.url ?: return true
                 if (url.scheme == "wladmin") {                  // the page's Close button
                     if (url.host == "close") finish()
+                    // "Look at the site first" on a request: in another browser (this app opens only listed sites).
+                    if (url.host == "look") url.getQueryParameter("u")?.let { Uri.parse(it) }
+                        ?.takeIf { it.scheme == "https" || it.scheme == "http" }?.let { openOutside(it) }
                     return true
                 }
                 if (url.host == HomePage.HOST && url.path?.startsWith(PATH) == true) return false
@@ -217,13 +220,19 @@ class AdminActivity : Activity() {
             "&theme=${if (Ui.dark) "dark" else "light"}" + (if (BuildConfig.ADMIN_APP) "&app=admin" else "") + focusParams() + linkPart())
     }
 
+    override fun onPause() {
+        AdminAlerts.adminScreenOpen = false
+        super.onPause()
+    }
+
     override fun onResume() {
         super.onResume()
+        AdminAlerts.adminScreenOpen = true
         if (BuildConfig.ADMIN_APP) {
             checkForUpdate()
             // Notifications: a look now (the background check also runs every 15 minutes or so).
             val ctx = applicationContext
-            if (AdminAlerts.active(ctx)) Thread { runCatching { AdminAlerts.check(ctx) } }.start()
+            if (AdminAlerts.active(ctx)) Thread { runCatching { AdminAlerts.check(ctx) }.logged("Admin", "Checking for notes") }.start()
         }
     }
 

@@ -39,6 +39,7 @@
     padding: .85rem 1.3rem; background: var(--card); color: var(--accent-text); text-decoration: none; display: inline-flex;
     align-items: center; min-height: 48px; }
   .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  [hidden] { display: none !important; }
   /* Small screens (e.g. 2.8-inch phones): smaller text, so the buttons are on screen sooner. */
   @media (max-width: 340px) {
     main { padding: 1rem .8rem; }
@@ -69,6 +70,7 @@
   let host = target;
   try { host = new URL(target).hostname; } catch (e) {}
   const msg = document.getElementById('msg');
+  let timerAsk = null, timerLabel = '';
   // Blocked by a content filter: say which list it's on.
   const FILTER_NAMES = { adult: 'adult content', gambling: 'gambling', malware: 'malware' };
   if (q.get('reason') === 'filtered') {
@@ -77,6 +79,18 @@
     const c = document.createElement('code'); c.textContent = host || 'this site'; msg.append(c);
     msg.append(` is on the ${names.join(' and ') || 'filter'} list${names.length > 1 ? 's' : ''}, so it's blocked. ` +
       'If you think that\'s a mistake, tap Ask to open: whoever manages this browser will see which list it\'s on.');
+  } else if (q.get('reason') === 'timer') {
+    // A timer: "Blocked during Homework time" (until 18:00), or a daily allowance that's used up. Ask for time.
+    const tname = q.get('tname') || 'a timer', until = q.get('until'), more = q.get('tk') === 'more';
+    document.getElementById('title').textContent = more ? `${tname} is used up for today` : q.get('tnone') ? `${tname}: nothing opens now` : `Blocked during ${tname}`;
+    if (more) msg.append('Your time on this site is used up for today. It starts again tomorrow. ');
+    else {
+      const c = document.createElement('code'); c.textContent = host || 'this site'; msg.append(c);
+      msg.append(` doesn't open during ${tname}${until ? ', until ' + until : ''}. `);
+    }
+    msg.append(q.get('noask') ? '' : 'You can ask for time.');
+    timerAsk = q.get('noask') ? null : 'wlb://timer-ask?id=' + encodeURIComponent(q.get('tid') || '') + '&k=' + (more ? 'more' : 'off');
+    timerLabel = more ? 'Ask for more time' : 'Ask for time';
   } else if (q.get('reason') === 'expired') {
     document.getElementById('title').textContent = 'Time\'s up';
     msg.append('Temporary access to ');
@@ -98,7 +112,8 @@
   // Handled by the app, which skips over blocked pages in the history.
   document.getElementById('back').onclick = () => { location.href = 'wlb://back'; };
   const ask = document.getElementById('ask');
-  if (target) ask.href = 'wlb://request?action=allow&url=' + encodeURIComponent(target);
+  if (q.get('reason') === 'timer') { if (timerAsk) { ask.href = timerAsk; ask.textContent = timerLabel; } else ask.hidden = true; }
+  else if (target) ask.href = 'wlb://request?action=allow&url=' + encodeURIComponent(target);
   else ask.href = 'wlb://request?action=allow';
 </script>
 </body>
